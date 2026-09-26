@@ -133,7 +133,7 @@ export class Approvals {
    * Read a remote reply. Returns null when it is not a reply to a request, or
    *   {details: id}
    *   {decision: 'yes'|'no', items: [{id, code}], all: bool, batchCode, bare: bool}
-   * Accepted: "YES 12 K7", "yes 12K7 14M3", "YES ALL Q4", "NO 12", "no 12 13", "NO ALL", "details 12", and a bare "yes"/"no".
+   * Accepted: "YES 12 K7M3", "yes 12K7M3 14A2B3", "YES ALL Q4R8", "NO 12", "no 12 13", "NO ALL", "details 12", and a bare "yes"/"no".
    * A message that says anything more ("yes, and what time is my meeting?") is not a reply.
    */
   static parse(text) {
