@@ -8,6 +8,7 @@ export const defaults = {
   weather:{latitude:null,longitude:null,enabled:false},
   ai:{endpoint:'',model:'',enabled:false},
   jaeAsset:'', shortcuts:[], favorites:[], updateFeed:'', deckBackdrops:{},
+  meeting:{to:'Joshuabrunobarradas@gmail.com',from:''},
   startup:{enabled:true,video:'jarvis://asset/startup/welcome.mp4',sound:'jarvis://asset/startup/welcome.mp3',seconds:15,loopVideo:true}
 };
 const bools = ['setupComplete','startWithWindows','startMinimized','autoStart','wallpaper','voiceEnabled','animations','singleScreen','thirdScreen','reduceOnBattery'];
@@ -61,6 +62,11 @@ export function validateSettings(patch, current=defaults) {
       if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid second-screen pictures.');
       const out={};for(const [k,v] of Object.entries(value)){if(!['ironman','batcave','spiderman'].includes(k)||typeof v!=='string'||!/^[\w.-]{1,120}$/.test(v))throw Error('Invalid second-screen picture.');out[k]=v;}
       next.deckBackdrops=out;
+    } else if(key==='meeting') {
+      if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid meeting settings.');
+      const ok=v=>typeof v==='string'&&v.length<=254&&(!v||/^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[a-z]{2,}$/i.test(v));
+      if(!ok(value.to)||!ok(value.from))throw Error('Enter a valid email address.');
+      next.meeting={to:value.to,from:value.from};
     } else if(key==='favorites') {if(!Array.isArray(value)||value.length>20||value.some(x=>typeof x!=='string'||x.length>2048))throw Error('Invalid folders.');next.favorites=[...value];}
   }
   return next;

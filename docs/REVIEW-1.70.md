@@ -46,8 +46,16 @@ The three items left open after 1.70.1:
 - The main window now listens to `layout-result`. Errors always show, and voice "arrange my screens" / "launch everything" (sent with `manual:true`) report what was placed and what wasn't open. The routine tidy-up when a suit opens stays quiet. The console's "Launch links & apps" now broadcasts `launch-result`, so failures show on the suit page.
 - "close this page" / "close the page" / "close the tab" are a new `page-close` action: inside a suit with tabs it closes the tab in front (with the hall's tab-close line); otherwise it closes the floating panel. "close tab" / "close this tab" stay tab-only.
 
+## 1.71.0: meeting mode
+- The hall bar gets a meeting button (`dist/assets/meeting.js`). Voice: "start a meeting for <suit>", "end the meeting" (`meeting-start` / `meeting-end`). A red REC bar with an End button shows in every state while recording.
+- The main window records the microphone plus system audio (legacy `chromeMediaSource: 'desktop'` loopback, so any call app works). The permission handler allows audio only while a meeting exists. `meeting-worklet.js` makes 16 kHz chunks cut at pauses (15–30 s). `src/meeting/manager.js` queues them to `scripts/windows/transcribe.ps1` (System.Speech dictation from WAV) during the meeting.
+- Files: `<suit folder>/Meetings/<date time>/`, or `Documents/JARVIS Meetings/<hall>/<suit>/<date time>/` when the suit has no folder. Contents: `recording.webm` and `transcript.md`. History is kept in `meetings.json`.
+- On end: Claude summary via the tower key (`plannerModel`), then email through Gmail SMTP (`src/meeting/mailer.js`, app password stored with safeStorage in `gmail-app-password.enc`). Settings key `meeting: {to, from}`.
+- Tested on Windows: transcribe.ps1 on a synthesized WAV; the manager end to end (chunk offset, transcript, clean-up, history); the Gmail TLS/EHLO/AUTH flow with fake credentials (clear refusal message). Not yet tested: live capture inside Electron, and a real send.
+
 ## Still open
-- Nothing known.
+- Offline dictation is rough on real call audio. A Whisper-compatible engine could be added as an option later.
+- On speakers (no headphones), the mic also picks up the call, so some lines may appear twice in the transcript.
 
 ## How to test (Linux, as used here)
 - Test hooks (JARVIS_TEST_EVAL / JARVIS_TEST_THEME) are inserted into src/main/main.js only for testing and must be removed before building.

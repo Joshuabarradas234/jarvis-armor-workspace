@@ -1,5 +1,5 @@
 {
-  "version": "1.70.2",
+  "version": "1.71.0",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "Hall timers now run only on the main screen (less CPU and battery use), window-arrangement results and errors are shown on screen, and \"close this page\" closes the tab you are looking at inside a suit."
+  "notes": "New: meeting mode. Record any call (Zoom, Teams, Meet, WhatsApp...) for a suit, get an offline transcript with a Claude summary, emailed to you when it ends."
 }

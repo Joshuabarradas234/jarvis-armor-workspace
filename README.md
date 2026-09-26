@@ -9,6 +9,7 @@ A cinematic, multi-screen desktop workspace for Windows, built on Electron. Each
 - **Hand control:** camera hand tracking to point, pinch, scroll and throw pages between screens.
 - **Control deck:** each bay can run an agent command and show its progress, tasks and log, with a copyable status report.
 - **The tower:** floors of Claude-powered agents that plan, work and review tasks, using the Claude API or Claude Code, with per-floor budgets and approvals.
+- **Meeting mode:** "Jarvis, start a meeting for Mark 5" (or the meeting button) records your microphone and the call audio from any app, transcribes it offline with Windows speech recognition, adds a Claude summary, and emails the notes from your Gmail when you end it.
 - **Daily tools:** briefing, calendar, to-dos, ideas board, focus timer, globe and maps, and weather.
 
 ## Run from source
@@ -30,6 +31,7 @@ The app's **Check for updates** reads [`latest.json`](latest.json) from this rep
 - `src/main/`: Electron main process (windows, IPC, tabs, panels)
 - `src/control/`: control deck server, missions and agent runner
 - `src/tower/`: tower store, agent orchestration and engines
+- `src/meeting/`: meeting recording, offline transcription queue and the Gmail sender
 - `src/voice/`, `scripts/windows/`: speech recognition and PowerShell helpers
 - `dist/`: the prebuilt renderer, patched directly (there is no build step for it)
 - `docs/REVIEW-1.70.md`: latest review notes and open items

@@ -14,6 +14,7 @@ export function spokenForms(name){
     const v=new Set([w]);
     if(/^\d+$/.test(w)){const n=Number(w);v.add(String(n));v.add(numWords(n));if(w.length>1&&w.startsWith('0'))v.add('zero '+numWords(n));}
     else if(i>0&&ROMAN[w]){v.add(numWords(ROMAN[w]));v.add(String(ROMAN[w]));}
+    else if(i>0&&ONES.indexOf(w)>0)v.add(String(ONES.indexOf(w)));   // "Mark Five" is also heard as "mark 5"
     if(w==='mk')v.add('mark');
     return [...v];
   });
@@ -113,6 +114,13 @@ export function parseCommand(text,context){
   if(['close all the tabs','close all tabs','close all the pages','close all pages','close everything','clear the screen','close all the windows','close all windows'].includes(rest))return {action:'panel-close-all'};
   if(['close this page','close the page','close the tab'].includes(rest))return {action:'page-close'};   // a tab inside a suit, else a floating panel (decided in main)
   if(['close the map','close map','close that','close it','close the window','close the panel','hide the map','get rid of that','close the search','close this'].includes(rest))return {action:'panel-close'};
+  // meeting mode: "start a meeting for Mark 5", "starting a meeting for Mark 5", "end the meeting"
+  if(['end the meeting','end meeting','stop the meeting','stop meeting','stop recording','stop recording the meeting','end the call','finish the meeting','wrap up the meeting','the meeting is over','meeting over','close the meeting'].includes(rest))return {action:'meeting-end'};
+  const MEET=/^(?:start|starting|begin|beginning|open|record|recording|kick off|lets start|lets have|im starting|im in|join)(?: a| the| my| new)? (?:meeting|call|meeting mode)(?: (?:for|on|in|about|with) (.+))?$|^(?:meeting mode|meeting)(?: (?:for|on) (.+))$/;
+  const mt=MEET.exec(rest);
+  if(mt){const want=clean(mt[1]||mt[2]||'');if(!want)return {action:'meeting-start'};
+    for(const m of ctx.modules||[]){const n=clean(m.name);if(n===want||n.replace(/\b0+(\d)/g,'$1')===want.replace(/\b0+(\d)/g,'$1')||spokenForms(m.name).includes(want)||spokenForms(m.name).some(f=>want==='the '+f))return {action:'meeting-start',id:m.id};}
+    return {action:'meeting-start'};}
   // "run mark 1", "start bay 3", "get to work on cowl 02"
   const RUN=/^(?:run|start|launch|execute|begin|get to work on|kick off)\s+(.+)$/;
   const rm=RUN.exec(rest);
@@ -180,6 +188,8 @@ export function buildGrammar(context){
     for(const m of context.modules||[])for(const f of spokenForms(m.name))phrases.push(`${n} open ${f}`,`${n} show ${f}`,`${n} open the ${f}`,`${n} show me ${f}`,`${n} show me the ${f}`,`${n} let me see the ${f}`);
     for(const p of switches){phrases.push(`${n} ${p}`);for(const L of LEADINS)phrases.push(`${n} ${L}${p}`);}
     for(const m of context.modules||[])for(const f of spokenForms(m.name))for(const v of ['run','start','launch'])phrases.push(`${n} ${v} ${f}`);
+    for(const m of context.modules||[])for(const f of spokenForms(m.name))for(const v of ['start a meeting for','starting a meeting for','start the meeting for'])phrases.push(`${n} ${v} ${f}`);
+    for(const c of ['start a meeting','end the meeting','end meeting','stop the meeting','stop recording','the meeting is over'])phrases.push(`${n} ${c}`);
   }
   // conversation: greetings, thanks, briefings and status, with the name at either end
   const GREETS=['good morning','good afternoon','good evening','morning','hello','hey'];

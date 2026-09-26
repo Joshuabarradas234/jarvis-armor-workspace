@@ -1,4 +1,4 @@
-import {app,BrowserWindow,ipcMain,Tray,Menu,nativeImage,screen,globalShortcut,powerMonitor,protocol,net,shell,dialog,safeStorage,Notification,session,WebContentsView} from 'electron';
+import {app,BrowserWindow,ipcMain,Tray,Menu,nativeImage,screen,globalShortcut,powerMonitor,protocol,net,shell,dialog,safeStorage,Notification,session,WebContentsView,desktopCapturer} from 'electron';
 import fs from 'node:fs';
 import https from 'node:https';
 import path from 'node:path';
@@ -16,6 +16,9 @@ import {TowerRunner} from '../tower/orchestrator.js';
 import {WorkstationStore} from '../workstations/store.js';
 import {TabManager} from './tabs.js';
 import {WindowLayout} from '../layout/windows.js';
+import {MeetingManager,clock} from '../meeting/manager.js';
+import {sendGmail,validEmail} from '../meeting/mailer.js';
+import {callApi} from '../tower/engines.js';
 import {MissionStore} from '../control/missions.js';
 import {AgentRunner} from '../control/runner.js';
 import {ControlServer} from '../control/server.js';
@@ -105,7 +108,7 @@ function createWindow({role,...options}){
   const w=new BrowserWindow({...options,title:'JARVIS // ARMOR WORKSPACE',autoHideMenuBar:true,icon:path.join(assets,'icons','app.png'),webPreferences:{preload:path.join(root,'src','main','preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,backgroundThrottling:role==='wallpaper'?false:true,...(['main','console'].includes(role)?{autoplayPolicy:'no-user-gesture-required'}:{})}});
   const contentsId=w.webContents.id;trusted.set(contentsId,{role});
   w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());w.webContents.on('will-attach-webview',e=>e.preventDefault());
-  w.webContents.on('render-process-gone',(_e,d)=>{log('renderer',`${role}: ${d.reason}`);if(!quitting&&['main','console'].includes(role)){if(role==='main'){machine?.dispatch('standdown');try{tabs?.closeAll();panels?.closeAll?.();}catch{}}else{try{deckGone();}catch{}}if(!w.isDestroyed())w.destroy();setTimeout(()=>displays.rebuild().catch(e=>log('recovery',e.message)),1000);}});
+  w.webContents.on('render-process-gone',(_e,d)=>{log('renderer',`${role}: ${d.reason}`);if(!quitting&&['main','console'].includes(role)){if(role==='main'){if(meetings?.active)endMeeting().catch(e=>log('meeting',e.message));machine?.dispatch('standdown');try{tabs?.closeAll();panels?.closeAll?.();}catch{}}else{try{deckGone();}catch{}}if(!w.isDestroyed())w.destroy();setTimeout(()=>displays.rebuild().catch(e=>log('recovery',e.message)),1000);}});
   w.on('closed',()=>trusted.delete(contentsId));
   if(role==='main'||role==='console')w.on('close',e=>{if(!quitting){e.preventDefault();machine?.dispatch('standdown');}});
   w.webContents.on('before-input-event',(event,input)=>{
@@ -184,7 +187,7 @@ function scheduleChatter(){
   const mins=Math.max(1,Number(c.everyMinutes)||8);
   const wait=(mins*60*1000)*(0.6+Math.random()*0.8);        // never on the clock
   chatterTimer=setTimeout(()=>{
-    const idle=['ARMOR_HALL','MODULE'].includes(machine.value.state);
+    const idle=['ARMOR_HALL','MODULE'].includes(machine.value.state)&&!meetings?.active;
     if(idle&&!focusActive()&&Math.random()<(Number(c.chance)||0.6)){
       const clip=packClip(workstations.activeTheme,'quip');
       if(clip)voice?.speak('',settings.get(),voiceProfile(),clip);
@@ -194,7 +197,7 @@ function scheduleChatter(){
 }
 /** Spoken summary of where everything stands. */
 /* ---------- conversation: greetings, thanks, the daily briefing, maps ---------- */
-const TALK=['page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
+const TALK=['meeting-start','meeting-end','page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
 function partOfDay(){const h=new Date().getHours();return h<12?'morning':h<18?'afternoon':'evening';}
 function addr(){return workstations.theme().voice?.address||'sir';}
 const pick=a=>a[Math.floor(Math.random()*a.length)];
@@ -301,6 +304,8 @@ function talk(action,cmd={}){
     broadcast('hologram',{kind:action,title:`Search · ${q}`,url});
     say(action==='map'?`Opening a map for ${cap(q)}.`:`Searching for ${q}.`);return true;
   }
+  if(action==='meeting-start'){try{startMeeting(cmd.id);}catch(e){say(e.message);}return true;}
+  if(action==='meeting-end'){if(!meetings?.active){say(`There's no meeting running, ${who}.`);return true;}endMeeting().catch(e=>log('meeting',e.message));return true;}
   if(action==='panel-close-all'){broadcast('hologram',{kind:'close-all'});broadcast('globe',{cmd:'close'});say(pick(['All clear.',`Cleared, ${who}.`]));return true;}
   if(action==='page-close'){   // "close this page": the tab in front inside a suit, otherwise the floating panel
     if(machine?.value?.state==='MODULE'&&(tabs?.list?.()||[]).some(t=>!t.popped)){const done=dispatch('tab-close');if(done)acknowledge('tab-close');return done;}
@@ -334,6 +339,65 @@ function endFocus(){
   if(st==='IDLE'){pendingModule=back;dispatch('wake');return;}
   if(['ARMOR_HALL','SUIT_HOVER'].includes(st)){dispatch('select',back);return;}
   dispatch('home');pendingModule=back;
+}
+/* ---------- meeting mode: record a call for a suit, transcribe it offline, email the notes ---------- */
+let meetings=null,meetingFlush=null,meetingWatch=null;
+function gmailFile(){return path.join(userDir,'gmail-app-password.enc');}
+function gmailPassword(){try{return fs.existsSync(gmailFile())?safeStorage.decryptString(fs.readFileSync(gmailFile())):'';}catch(e){log('meeting','Could not read the Gmail app password: '+e.message);return '';}}
+function meetingInfo(){
+  const s=settings.get().meeting||{};const t=workstations.activeTheme;
+  return {...meetings.state(),to:s.to||'',from:s.from||'',gmailReady:!!(s.from&&gmailPassword()),theme:t,hallName:workstations.theme().name,
+    suits:modules.map(m=>({id:m.id,name:m.name})),open:machine?.value?.state==='MODULE'?machine.value.selected:null,
+    past:meetings.pastFor(t).map(h=>({id:h.id,suitName:h.suitName,startedAt:h.startedAt,endedAt:h.endedAt,emailed:h.emailed,emailError:h.emailError}))};
+}
+/** Start recording for a suit in this hall (the one named, else the suit you are in, else ask). */
+function startMeeting(id){
+  if(meetings.m)throw Error(meetings.m.ending?'The last meeting is still being written up. Give it a moment.':`Already recording the ${meetings.m.suitName} meeting, ${addr()}.`);
+  const theme=workstations.activeTheme;const suitId=id||(machine?.value?.state==='MODULE'?machine.value.selected:null);
+  if(!suitId){broadcast('meeting',{type:'ask',info:meetingInfo()});say(`Which suit is the meeting for, ${addr()}?`);return false;}
+  const suit=workstations.suit(String(suitId),theme);
+  const mt=meetings.start({theme,hallName:workstations.theme(theme).name,suitId:suit.id,suitName:suit.name,suitFolder:suit.folder});
+  broadcast('meeting',{type:'start',meeting:mt,info:meetingInfo()});
+  clearTimeout(meetingWatch);
+  meetingWatch=setTimeout(()=>{if(meetings.m?.id===mt.id&&!meetings.m.sources.length){meetings.discard();broadcast('meeting',{type:'failed',error:'The recording did not start.',info:meetingInfo()});say(`I couldn't start the recording, ${addr()}.`);}},12000);
+  say(`Recording the ${suit.name} meeting, ${addr()}. Do let everyone know it's being recorded.`);
+  return true;
+}
+/** End: the window hands over its last audio, the speech engine catches up, Claude summarises, Gmail sends. */
+async function endMeeting(){
+  if(!meetings?.active)return false;
+  const id=meetings.m.id;
+  await new Promise(resolve=>{meetingFlush={id,resolve};broadcast('meeting',{type:'stop',id});setTimeout(resolve,8000);});
+  meetingFlush=null;
+  say(`Wrapping up the meeting, ${addr()}. I'll send you the notes.`);
+  const m=await meetings.finish();if(!m)return false;
+  const s=settings.get().meeting||{},when=new Date(m.startedAt);
+  const date=when.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}),time=when.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  broadcast('meeting',{type:'status',text:'Writing the summary…'});
+  let summary='';const key=readTowerKey();
+  if(!m.transcript.trim())m.warnings.push('Nothing was transcribed. Check the microphone and that an English Windows speech recognizer is installed.');
+  else if(key){try{summary=(await callApi({key,model:tower.settings().plannerModel,maxTokens:1500,
+    system:'You write concise meeting notes. The transcript comes from offline speech recognition and contains recognition mistakes: read through them sensibly, but never invent names, numbers or decisions that are not there. British English, Markdown.',
+    prompt:`Meeting for the "${m.suitName}" workstation (${m.hallName}), ${date} at ${time}, ${clock(m.duration)} long.\n\nWrite these sections: ## Summary (three to five sentences), ## Decisions, ## Action items (with the owner when it is clear), ## Open questions. Leave out a section if there is nothing for it.\n\nTRANSCRIPT:\n${m.transcript.slice(0,150000)}`})).text;}
+    catch(e){m.warnings.push('No summary this time: '+e.message);}}
+  else m.warnings.push('No summary: add a Claude API key in the tower (Engines) to get one.');
+  const sources=m.sources.includes('system')?'your microphone and the call audio':'your microphone only';
+  const markdown=[`# Meeting notes: ${m.suitName}`,'',`**${m.hallName}** · ${date}, ${time} · ${clock(m.duration)} · recorded ${sources}`,'',
+    ...m.warnings.map(w=>'> '+w),m.warnings.length?'':null,summary||null,summary?'':null,'## Full transcript','','_Transcribed offline by Windows speech recognition, so expect some mistakes._','',
+    m.transcript||'(Nothing was transcribed.)','',`Recording: ${fs.existsSync(m.recording)?m.recording:'not saved'}`,''].filter(x=>x!==null).join('\n');
+  let emailed=false,emailError=null;const pass=gmailPassword();
+  if(s.to&&s.from&&pass){
+    broadcast('meeting',{type:'status',text:'Emailing '+s.to+'…'});
+    const text=[`Meeting notes for ${m.suitName} (${m.hallName})`,`${date}, ${time} · ${clock(m.duration)}`,'',summary||'(No summary this time.)','',
+      'The full transcript is attached.',fs.existsSync(m.recording)?'The recording is saved on your PC at:\n'+m.recording:'','','JARVIS'].join('\n');
+    try{await sendGmail({user:s.from,password:pass,to:s.to,subject:`Meeting notes: ${m.suitName} · ${when.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} ${time}`,text,
+      attachments:[{name:`${m.suitName.replace(/[^\w .-]/g,'')} meeting ${when.toISOString().slice(0,10)}.txt`,type:'text/plain; charset=UTF-8',content:markdown}]});emailed=true;}
+    catch(e){emailError=e.message;log('meeting',e.message);}
+  }else emailError='Gmail is not set up yet. Open the meeting panel to add it.';
+  const file=meetings.record(m,{markdown,emailed,emailError});
+  broadcast('meeting',{type:'done',file,emailed,emailError,to:s.to,info:meetingInfo()});
+  say(emailed?`The ${m.suitName} meeting notes are in your inbox, ${addr()}.`:`The ${m.suitName} meeting is saved, ${addr()}, but I couldn't email it.`);
+  return true;
 }
 /* ---------- where was I: last visit, tabs, folder and a one-line note per suit ---------- */
 const visits={
@@ -1049,6 +1113,26 @@ async function api(event,method,payload){
     case 'open-logs':{const file=path.join(userDir,'jarvis.log');if(!fs.existsSync(file))fs.writeFileSync(file,'No errors recorded in this session.\n');const error=await shell.openPath(file);if(error)throw Error(error);return true;}
     case 'clear-cache':await session.defaultSession.clearCache();return true;
     case 'reset-settings':{const response=await dialog.showMessageBox({type:'question',buttons:['Cancel','Reset settings'],defaultId:0,cancelId:0,message:'Reset JARVIS settings?',detail:'Your local calendar and imported assets are kept.'});if(response.response===1){await applySettings(structuredClone(defaults));openSettings();}return true;}
+    case 'meeting-state':return meetingInfo();
+    case 'meeting-start':return startMeeting(typeof payload?.id==='string'?payload.id:null);
+    case 'meeting-end':{if(!meetings.active)return false;endMeeting().catch(e=>log('meeting',e.message));return true;}
+    case 'meeting-source':{if(role!=='main')throw Error('Meetings record from the main window.');const src=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:0,height:0}});return src[0]?.id||null;}
+    case 'meeting-capturing':{if(role!=='main')return false;clearTimeout(meetingWatch);const sources=(Array.isArray(payload?.sources)?payload.sources:[]).filter(x=>['mic','system'].includes(x));return meetings.capturing(String(payload?.id||''),sources);}
+    case 'meeting-audio':{if(role!=='main'||!(payload?.bytes instanceof Uint8Array))return false;return meetings.audio(String(payload.id||''),payload.bytes);}
+    case 'meeting-chunk':{if(role!=='main'||!(payload?.bytes instanceof Uint8Array)||payload.bytes.length>16000*2*65)return false;return meetings.chunk(String(payload.id||''),Math.max(0,Number(payload.start)||0),payload.bytes);}
+    case 'meeting-flushed':{if(meetingFlush&&meetingFlush.id===payload?.id)meetingFlush.resolve();return true;}
+    case 'meeting-failed':{if(role!=='main'||meetings.m?.id!==payload?.id||meetings.m.ending)return false;clearTimeout(meetingWatch);meetings.discard();const why=String(payload?.error||'').slice(0,200);broadcast('meeting',{type:'failed',error:why,info:meetingInfo()});say(`I couldn't start the recording, ${addr()}.`);return true;}
+    case 'meeting-settings':{
+      const to=String(payload?.to||'').trim(),from=String(payload?.from||'').trim();
+      if(!validEmail(to))throw Error('Enter the email address the notes should go to.');
+      if(from&&!validEmail(from))throw Error('Enter the Gmail address that sends the notes.');
+      const pw=String(payload?.password||'').replace(/\s+/g,'');
+      if(pw){if(!/^[a-z]{16}$/i.test(pw))throw Error('A Gmail app password is 16 letters (spaces are fine).');if(!safeStorage.isEncryptionAvailable())throw Error('Secure storage is not available on this PC.');fs.writeFileSync(gmailFile(),safeStorage.encryptString(pw));}
+      if(payload?.forget){try{fs.unlinkSync(gmailFile());}catch{}}
+      await applySettings({meeting:{to,from}});return meetingInfo();
+    }
+    case 'meeting-test-email':{const s=settings.get().meeting||{},pass=gmailPassword();if(!s.to||!s.from||!pass)throw Error('Add the Gmail address and app password first.');await sendGmail({user:s.from,password:pass,to:s.to,subject:'JARVIS meeting notes: test',text:'This is a test from JARVIS. Meeting notes will arrive like this when you end a meeting.\n\nJARVIS'});return true;}
+    case 'meeting-open':{const h=meetings.find(String(payload?.id||''));if(!h)throw Error('That meeting is no longer in the history.');const target=payload?.what==='folder'?h.folder:h.transcript;if(!fs.existsSync(target))throw Error('That file has been moved or deleted.');const err=await shell.openPath(target);if(err)throw Error(err);return true;}
     case 'quit':app.quit();return true;
     default:throw Error('Unsupported request.');
   }
@@ -1073,7 +1157,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       else {const base=url.host==='app'?path.join(root,'dist'):url.host==='asset'?assets:url.host==='custom'?path.join(userDir,'assets'):null;if(!base)return new Response('Forbidden',{status:403});const rel=decodeURIComponent(url.pathname).replace(/^\/+/, '');target=path.resolve(base,rel||'index.html');if(!target.startsWith(base+path.sep))return new Response('Forbidden',{status:403});}
       return net.fetch(pathToFileURL(target).toString(),{headers:request.headers}).then(res=>{const headers=new Headers(res.headers);headers.set('Access-Control-Allow-Origin','*');return new Response(res.body,{status:res.status,statusText:res.statusText,headers});}).catch(()=>new Response('Not found',{status:404}));
     });
-    const camOK=(wc,perm,details)=>{if(perm!=='media')return false;const t=wc&&trusted.get(wc.id);if(!t||t.role!=='main')return false;const types=details?.mediaTypes||[];return !types.includes('audio');};
+    const camOK=(wc,perm,details)=>{if(perm!=='media')return false;const t=wc&&trusted.get(wc.id);if(!t||t.role!=='main')return false;const types=details?.mediaTypes||[];return !types.includes('audio')||!!meetings?.m;};   /* audio only for a meeting */
     session.defaultSession.setPermissionRequestHandler((wc,perm,callback,details)=>callback(camOK(wc,perm,details)));
     session.defaultSession.setPermissionCheckHandler((wc,perm,_origin,details)=>perm==='media'&&camOK(wc,perm,{mediaTypes:details?.mediaType==='audio'?['audio']:['video']}));
     settings=new SettingsStore(userDir,log);visits.load();try{if(!visits.get('__','startup19').done){visits.set('__','startup19',{done:true});const st=settings.get().startup;if(st&&/startup\/welcome\.mp4$/.test(st.video||'')&&st.seconds===15)settings.update({startup:{...st,seconds:19.2}});}}catch(e){log('settings',e.message);}   /*once only, so choosing 15 s again sticks */calendar=new CalendarStore(userDir);todos=new TodoStore(userDir);ideas=new IdeaStore(userDir);
@@ -1102,6 +1186,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       if(machine)machine.previous=s.state;
     }});
     layout=new WindowLayout({scripts,log});
+    meetings=new MeetingManager({dir:userDir,docs:app.getPath('documents'),scripts,log,onUpdate:st=>broadcast('meeting',{type:'state',state:st})});
     tower=new TowerStore({dir:userDir,docs:app.getPath('documents')});towerRunner=new TowerRunner({store:tower,getKey:readTowerKey,onUpdate:towerUpdate,onDone:towerDone,log});setInterval(towerNightShift,30000);setTimeout(towerNightShift,20000);
     panels=new PanelManager({window:()=>displays?.work,onChange:list=>broadcast('panels',list),log});
     deckPanels=new PanelManager({window:()=>displays?.console,onChange:list=>broadcast('deck',{type:'panels',list}),log});
@@ -1126,7 +1211,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
 }
 app.on('window-all-closed',()=>{});
 app.on('before-quit',()=>{
-  if(quitting)return;quitting=true;try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}
+  if(quitting)return;quitting=true;try{meetings?.saveNow();}catch{}try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}
   clearInterval(reminderTimer);clearTimeout(chatterTimer);clearTimeout(healthTimer);clearTimeout(focus.timer);try{deck?.close();}catch{}
   tabs?.dispose();machine?.dispose();monitor?.stop();voice?.dispose();globalShortcut.unregisterAll();
   // Let Electron close windows in its normal quit sequence, so renderer
