@@ -2,6 +2,7 @@
  * JARVIS v9.10 — the tower in 3D, with a line from every floor to its live status.
  * Shows your own model (.glb) or picture if you've added one for this hall; otherwise a stand-in tower.
  */
+import {watchRenderBudget} from './render-budget.js';
 import * as THREE from '../vendor/three/three.module.min.js';
 import { GLTFLoader } from '../vendor/three/GLTFLoader.js';
 import { MeshoptDecoder } from '../vendor/three/meshopt_decoder.module.js';
@@ -296,16 +297,18 @@ export function mountTower(host, { theme, accent = '#7fd6e8', model = null, comp
   }
   tags.addEventListener('click', e => { const t = e.target.closest('[data-floor]'); if (t) onPick?.(t.dataset.floor); });
 
+  const quality=watchRenderBudget();
   let tagClock = 0;
   function frame(now) {
     if (!alive) return;
-    if (paused || now - lastDraw < 30) { raf = requestAnimationFrame(frame); return; }   // ~30 fps is plenty, and kinder to the battery
+    const budget=quality.get();
+    if (paused || document.hidden || now - lastDraw < 1000/budget.fps) { raf = requestAnimationFrame(frame); return; }   // ~30 fps is plenty, and kinder to the battery
     lastDraw = now;
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (use3d && renderer) {
-      const sw = stageW(), h = Hh(); const pr = Math.min(2, Math.max(1.25, devicePixelRatio || 1)); if (renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr);   // follows the window to a screen with other scaling
+      const sw = stageW(), h = Hh(); const pr = budget.dpr; if (renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr);   // follows the window to a screen with other scaling
       if (renderer.domElement.width !== Math.floor(sw * renderer.getPixelRatio()) || renderer.domElement.height !== Math.floor(h * renderer.getPixelRatio())) { renderer.setSize(sw, h, false); renderer.domElement.style.width = sw + 'px'; renderer.domElement.style.height = h + 'px'; camera.aspect = sw / Math.max(1, h); camera.updateProjectionMatrix(); }
-      if (!drag) { if (spin === 'turn') angle += dt * 0.12; else if (spin === 'sway') { swayT += dt; angle = base + Math.sin(swayT * 0.23) * SWAY; } }
+      if (!drag && !budget.quiet) { if (spin === 'turn') angle += dt * 0.12; else if (spin === 'sway') { swayT += dt; angle = base + Math.sin(swayT * 0.23) * SWAY; } }
       // fit the whole building: tall enough for its height, far enough for its width in this (narrow) panel
       const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), aspect = Math.max(0.2, camera.aspect);
       const k = tanV * aspect;
@@ -316,7 +319,7 @@ export function mountTower(host, { theme, accent = '#7fd6e8', model = null, comp
       camera.position.set(Math.sin(angle) * dist, H * 0.44, Math.cos(angle) * dist); camera.lookAt(0, H * 0.5, 0); camera.updateMatrixWorld(); placed = true;
       if (front) { front.position.set(camera.position.x, H * 0.9, camera.position.z); front.target.position.set(0, H * 0.4, 0); }
       scene.fog.near = dist * 1.1; scene.fog.far = dist * 2.6;   // haze only the far distance, never the tower itself
-      const t = now / 1000;
+      const t = budget.quiet ? 0 : now / 1000;
       for (const r of rings) { r.mesh.material.opacity = r.st === 'working' ? 0.6 + 0.4 * Math.sin(t * 4) : r.st === 'idle' ? 0.3 : 0.9; }
       root?.traverse(o => { if (o.userData.blink) o.visible = Math.sin(t * 3) > -0.2; });
       renderer.render(scene, camera);
@@ -337,6 +340,6 @@ export function mountTower(host, { theme, accent = '#7fd6e8', model = null, comp
     setAngle(a) { angle = base = a; swayT = 0; },
     anchorOf(id) { const a = anchors.find(x => x.f.id === id); return a ? { x: a.x, y: a.y } : null; },
     pause(on) { paused = !!on; if (!on) last = performance.now(); },
-    dispose() { alive = false; cancelAnimationFrame(raf); try { renderer?.dispose(); renderer?.forceContextLoss(); } catch {} host.innerHTML = ''; },
+    dispose() { quality.dispose(); alive = false; cancelAnimationFrame(raf); try { renderer?.dispose(); renderer?.forceContextLoss(); } catch {} host.innerHTML = ''; },
   };
 }

@@ -8,6 +8,8 @@
  *   plane: an aircraft parked on a pad in the picture, turning slowly, its wing-tip lights blinking.
  * Nothing here is drawn when the hall has no scene file, or when you have picked your own backdrop picture.
  */
+import {watchRenderBudget} from './render-budget.js';
+import { disposeObject, reducedMotion } from './scene-quality.js';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 export async function mountScene(host, cfg, base) {
@@ -15,11 +17,14 @@ export async function mountScene(host, cfg, base) {
   const { GLTFLoader } = await import('../vendor/three/GLTFLoader.js');
   const { MeshoptDecoder } = await import('../vendor/three/meshopt_decoder.module.js');
   const { RoomEnvironment } = await import('../vendor/three/RoomEnvironment.js');
+  const quality=watchRenderBudget();
   const canvas = document.createElement('canvas'); canvas.className = 'dk-scene'; host.appendChild(canvas);
   const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance', preserveDrawingBuffer: !!cfg.keep });
   r.setClearColor(0x000000, 0); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = cfg.exposure || 1.0;
   r.localClippingEnabled = true;
-  const pm = new THREE.PMREMGenerator(r); const env = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose();
+  const pm = new THREE.PMREMGenerator(r), room = new RoomEnvironment(); let envTarget;
+  try { envTarget = pm.fromScene(room, 0.04); } finally { room.dispose(); pm.dispose(); }
+  const env = envTarget.texture;
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const texFrom = (draw, n = 256, srgb = true) => { const cv = document.createElement('canvas'); cv.width = cv.height = n; draw(cv.getContext('2d'), n); const t = new THREE.CanvasTexture(cv); if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
   const ringTex = texFrom((x) => { const gr = x.createRadialGradient(128, 128, 96, 128, 128, 126); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.55, 'rgba(255,236,200,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 256, 256); });
@@ -86,7 +91,7 @@ export async function mountScene(host, cfg, base) {
     const ringG = new THREE.Group(); scene.add(ringG);
     const ring = flatIn(ringG, new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.5 }), 3); ring.position.y = 0.002; ring.scale.set(B.ring ?? 1.25, B.ring ?? 1.25, 1);
     // blinking wing-tip lights
-    const dot = texFrom((x) => { const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); }, 64);
+    const dot = B.lights === false ? null : texFrom((x) => { const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); }, 64);
     const tips = []; if (B.lights !== false) { const bb = new THREE.Box3().setFromObject(o); for (const [side, col] of [[-1, '#ff3b3b'], [1, '#3bff7a']]) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: dot, color: col, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })); const across = L.alongZ ? 'x' : 'z'; sp.position.set(0, (bb.min.y + bb.max.y) / 2, 0); sp.position[across] = side > 0 ? bb.max[across] : bb.min[across]; sp.scale.set(0.05, 0.05, 1); sp.renderOrder = 5; craft.add(sp); tips.push(sp); } }
     return { B, scene, update(t) {
       turn.rotation.y = THREE.MathUtils.degToRad(B.heading ?? 30) + (B.spin ? t * THREE.MathUtils.degToRad(B.spin) : 0);   // degrees a second
@@ -99,9 +104,10 @@ export async function mountScene(host, cfg, base) {
   let alive = true, paused = false, timer = 0;
   // everything handed back to the graphics chip, and the drawing context itself let go
   function dispose() {
-    alive = false; clearTimeout(timer);
-    for (const p of props) p.scene.traverse(o => { o.geometry?.dispose?.(); for (const m of [].concat(o.material || [])) { for (const k in m) if (m[k]?.isTexture) m[k].dispose(); m.dispose?.(); } });
-    for (const t of [env, ringTex, shadeTex, glowTex]) t?.dispose?.();
+    if (!alive) return; alive = false; clearTimeout(timer); quality.dispose();
+    const shared = new Set([env, ringTex, shadeTex, glowTex]), seen = new Set();
+    for (const p of props) disposeObject(p.scene, shared, seen);
+    envTarget.dispose(); for (const t of [ringTex, shadeTex, glowTex]) t.dispose();
     r.dispose(); try { r.forceContextLoss(); } catch {} canvas.remove();
   }
   try {
@@ -116,13 +122,16 @@ export async function mountScene(host, cfg, base) {
     const cx = ox + B.x * k, cy = oy + B.y * k, L = B.len * k;   // centre at the water or floor, its length on screen
     return { W, H, x: cx - L * 1.1, y: cy - L * 0.75, w: L * 2.2, h: L * 1.2, cy: L * 0.75 };
   }
-  let last = 0, ms = 0, sizeKey = ""; const t0 = performance.now();
+  let last = performance.now(), ms = 0, sizeKey = "", elapsed = 0, still = false;
   function frame(now) {
-    if (document.hidden || now - last < 30 || host.closest('[hidden]')) return; last = now;
+    const dt = Math.min(0.1, Math.max(0, (now - last) / 1000)); last = now;
+    if (document.hidden || host.closest('[hidden]')) return;
     const W = host.offsetWidth, H = host.offsetHeight; if (!W || !H) return;
-    const pr = Math.min(2, devicePixelRatio || 1);
-    if (sizeKey !== `${W}x${H}@${pr}`) { sizeKey = `${W}x${H}@${pr}`; r.setPixelRatio(pr); r.setSize(W, H, false); }
-    const t = (now - t0) / 1000;
+    const budget=quality.get(),pr=budget.dpr;
+    const resized = sizeKey !== `${W}x${H}@${pr}`, reduced = budget.quiet;
+    if (reduced && still && !resized) return; still = reduced;
+    if (resized) { sizeKey = W + 'x' + H + '@' + pr; r.setPixelRatio(pr); r.setSize(W, H, false); }
+    if (!reduced) elapsed += dt; const t = reduced ? 0 : elapsed;
     r.setScissorTest(true); r.setViewport(0, 0, W, H); r.setScissor(0, 0, W, H); r.clear();
     for (const p of props) {
       const P = place(p.B); if (!P) continue; p.update(t);
@@ -136,9 +145,9 @@ export async function mountScene(host, cfg, base) {
   }
   // a steady timer (about 30 frames a second) rather than animation frames, which a second window can be starved of
   // each frame is booked once the last one is done, so a slow computer drops frames instead of piling them up
-  const tick = () => { if (!alive) return; const a = performance.now(); try { if (!paused) { frame(a); } } catch (e) { console.warn('[scene]', e); } const took = performance.now() - a; ms = took; timer = setTimeout(tick, Math.max(12, 33 - took, took * 0.5)); };
+  const tick = () => { if (!alive) return; const a = performance.now(); try { if (!paused) { frame(a); } } catch (e) { console.warn('[scene]', e); } const took = performance.now() - a; ms = took; timer = setTimeout(tick, document.hidden || paused || quality.get().quiet || host.closest('[hidden]') ? 250 : Math.max(12, 1000 / quality.get().fps - took, took * 0.5)); };
   tick();
-  return { pause(on) { paused = !!on; }, lastFrameMs: () => ms, dispose };
+  return { pause(on) { paused = !!on; last = performance.now(); }, lastFrameMs: () => ms, dispose };
 }
 
 /* ---------- sound: made live, quiet, loops forever without repeating */

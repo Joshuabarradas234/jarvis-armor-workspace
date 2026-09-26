@@ -67,13 +67,14 @@ export function validateSession(session){
   return {tabs,active,updatedAt:Number(session.updatedAt)||Date.now()};
 }
 /** Default names that moved when bays were added. Only an unchanged old default is renamed. */
-const RENAMED={'spiderman:sm4':{'Reactor Vault':'Case 04'},'batcave:bc5':{'Cowl 04':'Cowl 05'},
-  'batcave:bc6':{'Cowl 05':'Cowl 06'},'batcave:bc7':{'Cowl 06':'Cowl 07'},
+const RENAMED={'spiderman:sm4':{'Reactor Vault':'Ghost-Spider'},'batcave:bc5':{'Cowl 04':'Knightmare Bat'},
+  'batcave:bc6':{'Cowl 05':'Joker Bat'},'batcave:bc7':{'Cowl 06':'Exoframe Bat'},
   'ironman:im1':{'Bay 01':'Mark One','Mark I':'Mark One','MARK I':'Mark One'},
   'ironman:im2':{'Bay 02':'Mark Two','Mark II':'Mark Two','MARK II':'Mark Two'},
   'ironman:im4':{'Bay 04':'Mark Five','Suit 04':'Mark Five','SUIT 04':'Mark Five','Mark V':'Mark Five'}};
+const POD_NAMES={"ironman:im5":{"Bay 05":"War Machine"},"ironman:im6":{"Bay 06":"Endgame"},"ironman:im7":{"Bay 07":"Hulkbuster"},"batcave:bc1":{"Cowl 01":"Hellbat"},"batcave:bc2":{"Cowl 02":"Arkham Knight"},"batcave:bc3":{"Cowl 03":"Dark Knight"},"batcave:bc5":{"Cowl 05":"Knightmare Bat"},"batcave:bc6":{"Cowl 06":"Joker Bat"},"batcave:bc7":{"Cowl 07":"Exoframe Bat"},"spiderman:sm1":{"Case 01":"Miles"},"spiderman:sm2":{"Case 02":"Symbiote"},"spiderman:sm3":{"Case 03":"Spider-Ham"},"spiderman:sm4":{"Case 04":"Ghost-Spider"},"spiderman:sm5":{"Case 05":"2099"},"spiderman:sm6":{"Case 06":"Spider-Punk"},"spiderman:sm7":{"Case 07":"Iron Spider"}};
 function normaliseSuit(theme,s,saved){
-  const moved=RENAMED[theme.id+':'+s.id];
+  const key=theme.id+':'+s.id, moved={...RENAMED[key],...POD_NAMES[key]};
   if(saved&&moved&&moved[saved.name])saved={...saved,name:moved[saved.name]};
   const base={id:s.id,name:s.name,subtitle:'',accent:s.accent,hotspot:s.hotspot,plaque:s.plaque||null,eyes:s.eyes||null,canopy:s.canopy||null,face:s.face||null,emblem:s.emblem||null,isVehicle:!!s.isVehicle,folder:'',links:[],apps:[],autoLaunch:true,session:null,layout:null,theme:theme.id};
   if(!saved)return base;

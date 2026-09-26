@@ -154,3 +154,57 @@ Tested:
 - Test hooks (JARVIS_TEST_EVAL / JARVIS_TEST_THEME) are inserted into src/main/main.js only for testing and must be removed before building.
 - `JARVIS_TEST_SPLIT="1920x1080,1920x1200[,1920x1080]"` fakes a second (and third) screen under one tall Xvfb screen.
 - Build: `npx electron-builder --win dir --x64`; app.asar must stay under 30 MB.
+
+## Unreleased: hall artwork and graphics reliability (26 September 2026)
+
+- Replaced the three default hall backdrops with Higgsfield-generated 2592 × 1536 images. Each has seven empty display pods, including a wider Hulkbuster pod and wider Absolute Batman pod. The existing interactive GLB suits remain live. The old wallpaper assets remain available.
+- Calibrated all 21 pod bounds, labels, click targets and centre displays to the new artwork. Contain scaling keeps the end pods on-screen at different aspect ratios. Restrained labels use saved workspace names and preserve live progress indicators; generic default names now match their models.
+- Fixed the transparent hotspot layer intercepting clicks on name plates. Removed idle background breathing that misaligned the picture and suits; added reduced-motion handling and clearer keyboard focus.
+- Prevented late image/GLTF/IPC completions from restoring an old hall after a switch. Released late GLTF results, shared mesh resources and environment render targets; fully tear down the suit WebGL renderer on page exit. Stabilised its backing-buffer resolution during zoom.
+- Deck and vista keep the last good image on failure, discard stale scene loads, release their resources, and support plural boat/plane configurations. Living scenes pause their time while hidden and respect reduced motion.
+- Made Core test paths and its existing IMAP dependency patch portable on Windows. No production approval or update code changed.
+
+Validation: Core tests passed 121/121 twice on Windows (Node 24, real local IMAP/SMTP, mocked external services). The frontend suite passed 27/27: request ordering, failure/retry, shared resource cleanup, stale GLTF disposal, safe labels, saved names/links and geometry at five viewport sizes. Every changed JavaScript module passed node --check. In-app browser review used the real renderer, all 21 installed GLB assets and centre videos with a mock IPC bridge: checked all three halls, theme switching, mouse and keyboard selection, and 1280 × 720 / 1440 × 900 layouts.
+
+Not tested: packaged Electron boot/UI suite (Linux/Xvfb required), live voice/hand tracking, PowerShell helpers, real multi-monitor placement, or a release build/app.asar size. The existing installed app and user profile were not modified. Review and build these files through the normal source release process; this is not a self-update payload.
+
+## Unreleased: visible suit entry and revised halls (26 September 2026)
+
+- Regenerated the three backgrounds with the built-in image generator. Kept the approved Batman and Spider-Man designs and redid Iron Man as a brighter red/gold Stark workshop. Recalibrated all pod interiors to the final native dimensions; see HALL-ARTWORK.md and HALL-PROMPTS.md.
+- Added two visible glass doors to every pod, with opening, pivoting and return motion, frame reflections and fading latches. Render the active bay last so adjacent scenes cannot erase its open glass, and retain door dimensions while the suit moves.
+- Fitted 44 eye-light surfaces to the 21 actual models, including both pairs on Spider-Ham. Baked curved geometry avoids flat patches cutting through lenses; depth testing and pivot parenting preserve alignment. Added the offline bake script.
+- Added distinct restrained whole-model stances, a scan, floor pulse and case light response. The supplied meshes have no rig or clips, so articulated limb poses are not claimed. Retained existing state durations and respected still/reduced-motion settings.
+- Removed the selection flash that obscured the entry. Constrained end-pod zooms to the artwork bounds to prevent blank areas beside the room.
+
+Validation: 41/41 frontend tests; Core 121/121 twice on Windows with local fake services. Browser checks used the real renderer, actual GLBs and the actual selection/return state machine behind mocked IPC. Checked glass/eye activation, normal three-second entry into the workstation, return, keyboard selection and the three hall layouts. All changed scripts passed syntax checks. Packaged Electron boot/UI, Windows voice/hands and physical multi-monitor checks remain unverified; the installed app/profile and protected files remain unchanged.
+
+## Unreleased: approved Batcave and themed labels (26 September 2026)
+
+- Locked the owner's approved black-bat cave design as the Batcave default. Recalibrated seven model openings, click targets, name plates and the low vehicle platform. The approved Iron Man design is unchanged.
+- Refreshed labels across all three halls: arc-reactor crests and red/gold metal for Iron Man, angular black/amber bat plates for Batman, and crimson/blue spider plates for the Web Lab. Live names, keyboard access and progress remain supported. Isolated the label markup from legacy glyph sizing that otherwise clipped names.
+- Fixed selection immediately after a hall switch: if the GLB arrives after the selection snapshot, the renderer now applies the fitted-eye suppression and calibrated zoom when it becomes ready. This prevents the legacy eye overlay appearing on a suit's cheeks.
+
+Validation: frontend 41/41, changed JavaScript syntax checks, and browser inspection of all three label families and the new Batman alignment. Reproduced and rechecked keyboard selection immediately after a hall switch; the legacy overlay is hidden and the calibrated zoom is applied. Core 121/121 passed twice earlier for this cumulative patch. Packaged-app, voice/hands and physical multi-monitor checks remain unverified.
+
+## Unreleased: final Web Lab and interface detail pass (26 September 2026)
+
+- Locked the newly approved directly authored Spider-Man lab. Recalibrated all seven pod openings, labels, click targets and the lower centre display; the seventh opening accommodates Iron Spider's accessories. Iron Man and Batman retain their approved artwork.
+- Corrected native name plates being shrunk and offset by the legacy SVG fitter. All three label families now stay centred at their calibrated anchors and use consistent, readable text. Repositioned the three centre displays and their labels below the suits.
+- Added shared SVG settings, power, close and deck glyphs; retained button handlers and accessible names. Refined toolbar borders, focus outlines, floating-page headers, utility controls and responsive panel styles.
+- Added ambient-video lifecycle handling: pause while hidden, in still/reduced-motion mode, during entry/workstation states or behind full-screen Core, Tower, Ideas or Earth panels; resume when eligible. The policy has three regression tests and cleans up observers/listeners on exit.
+
+Validation: frontend 44/44; Core 121/121 twice on Windows after these changes (local IMAP/SMTP, mocked external services); syntax checked for every changed script. Browser review used actual local GLBs and centre videos with mocked IPC: final three halls, readable labels, wide-pod entry/eyes/glass, workstation return, still video pause, Core/Ideas media pause, calendar/to-do, meeting, Tower, deck and Workstations/General/Graphics settings layouts. The preview fixture was extended to supply the Workstations payload; no settings were saved. No browser errors in the inspected hall/entry flows. Geometry tests cover five viewport shapes.
+
+Not verified: packaged Electron boot/UI, real accounts, Windows voice/hands, PowerShell helpers, physical multi-monitor placement or release app.asar size. Existing GLBs are unrigged, so activation remains whole-model movement rather than articulated poses. Centre holograms retain the supplied videos; their source resolution has not been increased. Protected files, versions, the installed application and user profile remain unchanged.
+
+## Unreleased: calibrated suit showcase (26 September 2026)
+
+Widened the Iron Man end chambers, made Batcave openings taller, increased uniform suit fill and fitted the centre projections. Added the on-screen calibration editor with validated atomic local persistence and trusted-window IPC, including pod/label/hologram placement, eye-pair alignment, pose strength, preview, undo and reset.
+
+Introduced a shared graphics budget for suits, tower/floor/deck scenes and ambient media; sharper bounded close-ups and anisotropic texture sampling. Added volume-controlled mechanical entry/return cues with cancellation and lifecycle cleanup. Added approximate runtime display rigs for 20 static models, head/chest-attached lights and optional authored signature-clip playback. Spider-Ham stays static. The Web Lab has a native 2430 × 1440 render; the two generated halls remain 1630 × 965. Original suit textures remain 1024 × 1024.
+
+Validation: 56 frontend checks, Core 121/121 twice on Windows, changed-script syntax checks, actual-model geometry audit and isolated browser review. Exact feature limits and packaged-app checks are documented in SHOWCASE-CALIBRATION.md. No installed-app/profile, protected-file, version, account or release changes.
+
+## Release 1.81.0 packaging
+
+Packaged the cumulative suit showcase as version 1.81.0 with the unchanged build configuration and protected source files. Restored the original vendor libraries and legacy wallpaper files omitted from the source-only handoff. All 84 requested syntax checks, 121 Core checks and 56 frontend checks pass. The Windows x64 app.asar is 29660232 bytes. See RELEASE-1.81.0.md for the exact package contents, install/undo steps, verified local-only Control Deck binding and testing limits.

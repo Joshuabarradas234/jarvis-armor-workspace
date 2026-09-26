@@ -3,6 +3,7 @@
  * An extension of the hall you are in. Throw tabs and floating pages down to it (pinch + flick down, or ⤓),
  * work on them here with your hands or the mouse, and flick them back up (or ⤒) when you're done.
  */
+import { imagePresenter } from './scene-quality.js';
 const J = window.jarvis;
 const VIEW = new URLSearchParams(location.search).get('view') || 'main';
 const call = (m, p) => J.call(m, p);
@@ -32,7 +33,7 @@ if (J && VIEW === 'console') {
           <button type="button" data-dk="systems" title="System stats and suits"><i>◧</i>Systems</button>
           <button type="button" data-dk="sound" title="Background sound on or off" hidden><i>🔊</i>Sound</button>
         </nav>`;
-      document.body.appendChild(el); this.el = el;
+      document.body.appendChild(el); this.el = el; this.images = imagePresenter(el.querySelector('.dk-bg'));
       el.addEventListener('click', e => { const b = e.target.closest('[data-dk]'); if (b) { e.stopPropagation(); this.button(b.dataset.dk, e); } });
       el.addEventListener('contextmenu', e => { if (e.target.closest('[data-dk=backdrop]')) { e.preventDefault(); this.button('backdrop-reset'); } });
       const back = document.createElement('button'); back.type = 'button'; back.className = 'dk-back'; back.textContent = '◧ Back to the deck'; back.hidden = true;
@@ -46,13 +47,16 @@ if (J && VIEW === 'console') {
       if (this.theme !== hall()) this.setTheme();
     },
     async setTheme() {
-      this.theme = hall(); const [n, ai] = NAMES[this.theme] || NAMES.ironman;
-      this.el.style.setProperty('--dk', ACCENT[this.theme] || '#7fd6e8');
+      this.theme = hall(); const th = this.theme, ticket = this.images.invalidate();
+      this.living(null);
+      const [n, ai] = NAMES[th] || NAMES.ironman;
+      this.el.style.setProperty('--dk', ACCENT[th] || '#7fd6e8');
       this.el.querySelector('.dk-hall').textContent = n; this.el.querySelector('.dk-ai').textContent = ai;
-      const th = this.theme; let b = null; try { b = await call('deck-backdrop', { theme: th }); } catch {} if (this.theme !== th) return; if (b?.url) this.backdrop(b.url);   // a quick A→B hall switch must not show A's picture
-      this.living(b && !b.custom && b.scene !== false ? this.theme : null);   // halls without a living scene no longer ask for one (it only logged a 404)
+      let b = null; try { b = await call('deck-backdrop', { theme: th }); } catch {}
+      if (!this.images.current(ticket)) return;
+      const shown = await this.images.show(b?.url, ticket);
+      if (shown && this.images.current(ticket)) this.living(b && !b.custom && b.scene ? th : null);
     },
-    backdrop(url) { const bg = this.el.querySelector('.dk-bg'); const img = new Image(); img.onload = () => { bg.style.backgroundImage = `url("${url}")`; bg.classList.remove('in'); void bg.offsetWidth; bg.classList.add('in'); }; img.src = url; },
     /** the backdrop's living extras (a boat on the water, background sound), when the hall's picture has them */
     async living(theme) {
       const key = theme || ''; if (this.liveKey === key) return; this.liveKey = key; const gen = this.liveGen = (this.liveGen || 0) + 1;
@@ -62,8 +66,9 @@ if (J && VIEW === 'console') {
       if (!theme) return;
       let cfg = null; try { const r = await fetch(`jarvis://asset/deck/${theme}.json`); if (r.ok) cfg = await r.json(); } catch {}
       if (!cfg || this.liveGen !== gen) return;
-      const { mountScene, makeSound } = await import('./deckscene.js');
-      if (cfg.boat) { try { const sc = await mountScene(this.el.querySelector('.dk-bg'), cfg, 'jarvis://asset/deck/'); if (this.liveGen === gen) this.scene = sc; else sc.dispose(); } catch (e) { console.warn('[deck] scene', e); } }
+      let mountScene, makeSound; try { ({ mountScene, makeSound } = await import('./deckscene.js')); } catch (e) { console.warn('[deck]', e); return; }
+      if (this.liveGen !== gen) return;
+      if (cfg.boat || cfg.boats || cfg.plane || cfg.planes) { try { const sc = await mountScene(this.el.querySelector('.dk-bg'), cfg, 'jarvis://asset/deck/'); if (this.liveGen === gen) this.scene = sc; else sc.dispose(); } catch (e) { console.warn('[deck] scene', e); } }
       if (cfg.sound && this.liveGen === gen) {
         this.sound = makeSound(cfg.sound, cfg.volume ?? 0.5);
         const btn = this.el.querySelector('[data-dk=sound]'); btn.hidden = !this.sound;
@@ -112,14 +117,15 @@ if (J && VIEW === 'console') {
       if (!this.shown) this.show(true);
     },
   };
-  D.build(); D.setTheme();
+  D.build();
+  addEventListener('pagehide', () => { D.images.dispose(); D.liveGen = (D.liveGen || 0) + 1; D.scene?.dispose(); D.sound?.dispose(); });
   try {
     J.on('deck', m => {
       if (!m) return; const H = window.__jarvisHolo;
       if (m.type === 'adopted') D.adopt(m);
       else if (m.type === 'gone') { H?.forget(m.id); D.arrange(true); }
       else if (m.type === 'panels') { for (const it of m.list || []) { const p = H?.panels.get(it.id); if (!p) continue; if (it.title) p.title = it.title; if (it.url) p.url = it.url; H.label(p); } D.el.classList.toggle('dk-has', D.panels().length > 0); }
-      else if (m.type === 'backdrop' && m.theme === D.theme && m.url) { D.backdrop(m.url); D.living(m.custom ? null : D.theme); }
+      else if (m.type === 'backdrop' && m.theme === D.theme && m.url) { D.setTheme(); }
     });
   } catch {}
   try { J.on('telemetry', t => {

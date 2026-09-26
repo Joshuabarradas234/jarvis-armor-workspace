@@ -1,0 +1,117 @@
+/* Presentation polish, kept outside the prebuilt bundle. */
+:root{--scene-accent:#7fd6e8;color-scheme:dark}
+body[data-theme=batcave]{--scene-accent:#f5c542}
+body[data-theme=spiderman]{--scene-accent:#ff6468}
+.scene-previous{position:absolute;inset:0;background:center/cover no-repeat;pointer-events:none;opacity:1;transition:opacity .6s ease;z-index:1}
+.scene-previous.out{opacity:0}
+.dk-top{background:linear-gradient(180deg,rgba(3,8,15,.9),rgba(3,8,15,.55) 72%,transparent);text-shadow:0 2px 8px #000}
+.dk-id b{font-weight:650;letter-spacing:.18em}
+.dk-stats{font-variant-numeric:tabular-nums}
+.dk-dock{max-width:calc(100vw - 32px);box-sizing:border-box;border-radius:18px;padding:7px;gap:3px;background:rgba(5,12,21,.9);backdrop-filter:blur(18px) saturate(120%);border-color:color-mix(in srgb,var(--dk) 30%,transparent);box-shadow:0 18px 60px #0008,inset 0 1px 0 #ffffff0b}
+.dk-dock button{height:46px;padding:0 15px;border-radius:11px;font-size:13px;transition:background .18s ease,border-color .18s ease,color .18s ease}
+.dk-dock button[aria-pressed=true]{background:color-mix(in srgb,var(--dk) 12%,transparent);border-color:color-mix(in srgb,var(--dk) 28%,transparent)}
+.dk-dock button:active{background:color-mix(in srgb,var(--dk) 24%,transparent)}
+.dk-shade{background:linear-gradient(180deg,#03081055,transparent 28%,transparent 68%,#030810aa),radial-gradient(ellipse at 50% 45%,transparent 48%,#02060b70)}
+.qp-icons .qp-ico{transition:background .18s ease,box-shadow .18s ease}
+.qp-icons .qp-ico:hover{box-shadow:0 0 0 1px color-mix(in srgb,var(--scene-accent) 45%,transparent),0 4px 18px #0005}
+:is(.qp-ico,.dk-dock button,.dk-back,.bay-label,.hotspot):focus-visible{outline:2px solid var(--dk,var(--scene-accent));outline-offset:4px}
+.selection-caption{text-shadow:0 2px 10px #000,0 1px 3px #000}
+.vs-top{padding:15px 20px;left:16px;right:16px;top:10px;border-radius:12px;background:linear-gradient(120deg,#050b13e8,#050b1370);border:1px solid #ffffff10;gap:18px}
+@media(max-width:1000px){.dk-dock button{padding:0 10px;gap:6px;font-size:12px}.dk-top{padding:0 22px}.dk-id b{font-size:17px}}
+@media(max-width:720px){.dk-top{height:100px;padding:12px 18px;grid-template-columns:1fr auto;align-content:start;gap:10px}.dk-clock{grid-column:2;grid-row:1}.dk-stats{grid-column:1 / -1;justify-content:flex-start;gap:18px}.dk-dock{bottom:16px;width:max-content;max-width:calc(100vw - 24px);justify-content:center;flex-wrap:wrap;border-radius:16px}.dk-dock button{height:38px;font-size:11px;padding:0 10px}.dk-dock button i{font-size:15px}.vs-top{flex-wrap:wrap;letter-spacing:.12em;padding:12px}.vs-time{font-size:18px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}.image-hall.sx-fly{transform:none!important}.scene-previous{display:none}}
+
+/* Calibrated artwork: no cover crop, artificial camera breathing or overlapping centre hologram. */
+.image-hall[data-fit=contain] .hall-backdrop,.image-hall[data-fit=contain] .hall-hotspots{animation:none!important}
+.image-hall[data-fit=contain] .hall-backdrop{background-color:#03070b;background-repeat:no-repeat;background-position:center}
+.view-main .bay-label.svgl:has(.hq-label){width:var(--plaque-w);min-width:0;max-width:200px;padding:0!important;background:none!important;box-shadow:none!important}
+.hq-label{box-sizing:border-box;display:flex!important;align-items:center!important;gap:7px!important;width:100%!important;height:30px!important;padding:5px 9px!important;border:1px solid color-mix(in srgb,var(--scene-accent) 30%,transparent);border-radius:5px!important;background:linear-gradient(135deg,#14212bef,#060c13f5);box-shadow:0 3px 12px #0008;overflow:hidden}
+.hq-label small{font:600 9px Consolas,monospace;color:var(--scene-accent);letter-spacing:.05em;border-right:1px solid #ffffff25;padding-right:7px;flex:none}
+.hq-label b{font:600 clamp(8px,.65vw,11px) 'Segoe UI',sans-serif!important;letter-spacing:.05em!important;color:#edf5f8!important;text-transform:uppercase;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.bay-label:has(.hq-label):is(:hover,.active) .hq-label{border-color:var(--scene-accent);background:#18303beb}
+.view-main .bay-label:has(.hq-label)::before,.view-main .bay-label:has(.hq-label)::after{display:none!important}
+.view-main .bay-label:has(.hq-label) .prog{left:6%!important;right:auto!important;top:calc(100% + 3px)!important;width:88%!important;height:3px!important;border-radius:2px;box-shadow:none!important;background:linear-gradient(90deg,var(--pc) calc(var(--pr)*100%),#0b141c calc(var(--pr)*100%))!important;animation:none!important}
+.view-main .bay-label:has(.hq-label) .prog::before,.view-main .bay-label:has(.hq-label) .prog::after{display:none!important}
+
+body.view-main .hall-intro{top:clamp(82px,11vh,132px)!important;width:min(65vw,900px)!important;padding:12px 40px 16px calc(3.4vw + 20px)!important;background:linear-gradient(90deg,#03090ecc,transparent)!important}
+body.view-main .hall-intro h1{font-size:clamp(23px,2.2vw,36px)!important;line-height:1.15!important;margin:0 0 9px!important}
+body.view-main .hall-intro h1 br{display:none}
+body.view-main .hall-intro h1 em{margin-left:.25em}
+body.view-main .hall-intro .eyebrow{margin-bottom:7px!important;font-size:8px!important}
+body.view-main .hall-intro>p:not(.eyebrow){font-size:11px!important;line-height:1.4!important}
+.view-main .hq-label{line-height:1.2!important;font-family:'Segoe UI',sans-serif!important;justify-content:flex-start!important}
+.view-main .hq-label b{font-size:10px!important;text-shadow:none!important;letter-spacing:.025em!important}
+@media(max-width:900px){body.view-main .hall-intro{padding-left:30px!important}body.view-main .hall-intro>p:not(.eyebrow){font-size:10px!important}.view-main .hq-label{padding:4px!important;gap:4px!important}.view-main .hq-label small{padding-right:4px}.view-main .hq-label b{font-size:8px!important}}
+@media(prefers-reduced-motion:reduce){.image-hall .hall-backdrop,.image-hall .hall-hotspots,.image-hall .hall-overlay{transform:none!important}}
+.view-main .hq-label{height:32px!important}
+.view-main .hq-label b{white-space:normal;line-height:1.12;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
+
+body.view-main .hall-intro{margin:0!important}
+
+.image-hall[data-fit=contain]:is([data-state=ARMOR_HALL],[data-state=SUIT_HOVER]) .hall-backdrop{filter:none}
+.view-main .hq-label{padding:5px 6px!important;gap:5px!important}
+.view-main .hq-label small{font-size:8px;padding-right:5px}
+.view-main .hq-label b{font-size:9px!important;overflow-wrap:normal;word-break:normal}
+
+/* The empty hotspot layer must not intercept the name-plate buttons below it. */
+.image-hall:is([data-state=ARMOR_HALL],[data-state=SUIT_HOVER]) .hall-hotspots{pointer-events:none}
+.image-hall:is([data-state=ARMOR_HALL],[data-state=SUIT_HOVER]) .hall-hotspots>.hotspot{pointer-events:auto}
+
+/* Keep the door opening and the socket lights visible throughout suit entry. */
+.image-hall.sx-entry .hall-flash{animation:none!important;opacity:0!important}
+.image-hall.sx-entry .hall-backdrop,.image-hall.sx-entry .hall-hotspots{transition-delay:.22s;transition-duration:2.35s;transition-timing-function:cubic-bezier(.22,.65,.24,1)}
+.image-hall.still .hall-backdrop,.image-hall.still .hall-hotspots{transform:none!important;transition:none!important}
+
+/* Machined name plates: each family follows the materials of its approved hall. */
+.view-main .hq-label{--plate-trim:#c9ab70;--plate-light:#99e6f6;--plate-edge:#674b39;--plate-bg:linear-gradient(115deg,#451a19 0%,#24191b 22%,#08131b 63%);height:46px!important;padding:6px 8px!important;gap:7px!important;position:relative;isolation:isolate;border:1px solid var(--plate-edge)!important;border-top-color:var(--plate-trim)!important;border-radius:5px!important;background:var(--plate-bg)!important;box-shadow:0 5px 12px #0009,inset 0 1px #fff2,inset 0 -2px #0008!important;color:var(--plate-trim)}
+.view-main .hq-label.hq-batcave{--plate-trim:#d9bf76;--plate-light:#efd17c;--plate-edge:#75613b;--plate-bg:linear-gradient(135deg,#242422,#080b0f 62%);border-radius:2px!important;clip-path:polygon(5px 0,calc(100% - 5px) 0,100% 5px,100% calc(100% - 5px),calc(100% - 5px) 100%,5px 100%,0 calc(100% - 5px),0 5px)}
+.view-main .hq-label.hq-spiderman{--plate-trim:#f08a8b;--plate-light:#ff727b;--plate-edge:#723d47;--plate-bg:linear-gradient(135deg,#491b2b 0%,#182231 48%,#0a1019 80%);border-radius:8px 3px 8px 3px!important}
+.view-main .hq-label .hq-crest{display:grid!important;place-items:center;flex:0 0 23px;width:23px;height:27px;padding-right:6px;border-right:1px solid var(--plate-edge);color:var(--plate-trim)}
+.view-main .hq-label.hq-ironman .hq-crest{color:var(--plate-light)}
+.view-main .hq-label .hq-crest svg{display:block;width:23px;height:23px;overflow:visible}
+.view-main .hq-label .hq-copy{display:flex!important;flex-direction:column;justify-content:center;align-items:flex-start;gap:3px;min-width:0;flex:1}
+.view-main .hq-label .hq-copy small{display:block;border:0;padding:0;margin:0;font:600 7px/1 Consolas,monospace;letter-spacing:.13em;color:var(--plate-trim);white-space:nowrap}
+.view-main .hq-label .hq-copy b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;font:600 10px/1.12 'Segoe UI',sans-serif!important;letter-spacing:.02em!important;color:#f0f3f5!important;white-space:normal;word-break:normal;overflow-wrap:normal;overflow:hidden}
+.view-main .hq-label .hq-light{position:absolute;right:6px;top:6px;width:7px;height:2px;border-radius:2px;background:var(--plate-light);box-shadow:0 0 5px color-mix(in srgb,var(--plate-light) 50%,transparent)}
+.view-main .bay-label:has(.hq-label):is(:hover,.active) .hq-label{filter:brightness(1.2);border-color:var(--plate-trim)!important}
+.view-main .bay-label:has(.hq-label):focus-visible{outline-width:2px;outline-offset:4px}
+@media(max-width:1000px){.view-main .hq-label{padding:5px!important;gap:5px!important}.view-main .hq-label .hq-crest{flex-basis:18px;width:18px;padding-right:4px}.view-main .hq-label .hq-crest svg{width:18px;height:18px}.view-main .hq-label .hq-copy b{font-size:9px!important}.view-main .hq-label .hq-copy small{font-size:6px;letter-spacing:.06em}}
+
+/* Isolate text sizing from the legacy plaque glyph rules. */
+.view-main .hq-label .hq-copy b{display:-webkit-box!important;width:100%!important;height:auto!important;max-height:2.24em;flex:none!important;text-align:left!important}
+.view-main .hq-label .hq-copy small{text-align:left!important;flex:none!important}
+.view-main .hq-label .hq-light{display:block!important}
+
+/* Native plates use calibrated anchors; the old SVG-plaque fitter must not shrink or offset them. */
+.view-main .bay-label.svgl:has(.hq-label){margin:0!important;scale:1!important;transform:translate(-50%,-50%)!important;transform-origin:center!important}
+.view-main .hq-label{height:38px!important;padding:4px 7px!important;gap:6px!important}
+.view-main .hq-label .hq-copy b{font-size:10px!important}
+.view-main .hq-label .hq-copy small{font-size:7px!important}
+
+/* Shared control finish: sharp glyphs, keyboard focus and bounded utility panels. */
+.ui-glyph{display:inline-block;width:19px;height:19px;vertical-align:middle;flex:none;pointer-events:none}
+.dk-dock i .ui-glyph{width:20px;height:20px}
+body:is(.view-main,.view-console,.view-settings) :is(button,a,input,textarea,select):focus-visible{outline:2px solid var(--scene-accent);outline-offset:3px}
+body.view-main button:is([data-action=settings],[data-action=standdown]){width:32px;height:32px;display:grid;place-items:center;border-radius:8px;transition:background .18s ease,color .18s ease}
+body.view-main button:is([data-action=settings],[data-action=standdown]):hover{background:#ffffff12;color:#eef7ff}
+.qp-icons .qp-ico{border-color:color-mix(in srgb,var(--scene-accent) 30%,#263441);background:linear-gradient(155deg,#192935ee,#080f18f2);box-shadow:inset 0 1px #ffffff12,0 4px 12px #0004}
+.qp-icons .qp-ico svg{width:19px;height:19px;flex:none}
+.mt-panel{box-sizing:border-box;max-width:calc(100vw - 32px);max-height:calc(100dvh - 170px);overflow-y:auto;border-color:color-mix(in srgb,var(--scene-accent) 32%,#293743);border-radius:14px;box-shadow:0 18px 60px #0009}
+.mt-panel :is(button,input,select){min-height:32px}
+.jc-tabs,.ws-tabs{scrollbar-width:thin}
+.jc :is(button,input,textarea,select),.mt-panel :is(button,input,select),.tw :is(button,input,select,textarea){border-radius:7px}
+.jc .jc-empty,.tw .tw-empty{line-height:1.65;color:#a9bdc9}
+.hp-head{background:linear-gradient(120deg,#182a36ee,#070f19f2);border-bottom:1px solid color-mix(in srgb,var(--scene-accent) 28%,transparent)}
+.hp-head button{min-width:30px;min-height:30px;border-radius:6px}
+@media(max-width:1000px){.jc-top,.tw-top{gap:14px;flex-wrap:wrap}.jc-tabs{overflow-x:auto;flex-wrap:nowrap}.jc-tabs button{flex:none}.jc-cols{grid-template-columns:1fr!important}.mt-panel{max-height:calc(100dvh - 150px)}}
+@media(max-width:760px){.view-main .hq-label{height:34px!important;padding:3px!important;gap:3px!important}.view-main .hq-label .hq-crest{display:none!important}.view-main .hq-label .hq-copy b{font-size:8px!important}.view-main .hq-label .hq-copy small{font-size:6px!important}.qp-icons{max-width:calc(100vw - 36px);flex-wrap:wrap}.qp-icons .qp-ico{width:36px;height:36px}}
+
+/* Calibration stays local, reversible and separate from normal suit selection. */
+.cal-panel[hidden],.cal-layer[hidden]{display:none!important}.cal-panel{position:fixed;z-index:1202;right:14px;top:118px;bottom:72px;width:280px;box-sizing:border-box;overflow:auto;background:#09131ef2;border:1px solid #81c9e477;border-radius:12px;padding:16px;color:#e9f4fc;font:12px/1.5 'Segoe UI',sans-serif;box-shadow:0 12px 50px #000a;backdrop-filter:blur(18px)}
+.cal-panel.cal-left{right:auto;left:14px}.cal-panel header{display:flex;justify-content:space-between;align-items:center;gap:10px}.cal-panel h2{margin:2px 0 14px;font-size:20px;font-weight:400}.cal-panel small{letter-spacing:.12em;color:#9cc9dc;font:9px Consolas,monospace}.cal-panel label{display:grid;grid-template-columns:1fr auto;gap:4px;margin:10px 0}.cal-panel select,.cal-panel input{grid-column:1/-1;min-width:0;width:100%;accent-color:#8ecedd}.cal-panel select{padding:7px;background:#111f2d;border:1px solid #456071;color:#eef6ff;border-radius:6px}.cal-panel output{font:10px Consolas,monospace;color:#a7cfdf}.cal-panel details{padding:6px 0;border-block:1px solid #ffffff13}.cal-panel details p,.cal-panel [data-message]{font-size:11px;color:#afc1d0}.cal-panel button{border:1px solid #446477;background:#182b3b;color:#dcecf5;border-radius:6px;padding:7px 9px;cursor:pointer;font:inherit}.cal-panel button:disabled{opacity:.4;cursor:default}.cal-panel button:focus-visible{outline:2px solid #abe5ff;outline-offset:3px}.cal-panel .cal-save{background:#83cce0;color:#07131c}.cal-actions{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.cal-layer{position:fixed;inset:0;z-index:1201;pointer-events:none}.cal-mark{position:absolute;box-sizing:border-box;outline:2px solid #8ce5ff;pointer-events:auto;cursor:move;touch-action:none;background:#4fa9db0a}.cal-mark>span{position:absolute;bottom:100%;left:0;background:#0a1828e8;color:#cceffc;white-space:nowrap;padding:2px 5px;font:10px Consolas,monospace;pointer-events:none}.cal-mark>[data-resize]{position:absolute;right:-10px;bottom:-10px;width:22px;height:22px;background:#a4e9ff;color:#071624;border:0;border-radius:4px;cursor:nwse-resize}.cal-label{outline-color:#ffd584;background:#f7cf3222}.cal-eye{border-radius:50%;background:#32cbf755;outline:2px solid #fff}.cal-eye>span{bottom:120%}.calibrating .hall-intro,.calibrating .qp-icons{visibility:hidden}.calibrating .hotspot,.calibrating .bay-label{pointer-events:none!important}.calibrating .hall-hotspots{pointer-events:none!important}
+@media(max-width:800px){.cal-panel{width:230px;top:95px;bottom:65px;padding:10px}.cal-panel button{padding:5px}.cal-panel h2{font-size:16px}}
+
+/* The vehicle source has black margins: crop those, preserving the car proportions. */
+body[data-theme="batcave"] .hall-overlay.plain{overflow:hidden}
+body[data-theme="batcave"] .hall-overlay.plain .ov-vid{object-fit:cover}

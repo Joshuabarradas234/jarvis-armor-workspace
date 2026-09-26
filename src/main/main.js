@@ -28,6 +28,7 @@ import {IdeaStore} from '../services/ideas.js';
 import {IdeaAssistant} from '../ideas/assistant.js';
 import {weather,askAI} from '../services/integrations.js';
 import {createJarvisCore} from '../brain/index.js';
+import {HallCalibrationStore} from '../services/hall-calibration.js';
 import {SelfUpdater} from '../brain/selfupdate.js';
 
 protocol.registerSchemesAsPrivileged([{scheme:'jarvis',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true,corsEnabled:true}}]);
@@ -44,7 +45,7 @@ let workstations,tabs,layout,telemetry=null,weatherCache=null,weatherChecked=0,o
 const status={errors:[],commandHistory:[]};
 const scripts=app.isPackaged?path.join(process.resourcesPath,'windows'):path.join(baseRoot,'scripts','windows');
 const assets=app.isPackaged?path.join(process.resourcesPath,'assets'):path.join(baseRoot,'assets');
-let userDir;
+let userDir, hallCalibration;
 function log(kind,message){const row={time:new Date().toISOString(),kind,message:String(message).slice(0,800)};status.errors.push(row);status.errors=status.errors.slice(-50);try{const f=path.join(userDir,'jarvis.log');if(fs.existsSync(f)&&fs.statSync(f).size>2e6)fs.renameSync(f,f+'.previous');fs.appendFileSync(f,JSON.stringify(row)+'\n');}catch{}broadcast('status',getStatus());}
 let followUntil=0,panels=null,tower=null,towerRunner=null,towerKey=null,core=null,coreError='',lastUserAction=Date.now(),awakeBlock=null,bootMarked=false;
 function voiceContext(){return {theme:workstations.theme(),themes:workstations.themes,modules,idle:machine?.value?.state==='IDLE',follow:Date.now()<followUntil};}
@@ -966,6 +967,9 @@ async function api(event,method,payload){
     case 'tabs-pointer':{if(role!=='main')return false;const type=String(payload?.type||'');if(!['move','down','up'].includes(type))throw Error('Unknown pointer event.');const x=Number(payload?.x),y=Number(payload?.y);if(!Number.isFinite(x)||!Number.isFinite(y))return false;if(tabs.win()?.webContents!==event.sender)return false;return tabs.pointer(type,x,y);}
     case 'hands-ring':return handRing(event.sender,payload);
     case 'vista-scene':{const t=workstations.activeTheme;const own=fs.existsSync(path.join(assets,'deck',`${t}-vista.json`));const b=deckBackdrop(t);return {theme:t,name:workstations.theme().name,assistant:workstations.theme().assistant,accent:workstations.theme().accent,scene:own&&!b.custom?`jarvis://asset/deck/${t}-vista.json`:null,image:b.url};}
+    case 'hall-calibration-get':return hallCalibration.get();
+    case 'hall-calibration-save':{if(!['main','settings'].includes(role))throw Error('Open calibration on the main screen.');return hallCalibration.save(payload?.theme,payload?.patch);}
+    case 'hall-calibration-reset':{if(!['main','settings'].includes(role))throw Error('Open calibration on the main screen.');return hallCalibration.reset(payload?.theme);}
     case 'suit-activity':{const t=typeof payload?.theme==='string'?payload.theme:workstations.activeTheme;const board=boardFor(t);const out={};for(const m of workstations.modules(t)){const v=visits.get(t,m.id)||{};const b=board.find(x=>x.id===m.id)||{};out[m.id]={status:b.status||'idle',progress:b.progress||0,last:Math.max(v.lastOpened||0,v.lastLeft||0)||null,open:machine.value.state==='MODULE'&&machine.value.selected===m.id};}return out;}
     case 'panel-open':{if(!['main','console'].includes(role))throw Error('Panels open on the JARVIS screens.');const r=payload?.rect;return pmFor(role).open({id:payload?.id,url:String(payload?.url||''),rect:r});}
     case 'panel-place':return ['main','console'].includes(role)&&pmFor(role).place(String(payload?.id||''),payload?.rect);
@@ -1188,7 +1192,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
 
   app.on('second-instance',()=>{if(machine)dispatch('wake');});   // a second launch while this one is still starting must not crash it
   app.whenReady().then(async()=>{
-    userDir=app.getPath('userData');fs.mkdirSync(userDir,{recursive:true});
+    userDir=app.getPath('userData');fs.mkdirSync(userDir,{recursive:true});hallCalibration=new HallCalibrationStore(userDir);
     process.on('uncaughtException',e=>{try{log('crash',e?.stack||e?.message||String(e));}catch{}});
     process.on('unhandledRejection',e=>{try{log('crash',e?.stack||String(e));}catch{}});
     protocol.handle('jarvis',request=>{

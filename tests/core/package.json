@@ -4,7 +4,7 @@
   "type": "module",
   "description": "End-to-end tests for JARVIS Core (not shipped in the app).",
   "scripts": {
-    "postinstall": "patch -N -p1 -d node_modules/hoodiecrow-imap < hoodiecrow.patch || true",
+    "postinstall": "node patch-imap.mjs",
     "test": "node core.test.mjs",
     "test:boot": "node boot.test.mjs",
     "test:ui": "node electron.test.mjs ui"

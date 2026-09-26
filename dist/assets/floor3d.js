@@ -5,6 +5,7 @@
  * dark wood and brass at Wayne Enterprises, a brick newsroom at the Bugle.
  * Work = the whole floor · Team = in close on the desks · Brief & training = the briefing board · History = the archive.
  */
+import {watchRenderBudget} from './render-budget.js';
 import * as THREE from '../vendor/three/three.module.min.js';
 import { RoomEnvironment } from '../vendor/three/RoomEnvironment.js';
 
@@ -327,15 +328,17 @@ export function mountFloor(host, { theme = 'ironman', accent, onPick, onExit } =
   });
   labels.addEventListener('click', e => { const b = e.target.closest('[data-agent]'); if (!b) return; const s = seats.find(x => x.a.id === b.dataset.agent); if (s) onPick?.(s.a, s.st); });
 
+  const quality=watchRenderBudget();
   let alive = true, raf = 0, last = performance.now(), lastLbl = 0;
   function frame(now) {
     if (!alive) return; raf = requestAnimationFrame(frame);
-    if (now - last < 28) return; const dt = clamp((now - last) / 1000, 0, 0.1); last = now;   // ~30 fps on any refresh rate
-    const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; const pr = Math.min(2, Math.max(1, devicePixelRatio || 1)); if (renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr);
+    const budget=quality.get();
+    if (document.hidden || now - last < 1000/budget.fps) return; const dt = clamp((now - last) / 1000, 0, 0.1); last = now;   // ~30 fps on any refresh rate
+    const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; const pr = budget.dpr; if (renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr);
     if (renderer.domElement.width !== Math.floor(w * renderer.getPixelRatio()) || renderer.domElement.height !== Math.floor(h * renderer.getPixelRatio())) { renderer.setSize(w, h, false); renderer.domElement.style.width = w + 'px'; renderer.domElement.style.height = h + 'px'; camera.aspect = w / h; camera.updateProjectionMatrix(); }
-    const shot = SHOTS[tab] || SHOTS.work; const k = 1 - Math.exp(-dt * 2.2);
+    const shot = SHOTS[tab] || SHOTS.work; const k = budget.quiet ? 1 : 1 - Math.exp(-dt * 2.2);
     cam.p.lerp(new THREE.Vector3(...shot.p), k); cam.t.lerp(new THREE.Vector3(...shot.t), k);
-    const t = now / 1000; const off = new THREE.Vector3().subVectors(cam.p, cam.t).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw + Math.sin(t * 0.15) * 0.05);
+    const t = budget.quiet ? 0 : now / 1000; const off = new THREE.Vector3().subVectors(cam.p, cam.t).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw + Math.sin(t * 0.15) * 0.05);
     camera.position.copy(cam.t).add(off); camera.lookAt(cam.t);
     // the team at work
     for (const s of seats) {
@@ -386,6 +389,6 @@ export function mountFloor(host, { theme = 'ironman', accent, onPick, onExit } =
     },
     setTab(t) { tab = SHOTS[t] ? t : 'work'; },
     pause(on) { if (on) { alive = false; cancelAnimationFrame(raf); } else if (!alive) { alive = true; last = performance.now(); raf = requestAnimationFrame(frame); } },
-    dispose() { alive = false; cancelAnimationFrame(raf); try { renderer.dispose(); renderer.forceContextLoss(); } catch {} host.innerHTML = ''; host.classList.remove('fl-host'); },
+    dispose() { quality.dispose(); alive = false; cancelAnimationFrame(raf); try { renderer.dispose(); renderer.forceContextLoss(); } catch {} host.innerHTML = ''; host.classList.remove('fl-host'); },
   };
 }

@@ -24,7 +24,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const MAX_ASAR = 30_000_000;   // the installer and the self-update workshop are built around this
 // files from assets/ that an update must bring (the rest of assets/ is large and already installed); add to this list
 // when a release changes something in assets/
-const EXTRA_ASSETS = ['assets/voice/packs/map.json', 'assets/voice/packs/voicemap.template.json'];
+const EXTRA_ASSETS = ['assets/voice/packs/map.json', 'assets/voice/packs/voicemap.template.json', 'assets/wallpaper/batcave-empty.json', 'assets/wallpaper/batcave-studio.jpg', 'assets/wallpaper/ironman-empty.json', 'assets/wallpaper/ironman-studio.jpg', 'assets/wallpaper/spiderman-empty.json', 'assets/wallpaper/spiderman-studio.jpg'];
 const PKG_KEYS = ['name', 'version', 'description', 'author', 'private', 'type', 'main', 'license'];
 
 const arg = (name, fallback) => { const i = process.argv.indexOf(name); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback; };

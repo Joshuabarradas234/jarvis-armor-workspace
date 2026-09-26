@@ -16,7 +16,7 @@ Development only. These files are never packaged into the app, because electron-
 
 ## Hoodiecrow patch
 
-`hoodiecrow.patch` fixes two things in the IMAP test server; `npm install` applies it:
+`hoodiecrow.patch` documents two fixes in the IMAP test server. `npm install` applies the same changes using `patch-imap.mjs`, so Windows does not need a Unix `patch` command. The script is idempotent, preserves line endings and refuses an unexpected dependency source:
 
 - **A partial-FETCH bug.** Later messages in a FETCH came back empty.
 - **The missing X-GM-EXT-1 capability.** Real Gmail advertises it.

@@ -1,4 +1,4 @@
-import {pathToFileURL} from 'node:url';
+import {pathToFileURL, fileURLToPath} from 'node:url';
 // End-to-end test of JARVIS Core against fake Claude, fake Twilio, and real IMAP/SMTP test servers.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,7 +8,7 @@ import {createRequire} from 'node:module';
 import {startClaude, startTwilio} from './mocks.mjs';
 const require = createRequire(import.meta.url);
 process.env.JARVIS_TEST = '1'; process.env.JARVIS_TEST_INSECURE_TLS = '1';
-const HERE = path.dirname(new URL(import.meta.url).pathname), BUILD = process.env.JARVIS_BUILD || path.resolve(HERE, '../..'), SCRATCH = process.env.JARVIS_TEST_DIR || path.join(os.tmpdir(), 'jarvis-core-test');
+const HERE = path.dirname(fileURLToPath(import.meta.url)), BUILD = process.env.JARVIS_BUILD || path.resolve(HERE, '../..'), SCRATCH = process.env.JARVIS_TEST_DIR || path.join(os.tmpdir(), 'jarvis-core-test');
 const B = path.join(BUILD, 'src');
 const J = SCRATCH; fs.mkdirSync(J, {recursive: true});
 // a throwaway self-signed certificate for the local test mail servers

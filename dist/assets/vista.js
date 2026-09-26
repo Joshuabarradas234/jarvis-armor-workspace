@@ -1,34 +1,39 @@
-/*
- * JARVIS v9.18 — the third screen: a view of the hall you are in. For the Batcave it is the cave, with the boat
- * rocking in the water and the plane parked on its pad by the big screen, turning slowly. Other halls show their
- * second-screen picture. It follows you when you change hall, and it is only there when a third screen is connected
- * (and "Third screen view" is ticked in the tray menu).
- */
-const J = window.jarvis;
-const bg = document.querySelector('.vs-bg');
-let key = '', live = null;
-function clock() { const d = new Date(); document.querySelector('.vs-time').textContent = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+/* The third screen follows the hall. A failed or superseded load never paints over the latest view. */
+import { imagePresenter } from './scene-quality.js';
+const J = window.jarvis, bg = document.querySelector('.vs-bg');
+const images = imagePresenter(bg);
+let key = '', live = null, refreshTimer = 0;
+function clock() { document.querySelector('.vs-time').textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
 async function refresh() {
-  let v = null; try { v = await J.call('vista-scene'); } catch { return; }
-  if (!v) return;
-  document.documentElement.style.setProperty('--vs', v.accent || '#f5c542');
+  const ticket = images.invalidate(); let v;
+  try { v = await J.call('vista-scene'); } catch { return; }
+  if (!v || !images.current(ticket)) return;
+  const k = [v.theme, v.scene, v.image].join('|'); if (k === key) return;
+  live?.dispose(); live = null; key = '';
+  document.body.dataset.theme = v.theme;
+  document.documentElement.style.setProperty('--vs', v.accent || '#7fd6e8');
   document.querySelector('.vs-hall').textContent = String(v.name || '').toUpperCase();
   document.querySelector('.vs-ai').textContent = 'VIEW';
-  const k = [v.theme, v.scene, v.image].join('|'); if (k === key) return; key = k;
-  try { live?.dispose(); } catch {} live = null;
-  let cfg = null; if (v.scene) { try { cfg = await (await fetch(v.scene)).json(); } catch {} }
+  if (!images.current(ticket)) return;
+  let cfg = null;
+  if (v.scene) try { const r = await fetch(v.scene); if (r.ok) cfg = await r.json(); } catch {}
+  if (!images.current(ticket)) return;
+  const url = cfg?.image ? 'jarvis://asset/deck/' + cfg.image : v.image;
+  if (!await images.show(url, ticket)) return;
   if (cfg?.label) document.querySelector('.vs-ai').textContent = cfg.label;
-  const url = cfg?.image ? `jarvis://asset/deck/${cfg.image}` : v.image;
-  const img = new Image(); img.src = url; try { await img.decode(); } catch {}
-  if (k !== key) return;
-  bg.classList.remove('in'); void bg.offsetWidth; bg.style.backgroundImage = `url("${url}")`; bg.classList.add('in');
   if (cfg && (cfg.boat || cfg.plane || cfg.boats || cfg.planes)) {
-    try { const { mountScene } = await import('./deckscene.js'); const sc = await mountScene(bg, cfg, 'jarvis://asset/deck/'); if (k === key) live = sc; else sc.dispose(); } catch (e) { console.warn('[vista]', e); }
+    try {
+      const { mountScene } = await import('./deckscene.js');
+      if (!images.current(ticket)) return;
+      const sc = await mountScene(bg, cfg, 'jarvis://asset/deck/');
+      if (images.current(ticket)) live = sc; else { sc.dispose(); return; }
+    } catch (e) { console.warn('[vista]', e); }
   }
+  if (images.current(ticket)) key = k;
 }
 if (J) {
-  clock(); setInterval(clock, 5000);
-  refresh();
-  try { J.on('theme', () => setTimeout(refresh, 300)); } catch {}
-  try { J.on('deck', m => { if (m?.type === 'backdrop') refresh(); }); } catch {}
+  clock(); const timer = setInterval(clock, 5000); refresh();
+  J.on('theme', () => { images.invalidate(); clearTimeout(refreshTimer); refreshTimer = setTimeout(refresh, 100); });
+  J.on('deck', m => { if (m?.type === 'backdrop') refresh(); });
+  addEventListener('pagehide', () => { clearInterval(timer); clearTimeout(refreshTimer); images.dispose(); live?.dispose(); });
 }
