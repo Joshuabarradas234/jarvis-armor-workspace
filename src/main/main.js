@@ -18,7 +18,7 @@ import {TabManager} from './tabs.js';
 import {WindowLayout} from '../layout/windows.js';
 import {MeetingManager,clock} from '../meeting/manager.js';
 import {sendGmail,validEmail} from '../meeting/mailer.js';
-import {callApi} from '../tower/engines.js';
+import {callApi,callClaudeCode,detectClaudeCode} from '../tower/engines.js';
 import {MissionStore} from '../control/missions.js';
 import {AgentRunner} from '../control/runner.js';
 import {ControlServer} from '../control/server.js';
@@ -378,11 +378,16 @@ async function endMeeting(){
   broadcast('meeting',{type:'status',text:'Writing the summary…'});
   let summary='';const key=readTowerKey();
   if(!m.transcript.trim())m.warnings.push('Nothing was transcribed. Check the microphone and that an English Windows speech recognizer is installed.');
-  else if(key){try{summary=(await callApi({key,model:tower.settings().plannerModel,maxTokens:1500,
-    system:'You write concise meeting notes. The transcript comes from offline speech recognition and contains recognition mistakes: read through them sensibly, but never invent names, numbers or decisions that are not there. British English, Markdown.',
-    prompt:`Meeting for the "${m.suitName}" workstation (${m.hallName}), ${date} at ${time}, ${clock(m.duration)} long.\n\nWrite these sections: ## Summary (three to five sentences), ## Decisions, ## Action items (with the owner when it is clear), ## Open questions. Leave out a section if there is nothing for it.\n\nTRANSCRIPT:\n${m.transcript.slice(0,150000)}`})).text;}
-    catch(e){m.warnings.push('No summary this time: '+e.message);}}
-  else m.warnings.push('No summary: add a Claude API key in the tower (Engines) to get one.');
+  else{
+    const system='You write concise meeting notes. The transcript comes from offline speech recognition and contains recognition mistakes: read through them sensibly, but never invent names, numbers or decisions that are not there. British English, Markdown.';
+    const prompt=`Meeting for the "${m.suitName}" workstation (${m.hallName}), ${date} at ${time}, ${clock(m.duration)} long.\n\nWrite these sections: ## Summary (three to five sentences), ## Decisions, ## Action items (with the owner when it is clear), ## Open questions. Leave out a section if there is nothing for it.\n\nTRANSCRIPT:\n${m.transcript.slice(0,150000)}`;
+    // the tower's API key when there is one, otherwise Claude Code on your own Claude plan
+    try{
+      if(key)summary=(await callApi({key,model:tower.settings().plannerModel,maxTokens:1500,system,prompt})).text;
+      else if((await detectClaudeCode()).ready)summary=(await callClaudeCode({settingsDir:userDir,cwd:m.folder,model:'sonnet',maxTurns:2,prompt:`${system}\n\nReply with the notes only, as Markdown. Do not create or change any files.\n\n${prompt}`})).text;
+      else m.warnings.push('No summary: install Claude Code, or add a Claude API key in the tower (Engines).');
+    }catch(e){m.warnings.push('No summary this time: '+e.message);}
+  }
   const sources=m.sources.includes('system')?'your microphone and the call audio':'your microphone only';
   const markdown=[`# Meeting notes: ${m.suitName}`,'',`**${m.hallName}** · ${date}, ${time} · ${clock(m.duration)} · recorded ${sources}`,'',
     ...m.warnings.map(w=>'> '+w),m.warnings.length?'':null,summary||null,summary?'':null,'## Full transcript','','_Transcribed offline by Windows speech recognition, so expect some mistakes._','',

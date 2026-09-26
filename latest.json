@@ -1,5 +1,5 @@
 {
-  "version": "1.72.1",
+  "version": "1.72.2",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "Fixes the 3D suits disappearing from their cases after opening any suit (Mark V looked empty), makes the centre hologram see-through when you point at a suit behind it, one Skip press skips a whole hall switch, the correct hall name at the bottom of the screen, and two crashes found in your log (tabs and the control deck)."
+  "notes": "Meeting summaries now use Claude Code on your Claude plan when no API key is set. JARVIS finds Claude Code even when its folder is not on PATH. The meeting panel keeps what you type when it closes."
 }

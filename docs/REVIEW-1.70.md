@@ -78,7 +78,14 @@ Checked in a copy of the installed app with a copied profile, driven over the De
 - Every case in all three halls holds the right suit, and each plate matches its suit.
 - User settings to tidy (not code): the Batcave centre bay is named "BATMOBLIE BAY"; a suit's Screens list starts an app called "cluade", which fails to open. There is no Claude API key and no Claude Code on this PC yet, so the tower runs in rehearsal mode and idea plans and meeting summaries can't run.
 
+## 1.72.2
+- Meeting summaries fall back to Claude Code (`claude -p`, sonnet, 2 turns, cwd = the meeting folder, fence file in userData) when no tower API key is set. Tested with a sample transcript: about 8 s, all four sections.
+- `engines.js` runs Claude Code from `~/.local/bin/claude.exe` when that exists: the native installer does not always add it to PATH.
+- Meeting panel: typed email fields survive redraws and closing the panel (`this.draft`); `meeting-state` reports `hasPassword` separately from `gmailReady`.
+- The live wallpaper cannot show on this PC (Windows 11 25H2): its icon view paints the wallpaper itself, so a window placed under the icons (between SHELLDLL_DefView and the WorkerW inside Progman, layered, as other wallpaper apps do) stays hidden. The attempt was reverted, and the status stays UNAVAILABLE.
+
 ## Still open
+- Live wallpaper on Windows 11 24H2+ desktops where the icon view paints the wallpaper: needs a different technique (a resident helper that owns a layered holder window).
 - Approvals by phone or WhatsApp come with the other chat's work: hook them into `IdeaAssistant.notify`.
 - Installing an approved and merged app change needs the self-update system (also from the other chat).
 - Offline dictation is rough on real call audio. A Whisper-compatible engine could be added as an option later.
