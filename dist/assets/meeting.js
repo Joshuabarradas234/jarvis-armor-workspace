@@ -150,6 +150,7 @@
       if (!this.panel) {
         this.panel = document.createElement('div'); this.panel.className = 'mt-panel';
         this.panel.addEventListener('click', e => this.onClick(e)); this.panel.addEventListener('pointerdown', e => e.stopPropagation());
+        this.panel.addEventListener('input', e => { const k = e.target.matches('[data-mt-to]') ? 'to' : e.target.matches('[data-mt-from]') ? 'from' : null; if (k) (this.draft ||= {})[k] = e.target.value; });
         document.body.appendChild(this.panel);
       }
       const i = this.info; if (!i) { this.panel.innerHTML = '<p class="mt-sub">Loading…</p>'; this.panel.hidden = false; this.place(); return; }
@@ -174,10 +175,11 @@
           ${this.status ? `<p class="mt-note">${this.status}</p>` : ''}
           <p class="mt-note">Headphones give the cleanest transcript. Let everyone on the call know it's being recorded.</p>`;
       }
+      const d = this.draft || {}, val = (k, saved) => esc(d[k] !== undefined ? d[k] : saved);
       const email = `<details ${keep || (!i.gmailReady && !i.active) ? 'open' : ''}><summary>Email ${i.gmailReady ? '<span class="mt-ok">· Gmail ready</span>' : '<span class="mt-warn">· set up Gmail</span>'}</summary>
-        <label>Send the notes to</label><input data-mt-to type="email" value="${esc(i.to)}" autocomplete="off">
-        <label>Send them from this Gmail address</label><input data-mt-from type="email" value="${esc(i.from)}" placeholder="you@gmail.com" autocomplete="off">
-        <label>Gmail app password${i.gmailReady ? ' (saved, leave blank to keep it)' : ''}</label><input data-mt-pass type="password" placeholder="16 letters from Google" autocomplete="off">
+        <label>Send the notes to</label><input data-mt-to type="email" value="${val('to', i.to)}" autocomplete="off">
+        <label>Send them from this Gmail address</label><input data-mt-from type="email" value="${val('from', i.from)}" placeholder="you@gmail.com" autocomplete="off">
+        <label>Gmail app password${i.hasPassword || i.gmailReady ? ' (saved, leave blank to keep it)' : ''}</label><input data-mt-pass type="password" placeholder="16 letters from Google" autocomplete="off">
         <div class="mt-row"><button type="button" data-mt="save">Save</button><button type="button" data-mt="test" ${i.gmailReady ? '' : 'disabled'}>Send a test email</button><button type="button" data-mt="how">How do I get an app password?</button></div>
         <p class="mt-note">The app password is stored encrypted with Windows protection and only used to send these emails. Your normal Gmail password is never needed.</p></details>`;
       const past = i.past?.length ? `<details><summary>Recent meetings in this hall</summary><ul class="mt-past">${i.past.map(p => `<li><span>${esc(p.suitName)} · ${esc(when(p.startedAt))}<br>${p.emailed ? '<span class="mt-ok">emailed</span>' : `<span class="mt-warn">${esc(p.emailError || 'not emailed')}</span>`}</span><button type="button" data-mt="open" data-id="${esc(p.id)}">Notes</button><button type="button" data-mt="folder" data-id="${esc(p.id)}">Folder</button></li>`).join('')}</ul></details>` : '';
@@ -207,7 +209,7 @@
         if (act === 'start') { this.pick = p.querySelector('[data-mt-suit]')?.value; this.status = ''; b.disabled = true; await call('meeting-start', {id: this.pick}); }
         else if (act === 'end') { b.disabled = true; await this.end(); }
         else if (act === 'save') {
-          this.info = await call('meeting-settings', {to: p.querySelector('[data-mt-to]').value, from: p.querySelector('[data-mt-from]').value, password: p.querySelector('[data-mt-pass]').value});
+          this.info = await call('meeting-settings', {to: p.querySelector('[data-mt-to]').value, from: p.querySelector('[data-mt-from]').value, password: p.querySelector('[data-mt-pass]').value}); this.draft = null;
           toast(this.info.gmailReady ? 'Saved. Gmail is ready.' : 'Saved. Add the Gmail address and app password to email the notes.'); this.draw();
         }
         else if (act === 'test') { b.disabled = true; b.textContent = 'Sending…'; await call('meeting-test-email'); toast('Test email sent to ' + this.info.to + '.'); this.draw(); }

@@ -348,7 +348,7 @@ function gmailFile(){return path.join(userDir,'gmail-app-password.enc');}
 function gmailPassword(){try{return fs.existsSync(gmailFile())?safeStorage.decryptString(fs.readFileSync(gmailFile())):'';}catch(e){log('meeting','Could not read the Gmail app password: '+e.message);return '';}}
 function meetingInfo(){
   const s=settings.get().meeting||{};const t=workstations.activeTheme;
-  return {...meetings.state(),to:s.to||'',from:s.from||'',gmailReady:!!(s.from&&gmailPassword()),theme:t,hallName:workstations.theme().name,
+  return {...meetings.state(),to:s.to||'',from:s.from||'',gmailReady:!!(s.from&&gmailPassword()),hasPassword:!!gmailPassword(),theme:t,hallName:workstations.theme().name,
     suits:modules.map(m=>({id:m.id,name:m.name})),open:machine?.value?.state==='MODULE'?machine.value.selected:null,
     past:meetings.pastFor(t).map(h=>({id:h.id,suitName:h.suitName,startedAt:h.startedAt,endedAt:h.endedAt,emailed:h.emailed,emailError:h.emailError}))};
 }
