@@ -216,11 +216,12 @@ ${clip(store.notes() || '(none)', 5000)}${extra ? `\n${extra}` : ''}`;
       push(); return;
     }
     const tries = s.retries ?? 0;
+    const why = !s.sid && s.error ? `Could not call you: ${clip(s.error, 180)}` : '';   // the call never went out, so nobody failed to answer
     if (['missed', 'voicemail', 'failed'].includes(outcome) && s.attempt <= tries) {
-      store.act('call', `No answer (${outcome}); trying again in ${s.gap || 5} minutes (${s.attempt}/${tries}).`);
+      store.act('call', why ? `${why} Trying again in ${s.gap || 5} minutes (${s.attempt}/${tries}).` : `No answer (${outcome}); trying again in ${s.gap || 5} minutes (${s.attempt}/${tries}).`);
       try { const al = store.addAlarm({at: Date.now() + (s.gap || 5) * 60000, kind: 'call', report: !!rep, note: 'retry', source: 'retry'}); Object.assign(al, {reportId: s.reportId, purpose: s.purpose, retries: tries, gap: s.gap, attempt: s.attempt + 1}); store.flushAlarms(); } catch {}
     } else if (outcome !== 'answered') {
-      store.act('call', `No answer after ${s.attempt} call${s.attempt === 1 ? '' : 's'}${rep ? '; sending the report to WhatsApp instead' : ''}.`);
+      store.act('call', why ? `${why}${rep ? ' Sending the report to WhatsApp instead.' : ''}` : `No answer after ${s.attempt} call${s.attempt === 1 ? '' : 's'}${rep ? '; sending the report to WhatsApp instead' : ''}.`);
       if (rep) message(`I tried calling you${s.attempt > 1 ? ` ${s.attempt} times` : ''}. Here is the ${rep.kind === 'overnight' ? 'overnight report' : 'report'}:\n\n${rep.text}`, {urgent: true, reportId: rep.id}).catch(() => {});
     }
     push();
