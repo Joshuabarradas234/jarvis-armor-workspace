@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {buildId} from '../brain/selfupdate.js';   // always the installed (protected) copy, next to this file
+import {buildId, replaceFile} from '../brain/selfupdate.js';   // always the installed (protected) copy, next to this file
 
 const asarRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 if (process.env.JARVIS_TEST === '1') app.setPath('userData', path.join(asarRoot, 'test-results', 'profile'));
@@ -27,7 +27,7 @@ const read = () => {
   return {current: null, versions: {}, events: [], n: 0};
 };
 const write = s => {
-  try { fs.mkdirSync(selfDir, {recursive: true}); const tmp = `${stateFile}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(s, null, 1)); fs.renameSync(tmp, stateFile); } catch {}
+  try { fs.mkdirSync(selfDir, {recursive: true}); const tmp = `${stateFile}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(s, null, 1)); replaceFile(tmp, stateFile); } catch {}
 };
 const note = (s, kind, text) => { s.events = [...(s.events || []), {t: Date.now(), kind, text}].slice(-40); };
 let base = '0.0.0', baseId = '';

@@ -22,6 +22,15 @@ const NO = ['no', 'n', 'nope', 'nah', 'deny', 'denied', 'decline', 'declined', '
 const DETAIL = ['details', 'detail', 'diff', 'show', 'show me', 'more', 'info', 'explain', 'what is', 'whats', 'changes', 'why'];
 const FILLER = /\b(please|pls|thanks|thank you|cheers|jarvis|sir|number|numbers|request|requests|and|&|both|the|to|then|ok|okay)\b/g;
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ', DIGITS = '23456789';   // no I, O, 0 or 1: easy to read on a phone
+/** Put a freshly written temp file in place. Windows can hold a file for a moment (antivirus, indexing, backup), so a refused
+ *  rename is tried again for up to about a second instead of losing the save. */
+const PAUSE = new Int32Array(new SharedArrayBuffer(4));
+function replaceFile(tmp, file) {
+  for (let i = 0; ; i++) {
+    try { fs.renameSync(tmp, file); return; }
+    catch (e) { if (i >= 20 || !['EPERM', 'EACCES', 'EBUSY'].includes(e.code)) { try { fs.rmSync(tmp, {force: true}); } catch {} throw e; } Atomics.wait(PAUSE, 0, 0, 10 + i * 5); }
+  }
+}
 const clip = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 const codeOf = seed => { const h = crypto.createHash('sha256').update(String(seed)).digest(); return LETTERS[h[0] % LETTERS.length] + DIGITS[h[1] % DIGITS.length] + LETTERS[h[2] % LETTERS.length] + DIGITS[h[3] % DIGITS.length]; };
 const CODE = '[a-z][2-9][a-z][2-9]', isCode = w => new RegExp(`^${CODE}$`).test(w || '');
@@ -45,7 +54,7 @@ export class Approvals {
   save() {
     this.data.items = this.data.items.slice(-400); this.data.batches = this.data.batches.slice(-30);
     fs.mkdirSync(path.dirname(this.file), {recursive: true});
-    const tmp = `${this.file}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(this.data, null, 1)); fs.renameSync(tmp, this.file);
+    const tmp = `${this.file}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(this.data, null, 1)); replaceFile(tmp, this.file);
   }
   list({status, kind, limit = 100} = {}) {
     return this.data.items.filter(a => (!status || (Array.isArray(status) ? status.includes(a.status) : a.status === status)) && (!kind || a.kind === kind)).slice(-limit).reverse().map(a => this.view(a));

@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {readJson, writeJson, writeText, clip, e164, dayKey, safeFileName} from './util.js';
+import {readJson, writeJson, writeText, replaceFile, clip, e164, dayKey, safeFileName} from './util.js';
 
 export const MODELS = [
   {id: 'claude-opus-5-5', name: 'Claude Opus 5.5 (smartest)'},
@@ -125,7 +125,7 @@ export class BrainStore {
     if (this.crypt?.available()) buf = this.crypt.encrypt(text);
     else if (process.env.JARVIS_TEST === '1') buf = Buffer.concat([Buffer.from('PLAIN:'), Buffer.from(text)]);
     else throw Error('Secure password storage is not available on this computer.');
-    fs.mkdirSync(this.dir, {recursive: true}); const tmp = `${this.files.secrets}.${process.pid}.tmp`; fs.writeFileSync(tmp, buf); fs.renameSync(tmp, this.files.secrets);
+    fs.mkdirSync(this.dir, {recursive: true}); const tmp = `${this.files.secrets}.${process.pid}.tmp`; fs.writeFileSync(tmp, buf); replaceFile(tmp, this.files.secrets);
     this.secretCache = all; return true;
   }
   secretFlags() { return Object.fromEntries(SECRET_KEYS.map(k => [k, this.hasSecret(k)])); }

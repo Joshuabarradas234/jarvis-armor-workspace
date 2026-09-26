@@ -163,14 +163,23 @@ export function speakableText(s) {
 export const xml = s => String(s ?? '').replace(/[<>&'"]/g, c => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;'}[c]));
 
 /* ---------- files ---------- */
+/** Put a freshly written temp file in place. Windows can hold a file for a moment (antivirus, indexing, backup), so a refused
+ *  rename is tried again for up to about a second instead of losing the save. */
+const PAUSE = new Int32Array(new SharedArrayBuffer(4));
+export function replaceFile(tmp, file) {
+  for (let i = 0; ; i++) {
+    try { fs.renameSync(tmp, file); return; }
+    catch (e) { if (i >= 20 || !['EPERM', 'EACCES', 'EBUSY'].includes(e.code)) { try { fs.rmSync(tmp, {force: true}); } catch {} throw e; } Atomics.wait(PAUSE, 0, 0, 10 + i * 5); }
+  }
+}
 export function readJson(file, fallback) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; } }
 export function writeJson(file, value, space = 1) {
   fs.mkdirSync(path.dirname(file), {recursive: true});
-  const tmp = `${file}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(value, null, space)); fs.renameSync(tmp, file);
+  const tmp = `${file}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(value, null, space)); replaceFile(tmp, file);
 }
 export function writeText(file, text) {
   fs.mkdirSync(path.dirname(file), {recursive: true});
-  const tmp = `${file}.${process.pid}.tmp`; fs.writeFileSync(tmp, text); fs.renameSync(tmp, file);
+  const tmp = `${file}.${process.pid}.tmp`; fs.writeFileSync(tmp, text); replaceFile(tmp, file);
 }
 export const safeFileName = s => String(s || '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled';
 /** Normalise a UK-style phone number to +44… (keeps other international numbers as they are). */

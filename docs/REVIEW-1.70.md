@@ -127,6 +127,7 @@ A bug review found these, now fixed:
 - **Voice:**
   - Undo, restart to update, call me, the audit, self-review, features and "message me" need the name, even right after JARVIS speaks.
   - "approve/deny <n>" and "ring me at" are added to the dictation lead-ins, so Windows speech can actually hear them.
+- **Saving on Windows:** antivirus or indexing can hold a file for a moment, so the save-by-rename is refused (EPERM). It happened in 2 of 4,000 writes on this PC. In JARVIS Core that aborted handling a WhatsApp message that was already marked read, so the message was lost. It showed up as flaky tests; the log said "Checking your messages: EPERM … rename". JARVIS Core's saves (util.js, approvals.js, selfupdate.js, store.js secrets, boot.js) now retry the rename for up to about a second. With the retry, 8,000 writes gave 0 failures. The older stores (calendar, to-dos, ideas, tower, missions, settings) still rename once; they report an error instead of losing data silently.
 - **Other:**
   - A self-update was rolled back whenever Core failed to start (markGood waited for `core`).
   - Keep-awake was never released when switched off.
@@ -136,7 +137,7 @@ A bug review found these, now fixed:
   - A call still running at 6 minutes counted as missed.
 
 Tested:
-- `tests/core/core.test.mjs` on Windows: 121 passed. It now imports through `pathToFileURL`, and the Windows stream case is checked as "never copied, and loading it is refused".
+- `tests/core/core.test.mjs` on Windows: 121 passed, six runs in a row after the save fix (before it, 2 of 7 runs dropped a message), and once against the files taken out of the release zip. It now imports through `pathToFileURL`, and the Windows stream case is checked as "never copied, and loading it is refused".
 - The build started in a copy of the installed app with a copied profile: it runs as 1.80.1 through boot.js, and the hall bar has the meeting, JARVIS Core and Ideas buttons side by side.
 - `boot.test.mjs` (Linux/Xvfb) gained a tampered-version case and a made-up-name case, but was not run here.
 

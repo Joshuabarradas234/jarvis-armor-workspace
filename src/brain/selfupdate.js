@@ -39,6 +39,15 @@ const SENSITIVE = ['src/brain/maildesk.js', 'src/brain/email.js', 'src/brain/pho
 const SNEAKY = /[\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2060\uFEFF]/;   // characters that make code look different from what runs
 const MAX_LINE = 2000, MAX_DIFF = 150000;
 const USER_CHANNELS = ['whatsapp', 'ui', 'voice'];   // never a text message: those can be faked
+/** Put a freshly written temp file in place. Windows can hold a file for a moment (antivirus, indexing, backup), so a refused
+ *  rename is tried again for up to about a second instead of losing the save. */
+const PAUSE = new Int32Array(new SharedArrayBuffer(4));
+export function replaceFile(tmp, file) {
+  for (let i = 0; ; i++) {
+    try { fs.renameSync(tmp, file); return; }
+    catch (e) { if (i >= 20 || !['EPERM', 'EACCES', 'EBUSY'].includes(e.code)) { try { fs.rmSync(tmp, {force: true}); } catch {} throw e; } Atomics.wait(PAUSE, 0, 0, 10 + i * 5); }
+  }
+}
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
 const rel = p => p.split(path.sep).join('/');
 
@@ -93,7 +102,7 @@ export class SelfUpdater {
     this.installed = boot.asarRoot || boot.root;
   }
   readJson(f, d) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } }
-  writeJson(f, v) { fs.mkdirSync(path.dirname(f), {recursive: true}); const t = `${f}.${process.pid}.tmp`; fs.writeFileSync(t, JSON.stringify(v, null, 1)); fs.renameSync(t, f); }
+  writeJson(f, v) { fs.mkdirSync(path.dirname(f), {recursive: true}); const t = `${f}.${process.pid}.tmp`; fs.writeFileSync(t, JSON.stringify(v, null, 1)); replaceFile(t, f); }
   state() { const s = this.readJson(this.stateFile, null); return s && s.versions ? {current: null, events: [], n: 0, ...s} : {current: null, versions: {}, events: [], n: 0}; }
   updates() { const u = this.readJson(this.updatesFile, []); return Array.isArray(u) ? u : []; }
   saveUpdates(list) { this.writeJson(this.updatesFile, list.slice(-60)); }
