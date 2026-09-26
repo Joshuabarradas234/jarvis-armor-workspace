@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self' jarvis:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' jarvis: data: blob:; connect-src 'self' jarvis: blob: data:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'"><title>JARVIS // VIEW</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#04070a;cursor:none;font-family:"Segoe UI",system-ui,sans-serif}
+.vs-bg{position:absolute;inset:-1.5%;background:#04070a center/cover no-repeat;opacity:0;transition:opacity 1.4s ease}
+.vs-bg.in{opacity:1}
+.vs-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(2,5,8,.55) 0,rgba(2,5,8,0) 14%,rgba(2,5,8,0) 82%,rgba(2,5,8,.6) 100%),radial-gradient(ellipse at 50% 55%,transparent 60%,rgba(0,0,0,.4) 100%)}
+.vs-top{position:absolute;left:28px;right:28px;top:20px;display:flex;justify-content:space-between;align-items:center;color:#cfd9e0;font:500 11px Consolas,monospace;letter-spacing:.24em;text-transform:uppercase;text-shadow:0 1px 6px #000}
+.vs-top i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--vs,#f5c542);box-shadow:0 0 10px var(--vs,#f5c542);margin-right:10px;vertical-align:1px}
+.vs-top b{color:var(--vs,#f5c542);font-weight:600}
+.dk-scene{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.vs-time{font:300 22px "Segoe UI",system-ui,sans-serif;letter-spacing:.06em;color:#eef3f6}
+</style>
+<script type="module" src="./assets/vista.js"></script>
+</head><body><div class="vs-bg"></div><div class="vs-shade"></div><header class="vs-top"><span><i></i><b class="vs-hall">HALL</b> · <span class="vs-ai">VIEW</span></span><span class="vs-time">--:--</span></header></body></html>

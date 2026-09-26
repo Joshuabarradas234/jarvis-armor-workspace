@@ -1,0 +1,67 @@
+{
+  "name": "jarvis-armor-workspace",
+  "version": "1.70.0",
+  "description": "A dual-display cinematic Windows armor workspace",
+  "author": "Armor Workspace",
+  "private": true,
+  "type": "module",
+  "main": "src/main/main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "44.4.3",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.joshua.jarvis-armor-workspace",
+    "productName": "JARVIS Armor Workspace",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**",
+      "dist/**",
+      "config/**",
+      "package.json",
+      "!src/settings/view.js",
+      "!src/settings/workstations.js",
+      "!src/settings/wizard.js"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      },
+      {
+        "from": "scripts/windows",
+        "to": "windows"
+      },
+      "LICENSE",
+      "THIRD-PARTY-NOTICES.txt"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icons/app.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JARVIS Armor Workspace",
+      "runAfterFinish": true,
+      "artifactName": "JARVIS-Armor-Workspace-Setup-${version}.${ext}"
+    }
+  }
+}

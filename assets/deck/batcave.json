@@ -1,0 +1,20 @@
+{
+ "w": 2560,
+ "h": 1438,
+ "boat": {
+  "model": "batcave-boat.glb",
+  "x": 1420,
+  "y": 1070,
+  "len": 700,
+  "heading": -70,
+  "tilt": 22,
+  "draft": 0.55,
+  "reflection": 0.4,
+  "swell": 1,
+  "ripples": 1,
+  "exposure": 1.0,
+  "under": 0.3
+ },
+ "sound": "cave",
+ "volume": 0.5
+}

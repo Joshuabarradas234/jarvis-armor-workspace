@@ -1,0 +1,99 @@
+Third-party notices for bundled application components
+
+
+three
+==================================================
+The MIT License
+
+Copyright © 2010-2026 three.js authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+
+gsap 3.15.0
+==================================================
+Copyright 2008-2026, GreenSock. All rights reserved.
+Author: Jack Doyle, jack@greensock.com
+Subject to the GSAP standard license: https://gsap.com/standard-license
+https://gsap.com
+
+systeminformation
+==================================================
+The MIT License (MIT)
+
+Copyright (c) 2014-2026 Sebastian Hildebrandt
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+Electron and Chromium license notices ship inside the Windows runtime. Development-tool dependencies retain their licenses in their installed packages.
+
+------------------------------------------------------------------------
+MediaPipe Hands (@mediapipe/hands 0.4.1675469240) — dist/vendor/hands/
+Copyright 2020-2023 The MediaPipe Authors.
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use these files except in compliance with the License. You may obtain a copy
+at http://www.apache.org/licenses/LICENSE-2.0. Distributed on an "AS IS"
+BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND. Used unmodified; the
+hand model runs on this computer and no camera video leaves it.
+
+------------------------------------------------------------------------
+MediaPipe Tasks Vision (@mediapipe/tasks-vision 1.0.1) — dist/vendor/tasks-vision/,
+assets/handtrack/vision_wasm_module_internal.*, and the MediaPipe Hand Landmarker
+model (assets/handtrack/hand_landmarker.task, float16 v1).
+Copyright 2022-2025 The MediaPipe Authors / Google LLC.
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use these files except in compliance with the License. You may obtain a copy
+at http://www.apache.org/licenses/LICENSE-2.0. Distributed on an "AS IS"
+BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND. Used unmodified; the
+hand tracking runs on this computer, on its own thread, and no camera video
+leaves it.
+
+------------------------------------------------------------------------
+three.js 0.170.0 (build + GLTFLoader + BufferGeometryUtils) — dist/vendor/three/
+Copyright © 2010-2024 three.js authors. MIT License: permission is hereby granted,
+free of charge, to any person obtaining a copy of this software, to deal in the
+Software without restriction, subject to including the copyright notice and this
+permission notice in all copies. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY
+OF ANY KIND. Full text: dist/vendor/three/LICENSE.txt
+
+----------------------------------------------------------------------
+The earth and maps (v9.11)
+----------------------------------------------------------------------
+Leaflet 1.9.4 — BSD 2-Clause License, Copyright (c) 2010-2023, Vladimir Agafonkin; (c) 2010-2011, CloudMade.
+topojson-client 3.1.0 — ISC License, Copyright 2012-2019 Michael Bostock.
+world-atlas 2.0.2 — ISC License, Copyright 2013-2019 Michael Bostock; the country shapes come from Natural Earth (public domain).
+Populated places list — Natural Earth (public domain), naturalearthdata.com.
+Globe imagery — NASA Visible Earth "Blue Marble" and "Black Marble" (public domain), as packaged in the three-globe examples (MIT, Vasco Asturiano).
+Street maps shown live: © OpenStreetMap contributors (ODbL), map tiles © CARTO. Satellite close-ups shown live: Sentinel-2 cloudless — s2maps.eu by EOX IT Services GmbH (contains modified Copernicus Sentinel data), CC BY-NC-SA 4.0. Place search: Nominatim / OpenStreetMap. Weather: Open-Meteo.

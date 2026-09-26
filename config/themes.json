@@ -1,0 +1,836 @@
+[
+  {
+    "id": "ironman",
+    "name": "Armor Hall",
+    "assistant": "Jarvis",
+    "purpose": "EfficiencAI",
+    "wallpaper": "wallpaper/ironman.jpg",
+    "accent": "#7fd6e8",
+    "accentWarm": "#d5b27a",
+    "eyebrow": "MARK / EFFICIENCAI",
+    "heading": "Your workspace.",
+    "headingEm": "Armored.",
+    "readyLine": "Ready when you are, sir.",
+    "switchPhrases": [
+      "suit up",
+      "show iron man",
+      "show the armor hall",
+      "show the armour hall",
+      "bring jarvis back",
+      "iron man",
+      "armor hall",
+      "armour hall",
+      "back to jarvis",
+      "lights on",
+      "open armor hall",
+      "open the armor hall",
+      "open the armour hall",
+      "open iron man",
+      "open the iron man hall",
+      "open the iron man lab",
+      "the armor hall",
+      "the armour hall",
+      "the hall",
+      "hall"
+    ],
+    "suits": [
+      {
+        "id": "im1",
+        "name": "Mark One",
+        "accent": "#b8c4cc",
+        "hotspot": {
+          "x": 5.2,
+          "y": 33.43,
+          "w": 15.59,
+          "h": 34.39
+        },
+        "plaque": {
+          "x": 12.81,
+          "y": 38.74
+        },
+        "eyes": {
+          "x": 12.79,
+          "y": 46.78,
+          "w": 2.49,
+          "h": 1.11
+        }
+      },
+      {
+        "id": "im2",
+        "name": "Mark Two",
+        "accent": "#c9c3ae",
+        "hotspot": {
+          "x": 20.79,
+          "y": 33.43,
+          "w": 13.51,
+          "h": 34.39
+        },
+        "plaque": {
+          "x": 25.62,
+          "y": 39.4
+        },
+        "eyes": {
+          "x": 26.38,
+          "y": 47.0,
+          "w": 2.49,
+          "h": 1.11
+        }
+      },
+      {
+        "id": "im3",
+        "name": "Mark XXXIX",
+        "accent": "#9aa7b0",
+        "hotspot": {
+          "x": 32.23,
+          "y": 33.43,
+          "w": 12.47,
+          "h": 34.39
+        },
+        "plaque": {
+          "x": 37.5,
+          "y": 39.97
+        },
+        "eyes": {
+          "x": 38.77,
+          "y": 46.45,
+          "w": 2.49,
+          "h": 1.11
+        }
+      },
+      {
+        "id": "im4",
+        "name": "Mark Five",
+        "accent": "#d95a55",
+        "hotspot": {
+          "x": 44.7,
+          "y": 33.43,
+          "w": 13.51,
+          "h": 34.39
+        },
+        "plaque": {
+          "x": 50.0,
+          "y": 40.51
+        },
+        "eyes": {
+          "x": 51.77,
+          "y": 47.0,
+          "w": 2.49,
+          "h": 1.11
+        }
+      },
+      {
+        "id": "im5",
+        "name": "Bay 05",
+        "accent": "#8a949c",
+        "hotspot": {
+          "x": 58.21,
+          "y": 33.43,
+          "w": 12.47,
+          "h": 34.39
+        },
+        "plaque": {
+          "x": 61.88,
+          "y": 40.51
+        },
+        "eyes": {
+          "x": 63.08,
+          "y": 46.78,
+          "w": 2.49,
+          "h": 1.11
+        }
+      },
+      {
+        "id": "im6",
+        "name": "Bay 06",
+        "accent": "#d3a44a",
+        "hotspot": {
+          "x": 69.65,
+          "y": 33.43,
+          "w": 13.51,
+          "h": 34.39
+        },
+        "plaque": {
+          "x": 74.38,
+          "y": 37.8
+        },
+        "eyes": {
+          "x": 75.68,
+          "y": 47.0,
+          "w": 2.49,
+          "h": 1.11
+        }
+      },
+      {
+        "id": "im7",
+        "name": "Bay 07",
+        "accent": "#c74b3c",
+        "hotspot": {
+          "x": 83.16,
+          "y": 33.43,
+          "w": 15.59,
+          "h": 34.39
+        },
+        "plaque": {
+          "x": 87.5,
+          "y": 37.43
+        },
+        "eyes": {
+          "x": 89.08,
+          "y": 45.78,
+          "w": 3.12,
+          "h": 1.44
+        }
+      },
+      {
+        "id": "im8",
+        "name": "JARVIS Core",
+        "accent": "#6fc8f5",
+        "isVehicle": true,
+        "hotspot": {
+          "x": 30.3,
+          "y": 68.0,
+          "w": 41.1,
+          "h": 14.0
+        },
+        "plaque": {
+          "x": 50.82,
+          "y": 84.0
+        }
+      }
+    ],
+    "plaque": {
+      "w": 4.7
+    },
+    "media": {
+      "transitionVideo": "jarvis://asset/transitions/ironman.mp4",
+      "transitionSound": "jarvis://asset/transitions/ironman.m4a",
+      "chromaKey": false,
+      "start": 0,
+      "end": 0,
+      "preVideo": "jarvis://asset/transitions/ironman-flash.mp4",
+      "preSound": "jarvis://asset/transitions/ironman-flash.m4a",
+      "preFlashAt": 2.0,
+      "blackout": true
+    },
+    "eyes": "slit",
+    "face": {
+      "x": 0.5,
+      "y": 0.39,
+      "w": 0.2,
+      "h": 0.04
+    },
+    "overlay": {
+      "video": "jarvis://asset/transitions/jarvis-ring.mp4",
+      "x": 50.84,
+      "y": 57.23,
+      "w": 45.96,
+      "h": 50.42,
+      "blend": "screen",
+      "dim": 0,
+      "gain": 1.25,
+      "ellipse": false,
+      "fill": true
+    },
+    "voice": {
+      "prefer": [
+        "Microsoft David Desktop",
+        "David",
+        "en-US"
+      ],
+      "rate": 0,
+      "address": "sir",
+      "lines": {
+        "select": "Right away, sir. Opening {suit}.",
+        "wake": "Right away, sir.",
+        "home": "Returning to the hall, sir.",
+        "back": "Of course, sir.",
+        "standdown": "Standing down, sir.",
+        "theme": "Right away, sir.",
+        "unknown": "Sir?",
+        "tab-next": "Next page, sir.",
+        "tab-prev": "Going back, sir.",
+        "tab-close": "Closed, sir.",
+        "tab-reload": "Refreshing, sir.",
+        "open-folder": "Opening your files, sir.",
+        "launch-all": "Setting up your workspace, sir.",
+        "session-clear": "Starting fresh, sir.",
+        "resume": "Picking up where you left off, sir.",
+        "layout-apply": "Arranging your screens, sir."
+      },
+      "readySound": "voice/ironman-ready.wav",
+      "pack": "jarvis",
+      "packMode": "random",
+      "chatter": {
+        "everyMinutes": 9,
+        "chance": 0.5
+      },
+      "greetAfter": 1500
+    }
+  },
+  {
+    "id": "batcave",
+    "name": "Batcave",
+    "assistant": "Alfred",
+    "purpose": "Family business",
+    "wallpaper": "wallpaper/batcave.jpg",
+    "accent": "#8fb3d9",
+    "accentWarm": "#e0c24a",
+    "eyebrow": "CAVE / FAMILY BUSINESS",
+    "heading": "Going dark.",
+    "headingEm": "Family first.",
+    "readyLine": "The cave is ready, sir.",
+    "switchPhrases": [
+      "going dark",
+      "show the batcave",
+      "show the cave",
+      "bring alfred in",
+      "go dark",
+      "lights out",
+      "batcave",
+      "to the batcave",
+      "show batman",
+      "batman",
+      "open batcave",
+      "open the batcave",
+      "open the cave",
+      "open batman",
+      "the cave",
+      "cave",
+      "the batcave"
+    ],
+    "suits": [
+      {
+        "id": "bc1",
+        "name": "Cowl 01",
+        "accent": "#d94b4b",
+        "hotspot": {
+          "x": 8,
+          "y": 37,
+          "w": 11,
+          "h": 30
+        },
+        "plaque": {
+          "x": 12.81,
+          "y": 39.64
+        },
+        "eyes": {
+          "x": 13.9,
+          "y": 44.9,
+          "w": 2.3,
+          "h": 0.9
+        },
+        "emblem": {
+          "x": 17.0,
+          "y": 32.37,
+          "w": 3.0
+        }
+      },
+      {
+        "id": "bc2",
+        "name": "Cowl 02",
+        "accent": "#5d7a9b",
+        "hotspot": {
+          "x": 20,
+          "y": 37,
+          "w": 11,
+          "h": 30
+        },
+        "plaque": {
+          "x": 25.62,
+          "y": 39.64
+        },
+        "eyes": {
+          "x": 25.9,
+          "y": 45.2,
+          "w": 2.3,
+          "h": 0.9
+        },
+        "emblem": {
+          "x": 28.25,
+          "y": 34.5,
+          "w": 3.0
+        }
+      },
+      {
+        "id": "bc3",
+        "name": "Cowl 03",
+        "accent": "#9aa4ad",
+        "hotspot": {
+          "x": 32,
+          "y": 37,
+          "w": 11,
+          "h": 30
+        },
+        "plaque": {
+          "x": 37.81,
+          "y": 39.64
+        },
+        "eyes": {
+          "x": 38.1,
+          "y": 44.95,
+          "w": 2.3,
+          "h": 0.9
+        },
+        "emblem": {
+          "x": 39.19,
+          "y": 34.83,
+          "w": 3.0
+        }
+      },
+      {
+        "id": "bc8",
+        "name": "Absolute Batman",
+        "accent": "#9aa4ad",
+        "hotspot": {
+          "x": 44.6,
+          "y": 37,
+          "w": 11,
+          "h": 13
+        },
+        "plaque": {
+          "x": 50.0,
+          "y": 39.64
+        },
+        "eyes": {
+          "x": 50.1,
+          "y": 45.4,
+          "w": 2.3,
+          "h": 0.9
+        },
+        "emblem": {
+          "x": 50.19,
+          "y": 35.17,
+          "w": 3.0
+        }
+      },
+      {
+        "id": "bc5",
+        "name": "Cowl 05",
+        "accent": "#b3894d",
+        "hotspot": {
+          "x": 56,
+          "y": 37,
+          "w": 11,
+          "h": 30
+        },
+        "plaque": {
+          "x": 62.5,
+          "y": 39.64
+        },
+        "eyes": {
+          "x": 62.67,
+          "y": 45.9,
+          "w": 2.3,
+          "h": 0.9
+        },
+        "emblem": {
+          "x": 60.94,
+          "y": 34.83,
+          "w": 3.0
+        }
+      },
+      {
+        "id": "bc6",
+        "name": "Cowl 06",
+        "accent": "#7bbf4e",
+        "hotspot": {
+          "x": 68,
+          "y": 37,
+          "w": 11,
+          "h": 30
+        },
+        "plaque": {
+          "x": 75.31,
+          "y": 39.64
+        },
+        "eyes": {
+          "x": 74.85,
+          "y": 44.85,
+          "w": 2.3,
+          "h": 0.9
+        },
+        "emblem": {
+          "x": 72.5,
+          "y": 33.94,
+          "w": 3.0
+        }
+      },
+      {
+        "id": "bc7",
+        "name": "Cowl 07",
+        "accent": "#aab4bc",
+        "hotspot": {
+          "x": 81,
+          "y": 37,
+          "w": 11,
+          "h": 30
+        },
+        "plaque": {
+          "x": 88.44,
+          "y": 39.64
+        },
+        "eyes": {
+          "x": 87.9,
+          "y": 45.4,
+          "w": 2.3,
+          "h": 0.9
+        },
+        "emblem": {
+          "x": 84.69,
+          "y": 32.37,
+          "w": 3.0
+        }
+      },
+      {
+        "id": "bc4",
+        "name": "Vehicle Bay",
+        "accent": "#e0c24a",
+        "hotspot": {
+          "x": 33,
+          "y": 50,
+          "w": 34,
+          "h": 24
+        },
+        "isVehicle": true,
+        "plaque": {
+          "x": 50.1,
+          "y": 86.0
+        },
+        "canopy": {
+          "x": 53.45,
+          "y": 57.45,
+          "w": 5.8,
+          "h": 2.7
+        }
+      }
+    ],
+    "plaque": {
+      "w": 6.2
+    },
+    "media": {
+      "preVideo": "jarvis://asset/transitions/batcave-bats.mp4",
+      "preSound": "jarvis://asset/transitions/batcave-bats.m4a",
+      "preFlashAt": 1.6,
+      "blackout": true,
+      "transitionVideo": "jarvis://asset/transitions/batcave-main.mp4",
+      "transitionSound": "jarvis://asset/transitions/batcave-main.m4a",
+      "chromaKey": false,
+      "start": 0,
+      "end": 0
+    },
+    "eyes": "narrow",
+    "face": {
+      "x": 0.5,
+      "y": 0.335,
+      "w": 0.19,
+      "h": 0.035
+    },
+    "overlay": {
+      "video": "jarvis://asset/transitions/batmobile7-spin.webm",
+      "intro": "jarvis://asset/transitions/batmobile7-intro.webm",
+      "x": 50.4,
+      "y": 63.5,
+      "w": 58.0,
+      "h": 58.4,
+      "blend": "normal",
+      "dim": 0,
+      "gain": 1.0
+    },
+    "voice": {
+      "prefer": [
+        "Microsoft David Desktop",
+        "David",
+        "en-US"
+      ],
+      "rate": -2,
+      "address": "master Bruce",
+      "lines": {
+        "select": "Opening {suit}, master Bruce.",
+        "wake": "As you wish, master Bruce.",
+        "home": "Back to the cave, master Bruce.",
+        "back": "Very good, sir.",
+        "standdown": "Do get some sleep, master Bruce.",
+        "theme": "As you wish, master Bruce.",
+        "unknown": "I beg your pardon, sir?",
+        "tab-next": "The next one, master Bruce.",
+        "tab-prev": "Back again, sir.",
+        "tab-close": "Closed, master Bruce.",
+        "tab-reload": "Refreshing, sir.",
+        "open-folder": "Your files, master Bruce.",
+        "launch-all": "Setting the cave up, master Bruce.",
+        "session-clear": "A clean slate, sir.",
+        "resume": "Exactly as you left it, master Bruce.",
+        "layout-apply": "Setting out your screens, master Bruce."
+      },
+      "pack": "alfred",
+      "packMode": "random",
+      "chatter": {
+        "everyMinutes": 8,
+        "chance": 0.55
+      },
+      "greetAfter": 1600
+    }
+  },
+  {
+    "id": "spiderman",
+    "name": "Web Lab",
+    "assistant": "Karen",
+    "purpose": "Personal projects",
+    "wallpaper": "wallpaper/spiderman.jpg",
+    "accent": "#7fb4ff",
+    "accentWarm": "#e04b4b",
+    "eyebrow": "LAB / PERSONAL",
+    "heading": "Web lab.",
+    "headingEm": "Online.",
+    "readyLine": "Suits are ready, Peter.",
+    "switchPhrases": [
+      "show spider man",
+      "show spiderman",
+      "show the web lab",
+      "bring karen in",
+      "spider man",
+      "spiderman",
+      "web lab",
+      "show the lab",
+      "open web lab",
+      "open the web lab",
+      "open the lab",
+      "open spider man",
+      "open spiderman",
+      "the web lab",
+      "the lab",
+      "lab"
+    ],
+    "suits": [
+      {
+        "id": "sm1",
+        "name": "Case 01",
+        "accent": "#d24a4a",
+        "hotspot": {
+          "x": 3,
+          "y": 24,
+          "w": 13,
+          "h": 50
+        },
+        "plaque": {
+          "x": 9.38,
+          "y": 37.38
+        },
+        "eyes": {
+          "x": 9.21,
+          "y": 44.6,
+          "w": 2.6,
+          "h": 1.4
+        }
+      },
+      {
+        "id": "sm2",
+        "name": "Case 02",
+        "accent": "#c7c7c7",
+        "hotspot": {
+          "x": 16,
+          "y": 26,
+          "w": 13,
+          "h": 48
+        },
+        "plaque": {
+          "x": 23.12,
+          "y": 38.71
+        },
+        "eyes": {
+          "x": 23.2,
+          "y": 43.1,
+          "w": 2.6,
+          "h": 1.4
+        }
+      },
+      {
+        "id": "sm3",
+        "name": "Case 03",
+        "accent": "#e45a5a",
+        "hotspot": {
+          "x": 30,
+          "y": 28,
+          "w": 13,
+          "h": 45
+        },
+        "plaque": {
+          "x": 36.88,
+          "y": 40.38
+        },
+        "eyes": {
+          "x": 36.5,
+          "y": 47.1,
+          "w": 2.6,
+          "h": 1.4
+        }
+      },
+      {
+        "id": "sm4",
+        "name": "Case 04",
+        "accent": "#7fb4ff",
+        "hotspot": {
+          "x": 44,
+          "y": 29,
+          "w": 12,
+          "h": 44
+        },
+        "plaque": {
+          "x": 50.0,
+          "y": 38.51
+        },
+        "eyes": {
+          "x": 49.85,
+          "y": 45.1,
+          "w": 2.6,
+          "h": 1.4
+        }
+      },
+      {
+        "id": "sm5",
+        "name": "Case 05",
+        "accent": "#5a7fe4",
+        "hotspot": {
+          "x": 57,
+          "y": 28,
+          "w": 13,
+          "h": 45
+        },
+        "plaque": {
+          "x": 62.5,
+          "y": 39.6
+        },
+        "eyes": {
+          "x": 62.8,
+          "y": 43.6,
+          "w": 2.6,
+          "h": 1.4
+        }
+      },
+      {
+        "id": "sm6",
+        "name": "Case 06",
+        "accent": "#e46a4a",
+        "hotspot": {
+          "x": 71,
+          "y": 26,
+          "w": 13,
+          "h": 48
+        },
+        "plaque": {
+          "x": 76.56,
+          "y": 35.93
+        },
+        "eyes": {
+          "x": 76.3,
+          "y": 44.1,
+          "w": 2.6,
+          "h": 1.4
+        }
+      },
+      {
+        "id": "sm7",
+        "name": "Case 07",
+        "accent": "#e0b44a",
+        "hotspot": {
+          "x": 84,
+          "y": 24,
+          "w": 14,
+          "h": 50
+        },
+        "plaque": {
+          "x": 90.31,
+          "y": 35.54
+        },
+        "eyes": {
+          "x": 89.7,
+          "y": 42.6,
+          "w": 3.0,
+          "h": 1.7
+        }
+      },
+      {
+        "id": "sm8",
+        "name": "Reactor Vault",
+        "accent": "#e8203a",
+        "isVehicle": true,
+        "hotspot": {
+          "x": 38,
+          "y": 74,
+          "w": 24,
+          "h": 16
+        },
+        "plaque": {
+          "x": 50.07,
+          "y": 91.2
+        }
+      }
+    ],
+    "plaque": {
+      "w": 9.8
+    },
+    "media": {
+      "preVideo": "",
+      "preSound": "",
+      "preFlashAt": 0,
+      "blackout": true,
+      "transitionVideo": "jarvis://asset/transitions/spiderman-main.mp4",
+      "transitionSound": "jarvis://asset/transitions/spiderman-main.m4a",
+      "chromaKey": false,
+      "start": 0,
+      "end": 0,
+      "reveal": "lens"
+    },
+    "eyes": "lens",
+    "face": {
+      "x": 0.5,
+      "y": 0.27,
+      "w": 0.19,
+      "h": 0.05
+    },
+    "voice": {
+      "prefer": [
+        "Microsoft Zira Desktop",
+        "Zira",
+        "en-US"
+      ],
+      "rate": 1,
+      "address": "Peter",
+      "lines": {
+        "select": "On it \u2014 opening {suit}.",
+        "wake": "Hey Peter, let's get to work.",
+        "home": "Heading back to the lab.",
+        "back": "Sure thing.",
+        "standdown": "Powering down. See you, Peter.",
+        "theme": "You got it.",
+        "unknown": "Sorry, I missed that.",
+        "tab-next": "Next one.",
+        "tab-prev": "Going back.",
+        "tab-close": "Closed.",
+        "tab-reload": "Refreshing.",
+        "open-folder": "Here are your files, Peter.",
+        "launch-all": "Setting everything up.",
+        "session-clear": "Clean slate.",
+        "resume": "Picking up where you left off, Peter.",
+        "layout-apply": "Laying out your screens, Peter."
+      },
+      "pack": "karen",
+      "packMode": "random",
+      "greetAfter": 2000,
+      "chatter": {
+        "everyMinutes": 7,
+        "chance": 0.6
+      }
+    },
+    "overlay": {
+      "video": "jarvis://asset/transitions/spidey3.webm",
+      "x": 50.07,
+      "y": 59.6,
+      "w": 26.0,
+      "h": 45.8,
+      "blend": "normal",
+      "dim": 0,
+      "gain": 1.0
+    }
+  }
+]
