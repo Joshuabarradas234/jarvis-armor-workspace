@@ -40,10 +40,14 @@ Also found and fixed:
 - Control deck page edits now update the hall's progress indicator. Oversized requests are cut off.
 - Small ones: second-instance launch during startup; the 15→19.2 s startup migration re-applied every launch; the focus ring reset after ±5; quick-panel typing wiped every 60 s; folder listing race; duplicate holo panels; map lookups now queued (one a second); the PWR stat could hide for good.
 
-## Still open (lower priority)
-- Hall-only timers (`__pullBoard`, quick-panel refresh, Skip-button poll, `__lockPlatesToHall` rAF) also run in the settings, wallpaper, console and identify windows. Guard them with `R==='main'`, and pause the plate loop outside ARMOR_HALL/SUIT_HOVER.
-- Nothing listens to `layout-result`; window-arrangement failures after "Launch all" are silent.
-- "close this page" / "close the tab" always match panel-close, so the tab-close versions of those phrases never fire.
+## 1.70.2
+The three items left open after 1.70.1:
+- Hall-only timers (`__pullBoard`, quick-panel refresh, `__lockPlatesToHall`) run in the main window only. The Skip-button poll runs in main and console, where transitions play. The plate loop checks every 200 ms instead of every frame outside ARMOR_HALL/SUIT_HOVER.
+- The main window now listens to `layout-result`. Errors always show, and voice "arrange my screens" / "launch everything" (sent with `manual:true`) report what was placed and what wasn't open. The routine tidy-up when a suit opens stays quiet. The console's "Launch links & apps" now broadcasts `launch-result`, so failures show on the suit page.
+- "close this page" / "close the page" / "close the tab" are a new `page-close` action: inside a suit with tabs it closes the tab in front (with the hall's tab-close line); otherwise it closes the floating panel. "close tab" / "close this tab" stay tab-only.
+
+## Still open
+- Nothing known.
 
 ## How to test (Linux, as used here)
 - Test hooks (JARVIS_TEST_EVAL / JARVIS_TEST_THEME) are inserted into src/main/main.js only for testing and must be removed before building.

@@ -194,7 +194,7 @@ function scheduleChatter(){
 }
 /** Spoken summary of where everything stands. */
 /* ---------- conversation: greetings, thanks, the daily briefing, maps ---------- */
-const TALK=['attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
+const TALK=['page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
 function partOfDay(){const h=new Date().getHours();return h<12?'morning':h<18?'afternoon':'evening';}
 function addr(){return workstations.theme().voice?.address||'sir';}
 const pick=a=>a[Math.floor(Math.random()*a.length)];
@@ -302,6 +302,10 @@ function talk(action,cmd={}){
     say(action==='map'?`Opening a map for ${cap(q)}.`:`Searching for ${q}.`);return true;
   }
   if(action==='panel-close-all'){broadcast('hologram',{kind:'close-all'});broadcast('globe',{cmd:'close'});say(pick(['All clear.',`Cleared, ${who}.`]));return true;}
+  if(action==='page-close'){   // "close this page": the tab in front inside a suit, otherwise the floating panel
+    if(machine?.value?.state==='MODULE'&&(tabs?.list?.()||[]).some(t=>!t.popped)){const done=dispatch('tab-close');if(done)acknowledge('tab-close');return done;}
+    return talk('panel-close');
+  }
   if(action==='panel-close'){broadcast('hologram',{kind:'close'});broadcast('globe',{cmd:'close'});say(pick(['Done.',`Closed, ${who}.`]));return true;}
   return false;
 }
@@ -490,8 +494,8 @@ function dispatch(action,id,opts={}){
     const current=machine.value.selected;
     try{
       if(action==='session-clear'){workstations.clearSession(current);return true;}
-      if(action==='layout-apply'){const s=workstations.suit(current);if(!s?.layout?.enabled||!s.layout.windows?.length)return false;applyLayout(current).then(r=>broadcast('layout-result',{id:current,...r})).catch(e=>log('layout',e.message));return true;}
-      if(action==='launch-all'){launchSuit(current).then(r=>{broadcast('launch-result',{id:current,...r});return applyLayout(current);}).then(r=>broadcast('layout-result',{id:current,...r})).catch(e=>log('launch',e.message));return true;}
+      if(action==='layout-apply'){const s=workstations.suit(current);if(!s?.layout?.enabled||!s.layout.windows?.length)return false;applyLayout(current).then(r=>broadcast('layout-result',{id:current,manual:true,...r})).catch(e=>log('layout',e.message));return true;}
+      if(action==='launch-all'){launchSuit(current).then(r=>{broadcast('launch-result',{id:current,...r});return applyLayout(current);}).then(r=>broadcast('layout-result',{id:current,manual:true,...r})).catch(e=>log('launch',e.message));return true;}
       if(action==='open-folder'){const suit=workstations.suit(current);if(!suit.folder)return false;shell.openPath(suit.folder).catch(e=>log('launch',e.message));return true;}
       const list=tabs?.list?.()||[];if(!list.length)return false;
       const i=Math.max(0,list.findIndex(t=>t.active));
@@ -827,7 +831,7 @@ async function api(event,method,payload){
     case 'calendar-delete':return calendar.remove(payload);
     case 'weather':if(Date.now()-weatherChecked>600000||!weatherCache){weatherChecked=Date.now();try{weatherCache=await weather(settings.get().weather);}catch(e){weatherCache={status:'WEATHER UNAVAILABLE',error:e.message};}}return weatherCache;
     case 'media-control':if(!['play','pause','previous','next','stop'].includes(payload))throw Error('Invalid media command.');broadcast('media-control',payload);return true;
-    case 'module-control':if(!['launch-all'].includes(payload))throw Error('Invalid module control.');if(payload==='launch-all')return launchSuit(machine.value.selected);return true;
+    case 'module-control':if(!['launch-all'].includes(payload))throw Error('Invalid module control.');if(payload==='launch-all'){const id=machine.value.selected;const r=await launchSuit(id);broadcast('launch-result',{id,...r});return r;}return true;   /* the suit page shows anything that failed to open */
     case 'wallpaper-test':await applySettings({wallpaper:true});settingsWindow?.hide();setTimeout(()=>{if(settingsWindow&&!settingsWindow.isDestroyed())settingsWindow.show();},4500);return displays.wallpaperStatus;
     case 'voice-command':{const text=String(payload).slice(0,500);status.commandHistory.unshift({time:Date.now(),text});status.commandHistory=status.commandHistory.slice(0,50);const command=parseCommand(text,voiceContext());if(command){if(dispatch(command.action,command.id,command))followUntil=Date.now()+12000;}broadcast('status',getStatus());return {handled:!!command};}
     case 'ai-key':{if(typeof payload!=='string'||payload.length>4000)throw Error('Invalid API key.');if(!safeStorage.isEncryptionAvailable()||(process.platform==='linux'&&safeStorage.getSelectedStorageBackend()==='basic_text'))throw Error('Secure credential storage unavailable.');const f=path.join(userDir,'ai-key.enc');if(!payload){if(fs.existsSync(f))fs.unlinkSync(f);}else fs.writeFileSync(f,safeStorage.encryptString(payload));return true;}

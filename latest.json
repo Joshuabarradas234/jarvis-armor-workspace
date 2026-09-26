@@ -1,5 +1,5 @@
 {
-  "version": "1.70.1",
+  "version": "1.70.2",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "Fixes lost suit tabs, settings resetting on one bad value, live backup restore, 3D memory leaks and frame-rate caps, hall-switch glitches, and voice/wallpaper on PCs with the default PowerShell policy."
+  "notes": "Hall timers now run only on the main screen (less CPU and battery use), window-arrangement results and errors are shown on screen, and \"close this page\" closes the tab you are looking at inside a suit."
 }

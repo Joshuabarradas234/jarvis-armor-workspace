@@ -111,7 +111,8 @@ export function parseCommand(text,context){
   const fm=FOCUS.exec(rest);if(fm){const w={five:5,ten:10,fifteen:15,twenty:20,'twenty five':25,thirty:30,forty:40,'forty five':45,fifty:50,sixty:60,ninety:90};
     let mins=/for an hour$/.test(rest)?60:/for half an hour$/.test(rest)?30:fm[1]?(Number(fm[1])||w[fm[1].trim()]||25):25;return {action:'focus',minutes:mins};}
   if(['close all the tabs','close all tabs','close all the pages','close all pages','close everything','clear the screen','close all the windows','close all windows'].includes(rest))return {action:'panel-close-all'};
-  if(['close the map','close map','close that','close it','close the window','close the panel','hide the map','get rid of that','close the search','close this','close the page','close this page','close the tab'].includes(rest))return {action:'panel-close'};
+  if(['close this page','close the page','close the tab'].includes(rest))return {action:'page-close'};   // a tab inside a suit, else a floating panel (decided in main)
+  if(['close the map','close map','close that','close it','close the window','close the panel','hide the map','get rid of that','close the search','close this'].includes(rest))return {action:'panel-close'};
   // "run mark 1", "start bay 3", "get to work on cowl 02"
   const RUN=/^(?:run|start|launch|execute|begin|get to work on|kick off)\s+(.+)$/;
   const rm=RUN.exec(rest);
@@ -145,7 +146,7 @@ export function parseCommand(text,context){
   // --- workstation controls, usable while a suit is open ---
   if(['next tab','next page','switch tab'].includes(rest))return {action:'tab-next'};
   if(['previous tab','last tab','go back a tab'].includes(rest))return {action:'tab-prev'};
-  if(['close tab','close this tab','close this page'].includes(rest))return {action:'tab-close'};
+  if(['close tab','close this tab'].includes(rest))return {action:'tab-close'};
   if(['reload','refresh','refresh the page','reload the page'].includes(rest))return {action:'tab-reload'};
   if(['open my folder','open the folder','show my files','open my files'].includes(rest))return {action:'open-folder'};
   if(['launch everything','open everything','set up my workspace','launch all'].includes(rest))return {action:'launch-all'};
@@ -185,7 +186,7 @@ export function buildGrammar(context){
   const THX=['thank you','thanks','cheers','nice one','well done','thank you very much'];
   const TOWERP=['open the tower','show me the tower','hows the tower','tower report','tower status','open the global map','global map','open the globe','world map','open the map','show me the earth','show me the world','the earth','satellite view','hologram view','night view','zoom in','zoom out','spin the globe','stop spinning','back to the globe','calibrate hands','close all the tabs','close everything','close this page'];
   const FOCUSP=['focus mode','start focus','stop focus','end focus',...[15,20,25,30,45,60,90].map(n=>`focus for ${n} minutes`),'focus for an hour','focus for half an hour'];
-  const TALK=[...STATUS,...BRIEFING,...FOCUSP,...TOWERP,'close the map','close that','close the window','hide the map'];
+  const TALK=[...STATUS,...BRIEFING,...FOCUSP,...TOWERP,'close the map','close that','close the window','hide the map','close the tab','close the page'];
   for(const n of [context.theme.assistant,...(GRAMMAR_ALIASES[active]||[])]){
     phrases.push(n,`hey ${n}`,`ok ${n}`,`hey ${n} wake up`,`hey ${n} lets get to work`);
     for(const g of GREETS)phrases.push(`${g} ${n}`);
