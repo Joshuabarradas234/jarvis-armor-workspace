@@ -24,11 +24,6 @@ if (J && VIEW === 'console') {
           <div class="dk-clock"><b class="dk-time">--:--</b><small class="dk-date"></small></div>
           <div class="dk-stats"><span>CPU <b class="dk-cpu">–</b></span><span>RAM <b class="dk-ram">–</b></span><span class="dk-batt-w">PWR <b class="dk-batt">–</b></span></div>
         </header>
-        <div class="dk-empty">
-          <div class="dk-chev"><i></i><i></i><i></i></div>
-          <h2>Throw it down here</h2>
-          <p>Pinch a tab or a floating page on the top screen and flick your hand down, or press <b>⤓</b> on it.<br>Flick back up (or press <b>⤒</b>) to send it home.</p>
-        </div>
         <nav class="dk-dock">
           <button type="button" data-dk="arrange" title="Tidy the pages into a grid"><i>⊞</i>Arrange</button>
           <button type="button" data-dk="up" title="Send every page back to the top screen"><i>⤒</i>Send all up</button>
@@ -54,22 +49,22 @@ if (J && VIEW === 'console') {
       this.theme = hall(); const [n, ai] = NAMES[this.theme] || NAMES.ironman;
       this.el.style.setProperty('--dk', ACCENT[this.theme] || '#7fd6e8');
       this.el.querySelector('.dk-hall').textContent = n; this.el.querySelector('.dk-ai').textContent = ai;
-      let b = null; try { b = await call('deck-backdrop', { theme: this.theme }); if (b?.url) this.backdrop(b.url); } catch {}
+      const th = this.theme; let b = null; try { b = await call('deck-backdrop', { theme: th }); } catch {} if (this.theme !== th) return; if (b?.url) this.backdrop(b.url);   // a quick A→B hall switch must not show A's picture
       this.living(b && !b.custom ? this.theme : null);
     },
     backdrop(url) { const bg = this.el.querySelector('.dk-bg'); const img = new Image(); img.onload = () => { bg.style.backgroundImage = `url("${url}")`; bg.classList.remove('in'); void bg.offsetWidth; bg.classList.add('in'); }; img.src = url; },
     /** the backdrop's living extras (a boat on the water, background sound), when the hall's picture has them */
     async living(theme) {
-      const key = theme || ''; if (this.liveKey === key) return; this.liveKey = key;
+      const key = theme || ''; if (this.liveKey === key) return; this.liveKey = key; const gen = this.liveGen = (this.liveGen || 0) + 1;
       try { this.scene?.dispose(); } catch {} this.scene = null;
       try { this.sound?.dispose(); } catch {} this.sound = null;
       this.el.querySelector('[data-dk=sound]').hidden = true;
       if (!theme) return;
       let cfg = null; try { const r = await fetch(`jarvis://asset/deck/${theme}.json`); if (r.ok) cfg = await r.json(); } catch {}
-      if (!cfg || this.liveKey !== key) return;
+      if (!cfg || this.liveGen !== gen) return;
       const { mountScene, makeSound } = await import('./deckscene.js');
-      if (cfg.boat) { try { const sc = await mountScene(this.el.querySelector('.dk-bg'), cfg, 'jarvis://asset/deck/'); if (this.liveKey === key) this.scene = sc; else sc.dispose(); } catch (e) { console.warn('[deck] scene', e); } }
-      if (cfg.sound && this.liveKey === key) {
+      if (cfg.boat) { try { const sc = await mountScene(this.el.querySelector('.dk-bg'), cfg, 'jarvis://asset/deck/'); if (this.liveGen === gen) this.scene = sc; else sc.dispose(); } catch (e) { console.warn('[deck] scene', e); } }
+      if (cfg.sound && this.liveGen === gen) {
         this.sound = makeSound(cfg.sound, cfg.volume ?? 0.5);
         const btn = this.el.querySelector('[data-dk=sound]'); btn.hidden = !this.sound;
         this.soundOn(this.soundPref());
@@ -131,7 +126,7 @@ if (J && VIEW === 'console') {
     if (!t) return; const q = s => D.el.querySelector(s);
     if (Number.isFinite(t.cpu)) q('.dk-cpu').textContent = Math.round(t.cpu) + '%';
     if (t.memory?.total) q('.dk-ram').textContent = Math.round(100 * t.memory.used / t.memory.total) + '%';
-    const b = t.battery; if (b && Number.isFinite(b.percent)) q('.dk-batt').textContent = Math.round(b.percent) + '%' + (b.charging ? ' ⚡' : ''); else q('.dk-batt-w').hidden = true;
+    const b = t.battery; if (b && Number.isFinite(b.percent)) q('.dk-batt').textContent = Math.round(b.percent) + '%' + (b.charging ? ' ⚡' : ''); q('.dk-batt-w').hidden = !(b && Number.isFinite(b.percent));
   }); } catch {}
   // pages that were already on the deck (the window was reloaded): put their frames back
   setTimeout(async () => { try { const list = await call('panel-list'); for (const it of list || []) await D.adopt({ id: it.id, url: it.url, title: it.title }); } catch {} }, 700);

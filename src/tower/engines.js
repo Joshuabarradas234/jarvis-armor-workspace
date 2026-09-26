@@ -20,7 +20,8 @@ export async function callApi({key, model, system, prompt, web = false, maxToken
   if (web) body.tools = [{type: 'web_search_20250305', name: 'web_search', max_uses: 6}];
   let res, tries = 0;
   for (;;) {
-    res = await fetch(API_URL, {method: 'POST', signal: signal || AbortSignal.timeout(300000),
+    // stoppable by the user AND still timed out: a hung request used to hold the floor forever
+    res = await fetch(API_URL, {method: 'POST', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300000)]) : AbortSignal.timeout(300000),
       headers: {'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01'}, body: JSON.stringify(body)});
     if ((res.status === 429 || res.status === 529 || res.status >= 500) && tries++ < 3) { await new Promise(r => setTimeout(r, 4000 * tries)); continue; }
     break;
@@ -119,7 +120,7 @@ export function killTree(child) {
   if (!child) return;
   child.stoppedByUser = true;
   try {
-    if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {windowsHide: true});
+    if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {windowsHide: true}).on('error', () => { try { child.kill(); } catch {} });   // an unhandled 'error' here would crash the app
     else process.kill(-child.pid, 'SIGTERM');
   } catch { try { child.kill(); } catch {} }
 }

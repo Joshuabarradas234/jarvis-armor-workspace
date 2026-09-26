@@ -18,13 +18,32 @@ This file lists what was fixed in 1.70.0 and what is still open, so the next pas
 - Voice: modern-engine fallback left two recognisers running (double to-dos); "hello Jarvis" now greets.
 - 3D: tower/floor tags rebuilt every frame so clicks were lost (now updated in place); desk-cam timer outlived its modal; suits' GPU memory leaked on hall switch; hall-switch race showed old suits; canvases resized every frame at 125%/150% scaling; second/third-screen scenes didn't release their WebGL context; muted cave sound kept running; floor folder stack made new GPU buffers on every update; map loaded twice on a fast first zoom.
 
+## Second pass (after 1.70.0, not yet built or run on Windows)
+Every item from the old "Still open" list is fixed:
+- Settings load key by key (`sanitizeSettings` in schema.js): one bad value is dropped and logged, not a full reset (which also re-ran first-time setup).
+- Backup restore checks the file, keeps rescue copies, writes atomically and reloads settings, suits, calendar, to-dos and ideas live, with no restart. The backup now includes calendar, to-dos and ideas.
+- The Ideas-room Claude panel moves into a main window rebuilt after a crash.
+- globe/floor3d capped at ~30 fps, and all three 3D views re-read devicePixelRatio. Desks, globe arcs and tower rings are disposed.
+- `.selection-caption` duplicate removed; `.dk-empty` markup removed.
+- Idle chatter starts and stops with the microphone setting.
+
+Also found and fixed:
+- tower3d rebuilt (and leaked) every floor ring on every update during a run: the store sorts floors high-to-low, the view low-to-high.
+- Switching straight from one suit to another, or changing hall while in a suit, didn't save the old suit's tabs or last-visit time (`leaveSuit()`). Quitting inside a suit now saves its tabs too.
+- The open suit jumped back to its Launchpad whenever a `theme` broadcast arrived (saving a suit, creating a folder).
+- "Create in Documents" failed for a suit in a hall that isn't active.
+- Aborted hall transitions kept playing their sounds and leaked a WebGL context. A slow wallpaper from the previous hall could replace the new one.
+- The tower/floor 3D views could be left running if the tower closed while they loaded. Deck backdrop and living-scene hall-switch races fixed.
+- A hand drag on the floor view always opened a desk cam (synthetic events carry no movementX).
+- Voice, speech, voice check and wallpaper PowerShell calls now pass `-ExecutionPolicy Bypass`, as the layout call already did. They failed on machines with the default Restricted policy.
+- Tower: two quick starts could both run on one floor. API calls with a stop signal had no timeout. The "post" approval matched any platform containing an "x". A failed `taskkill` could crash the app.
+- Control deck page edits now update the hall's progress indicator. Oversized requests are cut off.
+- Small ones: second-instance launch during startup; the 15→19.2 s startup migration re-applied every launch; the focus ring reset after ±5; quick-panel typing wiped every 60 s; folder listing race; duplicate holo panels; map lookups now queued (one a second); the PWR stat could hide for good.
+
 ## Still open (lower priority)
-- Backup restore writes raw JSON without validating or reloading the stores; SettingsStore resets everything if one key is invalid (validate key by key instead).
-- The Ideas-room Claude panel (`claudeView`) is not re-added to a recreated main window after a renderer crash.
-- globe.js and floor3d.js render uncapped (120 fps on a 120 Hz screen) and fix the pixel ratio at creation; cap at ~30 fps and re-read devicePixelRatio.
-- floor3d `buildTeam` drops desk CanvasTextures without disposing; globe arc material and tower3d rings not disposed.
-- CSS: `.selection-caption` bottom set twice; `.dk-empty` is hidden by request, so its markup in deck.js could be removed.
-- Idle chatter only starts at launch or on hall change; not when voice is turned on in Settings.
+- Hall-only timers (`__pullBoard`, quick-panel refresh, Skip-button poll, `__lockPlatesToHall` rAF) also run in the settings, wallpaper, console and identify windows. Guard them with `R==='main'`, and pause the plate loop outside ARMOR_HALL/SUIT_HOVER.
+- Nothing listens to `layout-result`; window-arrangement failures after "Launch all" are silent.
+- "close this page" / "close the tab" always match panel-close, so the tab-close versions of those phrases never fire.
 
 ## How to test (Linux, as used here)
 - Test hooks (JARVIS_TEST_EVAL / JARVIS_TEST_THEME) are inserted into src/main/main.js only for testing and must be removed before building.

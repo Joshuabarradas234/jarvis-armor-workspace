@@ -232,7 +232,7 @@ export function mountFloor(host, { theme = 'ironman', accent, onPick, onExit } =
     return { a, g, cv, tex, person, ring, lead, sig: '' };
   }
   function buildTeam(floor) {
-    for (const s of seats) teamG.remove(s.g); seats = []; pickables = [];
+    for (const s of seats) { teamG.remove(s.g); s.g.traverse(o => { o.geometry?.dispose(); if (o.material && o.material !== topM && o.material !== deskM) o.material.dispose(); }); s.tex.dispose(); } seats = []; pickables = [];   // free the old desks (topM/deskM are shared)
     agents = floor.agents || [];
     const lead = agents.find(x => x.role === 'lead'), reviewer = agents.find(x => x.role === 'reviewer');
     const specs = agents.filter(x => x !== lead && x !== reviewer);
@@ -319,7 +319,7 @@ export function mountFloor(host, { theme = 'ironman', accent, onPick, onExit } =
   const SHOTS = { work: { p: [0, 3.2, 6.6], t: [0, 1.15, -1.9] }, team: { p: [0.6, 2.45, 4.9], t: [0.3, 1.05, -1.7] }, brief: { p: [-2.4, 2.0, 1.4], t: [-6.9, 1.8, -1.2] }, history: { p: [2.4, 2.0, 1.4], t: [6.9, 1.7, -1.2] } };
   const cam = { p: new THREE.Vector3(0, 4.5, 11), t: new THREE.Vector3(0, 1.4, -2) }; let yaw = 0, drag = null;
   stage.addEventListener('pointerdown', e => { drag = { x: e.clientX, y0: yaw, moved: 0 }; stage.setPointerCapture?.(e.pointerId); });
-  stage.addEventListener('pointermove', e => { if (drag) { yaw = clamp(drag.y0 + (e.clientX - drag.x) * 0.004, -0.6, 0.6); drag.moved += Math.abs(e.movementX || 0); } });
+  stage.addEventListener('pointermove', e => { if (drag) { yaw = clamp(drag.y0 + (e.clientX - drag.x) * 0.004, -0.6, 0.6); drag.moved = Math.max(drag.moved, Math.abs(e.clientX - drag.x)); /* hand pointer events carry no movementX */ } });
   stage.addEventListener('pointerup', e => {
     const d = drag; drag = null; if (!d || d.moved > 6) return;
     const r = stage.getBoundingClientRect(); const ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
@@ -330,8 +330,8 @@ export function mountFloor(host, { theme = 'ironman', accent, onPick, onExit } =
   let alive = true, raf = 0, last = performance.now(), lastLbl = 0;
   function frame(now) {
     if (!alive) return; raf = requestAnimationFrame(frame);
-    const dt = clamp((now - last) / 1000, 0, 0.1); last = now;
-    const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return;
+    if (now - last < 28) return; const dt = clamp((now - last) / 1000, 0, 0.1); last = now;   // ~30 fps on any refresh rate
+    const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return; const pr = Math.min(2, Math.max(1, devicePixelRatio || 1)); if (renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr);
     if (renderer.domElement.width !== Math.floor(w * renderer.getPixelRatio()) || renderer.domElement.height !== Math.floor(h * renderer.getPixelRatio())) { renderer.setSize(w, h, false); renderer.domElement.style.width = w + 'px'; renderer.domElement.style.height = h + 'px'; camera.aspect = w / h; camera.updateProjectionMatrix(); }
     const shot = SHOTS[tab] || SHOTS.work; const k = 1 - Math.exp(-dt * 2.2);
     cam.p.lerp(new THREE.Vector3(...shot.p), k); cam.t.lerp(new THREE.Vector3(...shot.t), k);

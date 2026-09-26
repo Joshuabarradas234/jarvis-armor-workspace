@@ -757,7 +757,7 @@
     visibleIn(scope) { return scope === 'ideas' ? Room.open : true; },
     async open({ id, url, title = '', scope = 'hall', rect } = {}) {
       if (!/^https?:\/\//i.test(String(url || ''))) { toast('Type a web address starting with https://'); return null; }
-      const have = id && this.panels.get(id);
+      if (id && this.opening?.has(id)) return null; const have = id && this.panels.get(id);
       if (have) { have.url = url; have.title = title || have.title; this.label(have); this.front(have); await call('panel-open', { id, url, rect: this.bodyRect(have) }).catch(e => toast(e.message)); return have; }
       const r0 = rect || this.defaultRect(this.panels.size); const r = this.fitRect(r0.x, r0.y, r0.w, r0.h);
       const el = document.createElement('div'); el.className = 'hp'; el.style.setProperty('--hx', accent());
@@ -770,8 +770,10 @@
       this.label(p); this.front(p, true);
       el.addEventListener('pointerdown', e => this.down(p, e));
       el.addEventListener('click', e => { const b = e.target.closest('[data-hp]'); if (!b) return; e.stopPropagation(); this.button(p, b.dataset.hp); });
+      if (id) (this.opening ||= new Set()).add(id);
       try { p.id = await call('panel-open', { id: id || undefined, url, rect: this.bodyRect(p) }); }
       catch (e) { el.remove(); toast(e.message || String(e)); return null; }
+      finally { if (id) this.opening.delete(id); }
       el.dataset.id = p.id; this.panels.set(p.id, p);
       if (!this.visibleIn(scope)) this.hideOne(p, true);
       if (scope === 'ideas') this.save();

@@ -142,10 +142,10 @@ export class TowerRunner {
     task = String(task || '').trim().slice(0, 4000);
     if (!task) throw Error('Give the floor a task first.');
     const floor = this.store.floor(theme, floorId);
+    const eng = await this.engines();   // before the busy check: two quick starts used to both pass it while this was awaited
     if ([...this.live.values()].some(l => l.run.floorId === floorId && l.run.theme === theme)) throw Error(`${floor.name} is already working on something. Stop it or wait for it to finish.`);
     const spent = this.spentToday(theme, floorId);
     if (spent >= floor.budget.perDay) throw Error(`${floor.name} has used its daily budget (about $${spent.toFixed(2)} of $${floor.budget.perDay.toFixed(2)}). Raise it on the Brief tab, or wait until tomorrow.`);
-    const eng = await this.engines();
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     const title = (opts.title || task.split(/\r?\n/)[0]).replace(/[<>:"/\\|?*]/g, '').slice(0, 48).trim() || 'Task';
     const floorDir = this.store.folder(theme, floor);

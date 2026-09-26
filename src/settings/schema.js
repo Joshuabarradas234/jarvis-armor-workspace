@@ -33,12 +33,12 @@ export function validateSettings(patch, current=defaults) {
       }
       if(new Set(Object.values(merged)).size!==4)throw Error('Hotkeys must be different.');next.hotkeys=merged;
     } else if(key==='weather') {
-      if(typeof value.enabled!=='boolean')throw Error('Invalid weather settings.');
+      if(!value||typeof value!=='object'||typeof value.enabled!=='boolean')throw Error('Invalid weather settings.');
       for(const [k,limit]of [['latitude',90],['longitude',180]])if(value[k]!==null&&(!Number.isFinite(value[k])||Math.abs(value[k])>limit))throw Error('Invalid weather coordinates.');
       if(value.enabled&&(value.latitude===null||value.longitude===null))throw Error('Enter both weather coordinates.');
       next.weather={enabled:value.enabled,latitude:value.latitude,longitude:value.longitude};
     } else if(key==='ai') {
-      if(typeof value.enabled!=='boolean'||typeof value.model!=='string'||value.model.length>200||typeof value.endpoint!=='string')throw Error('Invalid AI settings.');
+      if(!value||typeof value!=='object'||typeof value.enabled!=='boolean'||typeof value.model!=='string'||value.model.length>200||typeof value.endpoint!=='string')throw Error('Invalid AI settings.');
       if(value.endpoint){const url=new URL(value.endpoint);if(url.protocol!=='https:'||url.username||url.password)throw Error('AI endpoint must be HTTPS without credentials.');}
       if(value.enabled&&(!value.endpoint||!value.model))throw Error('Add an endpoint and model first.');
       next.ai={enabled:value.enabled,endpoint:value.endpoint,model:value.model};
@@ -62,6 +62,15 @@ export function validateSettings(patch, current=defaults) {
       const out={};for(const [k,v] of Object.entries(value)){if(!['ironman','batcave','spiderman'].includes(k)||typeof v!=='string'||!/^[\w.-]{1,120}$/.test(v))throw Error('Invalid second-screen picture.');out[k]=v;}
       next.deckBackdrops=out;
     } else if(key==='favorites') {if(!Array.isArray(value)||value.length>20||value.some(x=>typeof x!=='string'||x.length>2048))throw Error('Invalid folders.');next.favorites=[...value];}
+  }
+  return next;
+}
+/** Lenient load: keep every valid key and drop the bad ones, so one bad value can't reset everything. */
+export function sanitizeSettings(raw, base=defaults, onDrop=()=>{}) {
+  let next = structuredClone(base);
+  if (!raw || typeof raw!=='object' || Array.isArray(raw)) return next;
+  for (const [key,value] of Object.entries(raw)) {
+    try { next = validateSettings({[key]:value}, next); } catch (e) { onDrop(key, e.message); }
   }
   return next;
 }

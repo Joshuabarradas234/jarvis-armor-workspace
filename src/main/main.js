@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {WorkspaceMachine,introDurations,DURATIONS} from '../state/machine.js';
 import {SettingsStore} from '../settings/store.js';
-import {validateSettings,defaults} from '../settings/schema.js';
+import {validateSettings,sanitizeSettings,defaults} from '../settings/schema.js';
 import {DisplayManager} from '../display/windows.js';
 import {SystemMonitor} from '../system/monitor.js';
 import {WindowsVoice} from '../voice/windows.js';
@@ -211,8 +211,9 @@ async function briefWeather(){
 }
 /* ---------- the earth: place look-up and local weather for the globe ---------- */
 const WX_ICON={0:'☀',1:'🌤',2:'⛅',3:'☁',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌧',61:'🌦',63:'🌧',65:'🌧',71:'🌨',73:'🌨',75:'❄',80:'🌦',81:'🌧',82:'⛈',95:'⛈',96:'⛈',99:'⛈'};
-let geoLast=0;const geoCache=new Map();
-async function geoSearch(q){
+let geoLast=0,geoQueue=Promise.resolve();const geoCache=new Map();
+function geoSearch(q){const job=geoQueue.then(()=>geoLookup(q));geoQueue=job.catch(()=>{});return job;}   // one at a time, so the one-a-second wait holds for every caller
+async function geoLookup(q){
   if(!q)return null;const k=q.toLowerCase();if(geoCache.has(k))return geoCache.get(k);
   const wait=1100-(Date.now()-geoLast);if(wait>0)await new Promise(r=>setTimeout(r,wait));geoLast=Date.now();   // the free map service asks for one request a second at most
   const url=`https://nominatim.openstreetmap.org/search?${new URLSearchParams({q,format:'jsonv2',limit:'1',addressdetails:'1'})}`;
@@ -423,7 +424,7 @@ const towerAnnounced=new Set();
 function towerUpdate(run){
   const final=['done','failed','stopped','budget'].includes(run.status);
   towerLatest.set(run.id,run);
-  const send=()=>{towerThrottle.delete(run.id);const latest=towerLatest.get(run.id)||run;broadcast('tower',{type:'run',run:latest});if(['done','failed','stopped'].includes(latest.status))towerLatest.delete(run.id);};
+  const send=()=>{towerThrottle.delete(run.id);const latest=towerLatest.get(run.id)||run;broadcast('tower',{type:'run',run:latest});if(['done','failed','stopped','budget'].includes(latest.status))towerLatest.delete(run.id);};
   if(final){clearTimeout(towerThrottle.get(run.id));send();
     if(towerAnnounced.has(run.id))return;towerAnnounced.add(run.id);if(towerAnnounced.size>200)towerAnnounced.delete(towerAnnounced.values().next().value);   // approving or commenting afterwards doesn't announce it again
     if(run.status==='done')say(`${run.floorName} has finished "${run.title}".${run.rehearsal?' That was a rehearsal.':''}`);
@@ -504,15 +505,27 @@ function dispatch(action,id,opts={}){
   if(action==='select'&&modules.some(m=>m.id===id)&&!['ARMOR_HALL','SUIT_HOVER'].includes(machine.value.state)){
     if(machine.value.state==='MODULE'&&machine.value.selected===id)return false;
     pendingModule=id;
-    if(machine.value.state==='IDLE')dispatch('wake');else if(machine.value.state==='MODULE')machine.dispatch('home');
+    // switching straight from one suit to another saves the one you are leaving, same as going home
+    if(machine.value.state==='IDLE')dispatch('wake');else if(machine.value.state==='MODULE'){leaveSuit();machine.dispatch('home');}
     return true;
   }
-  if(['standdown','back','home'].includes(action)){pendingModule=null;if(machine?.value?.state==='MODULE'&&machine.value.selected){try{visits.set(workstations.activeTheme,machine.value.selected,{lastLeft:Date.now()});}catch{}try{const list=tabs?.list?.()||[];const open=list.filter(t=>t.url&&/^https?:/i.test(t.url)&&!isDeckUrl(t.url));const active=Math.max(0,open.findIndex(t=>t.active));clearTimeout(sessionTimer);if(open.length)workstations.saveSession(machine.value.selected,{tabs:open.map(t=>({url:t.url,title:t.title})),active,updatedAt:Date.now()});else workstations.clearSession(machine.value.selected);}catch(e){log('session',e.message);}restoringSession=true;try{tabs?.closeAll();}catch{}restoringSession=false;clearTimeout(sessionTimer);}}
+  if(['standdown','back','home'].includes(action)){pendingModule=null;leaveSuit();}
   return machine.dispatch(action,id);
+}
+/** Save the open suit's tabs and when you left it, then close its tabs without the close wiping that save. */
+function saveOpenSession(){
+  if(machine?.value?.state!=='MODULE'||!machine.value.selected)return;
+  try{const list=tabs?.list?.()||[];const open=list.filter(t=>t.url&&/^https?:/i.test(t.url)&&!isDeckUrl(t.url));const active=Math.max(0,open.findIndex(t=>t.active));clearTimeout(sessionTimer);if(open.length)workstations.saveSession(machine.value.selected,{tabs:open.map(t=>({url:t.url,title:t.title})),active,updatedAt:Date.now()});else workstations.clearSession(machine.value.selected);}catch(e){log('session',e.message);}
+}
+function leaveSuit(){
+  if(machine?.value?.state!=='MODULE'||!machine.value.selected)return;
+  try{visits.set(workstations.activeTheme,machine.value.selected,{lastLeft:Date.now()});}catch{}
+  saveOpenSession();
+  restoringSession=true;try{tabs?.closeAll();}catch{}restoringSession=false;clearTimeout(sessionTimer);
 }
 async function applySettings(patch){
   const before=settings.get();validateSettings(patch,before);const result=settings.update(patch);
-  if('voiceEnabled'in patch)voice.listen(result.voiceEnabled);
+  if('voiceEnabled'in patch){voice.listen(result.voiceEnabled);scheduleChatter();}   // idle chatter starts (or stops) with the microphone, not only at launch
   if('hotkeys'in patch)registerHotkeys(result.hotkeys);
   if('startWithWindows'in patch&&process.platform==='win32')app.setLoginItemSettings({openAtLogin:result.startWithWindows,path:process.execPath,args:['--startup']});
   if('weather'in patch){weatherCache=null;weatherChecked=0;}
@@ -542,7 +555,9 @@ let pendingDirect=false;
 function directHall(){if(!mainReady){pendingDirect=true;displays?.setActive(true);return;}displays?.setActive(true);machine.dispatch('debug-hall');}
 function refreshModules(){modules=workstations.modules();if(machine)machine.modules=modules;}
 function setTheme(id,opts={}){
-  const previous=workstations.activeTheme;workstations.setTheme(String(id));refreshModules();
+  const previous=workstations.activeTheme;
+  if(String(id)!==previous&&workstations.themes.some(t=>t.id===String(id)))leaveSuit();   // save the open suit's tabs while it still belongs to the old hall
+  workstations.setTheme(String(id));refreshModules();
   if(previous!==workstations.activeTheme){
     tabs?.closeAll();
     if(['MODULE','SUIT_SELECTED','SUIT_HOVER'].includes(machine.value.state))machine.dispatch('home');
@@ -671,14 +686,17 @@ function handRing(sender,p){
 /** Claude inside the Ideas room: a sandboxed page that sits in the panel the room draws for it. */
 let claudeView=null;
 function ideaClaude(sender,p){
-  const win=BrowserWindow.fromWebContents(sender);if(!win)return false;
+  const win=BrowserWindow.fromWebContents(sender);if(!win||win.isDestroyed())return false;
+  if(claudeView&&claudeView.webContents.isDestroyed())claudeView=null;
   if(!p||p.show===false){if(claudeView){claudeView.setVisible(false);claudeView.setBounds({x:0,y:0,width:0,height:0});}return true;}
+  // the main window is rebuilt after a renderer crash: move the panel (still signed in) into the new one
+  if(claudeView&&claudeView.__win!==win){if(claudeView.__win&&!claudeView.__win.isDestroyed()){try{claudeView.__win.contentView.removeChildView(claudeView);}catch{}}win.contentView.addChildView(claudeView);claudeView.__win=win;}
   if(!claudeView){
     claudeView=new WebContentsView({webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,partition:'persist:jarvis-tabs'}});
     const ok=u=>{try{return ['https:'].includes(new URL(u).protocol);}catch{return false;}};
     claudeView.webContents.setWindowOpenHandler(({url})=>{if(ok(url))claudeView.webContents.loadURL(url);return {action:'deny'};});
     claudeView.webContents.on('will-navigate',(e,u)=>{if(!ok(u))e.preventDefault();});
-    win.contentView.addChildView(claudeView);
+    win.contentView.addChildView(claudeView);claudeView.__win=win;
     claudeView.webContents.loadURL('https://claude.ai/new').catch(e=>log('ideas',e.message));
   }
   const r=p.rect||{};const b={x:Math.max(0,Math.round(r.x||0)),y:Math.max(0,Math.round(r.y||0)),width:Math.max(0,Math.round(r.width||0)),height:Math.max(0,Math.round(r.height||0))};
@@ -798,7 +816,7 @@ async function api(event,method,payload){
     case 'system-microphone':if(process.platform==='win32')await shell.openExternal('ms-settings:sound');return true;
     case 'choose':return choose(payload||{});
     case 'launch':return launch(payload);
-    case 'favorite-open':{const target=settings.get().favorites[payload];if(!target)throw Error('Unknown folder.');const error=await shell.openPath(target);if(error)throw Error(error);return true;}
+    case 'favorite-open':{const target=Number.isInteger(payload)?settings.get().favorites[payload]:undefined;if(!target)throw Error('Unknown folder.');const error=await shell.openPath(target);if(error)throw Error(error);return true;}
     case 'calendar-list':return calendar.list();
     case 'todo-list':return todos.list();
     case 'todo-add':return todos.add(payload?.text);
@@ -816,7 +834,7 @@ async function api(event,method,payload){
     case 'ai-chat':{if(!Array.isArray(payload)||payload.length>40||payload.some(m=>!['user','assistant'].includes(m.role)||typeof m.content!=='string'||m.content.length>10000))throw Error('Invalid conversation.');let key='';try{key=safeStorage.decryptString(fs.readFileSync(path.join(userDir,'ai-key.enc')));}catch{}return askAI(settings.get().ai,key,payload);}
     case 'workstations':return workstations.describe();
     case 'board':return boardFor(payload?.theme);
-    case 'board-save':return missions.set(payload?.theme||workstations.activeTheme,payload.id,payload.patch||{})&&boardFor(payload?.theme);
+    case 'board-save':{if(!payload||typeof payload.id!=='string')throw Error('Choose a bay.');const t=payload.theme||workstations.activeTheme;missions.set(t,payload.id,payload.patch||{});deck?.push({hall:t});return boardFor(t);}   // an open control deck tab refreshes too
     case 'board-run':return runBay(payload?.theme,payload.id);
     case 'board-stop':return runner.stop(payload?.theme||workstations.activeTheme,payload.id);
     case 'deck-url':return deck.url(payload?.theme||workstations.activeTheme);
@@ -836,7 +854,7 @@ async function api(event,method,payload){
     case 'folder-add':{const {target}=resolveInFolder(payload);if(!fs.statSync(target).isDirectory())throw Error('Choose a folder.');const res=await dialog.showOpenDialog({properties:['openFile','multiSelections']});if(res.canceled)return [];return importFiles(target,res.filePaths);}
     case 'folder-import':{const {target}=resolveInFolder({root:payload?.root,path:payload?.path});if(!fs.statSync(target).isDirectory())throw Error('Choose a folder.');if(!Array.isArray(payload?.files)||payload.files.length>200)throw Error('Drop up to 200 items at a time.');return importFiles(target,payload.files.map(String));}
     case 'folder-mkdir':{const {target}=resolveInFolder({root:payload?.root,path:payload?.path});const name=String(payload?.name||'').replace(/[<>:"/\\|?*\x00-\x1f]/g,'').trim().slice(0,80);if(!name||name==='.'||name==='..')throw Error('Enter a folder name.');fs.mkdirSync(path.join(target,name));return true;}
-    case 'folder-create':{const suit=workstations.suit(String(payload));const base=path.join(app.getPath('documents'),'JARVIS Workspaces',workstations.theme().name,suit.name.replace(/[<>:"/\\|?*]/g,''));fs.mkdirSync(base,{recursive:true});workstations.saveSuit(suit.id,{folder:base});refreshModules();broadcast('theme',themePayload());return base;}
+    case 'folder-create':{const themeId=typeof payload?.theme==='string'?payload.theme:workstations.activeTheme;const suit=workstations.suit(String(payload?.id??payload),themeId);const base=path.join(app.getPath('documents'),'JARVIS Workspaces',workstations.theme(themeId).name,suit.name.replace(/[<>:"/\\|?*]/g,''));fs.mkdirSync(base,{recursive:true});workstations.saveSuit(suit.id,{folder:base},themeId);if(themeId===workstations.activeTheme)refreshModules();broadcast('theme',themePayload());return base;}   /*settings can make a folder for a suit in another hall */
     case 'tabs-open':{if(role!=='main')throw Error('Tabs belong to the main display.');if(machine.value.state!=='MODULE')throw Error('Open a suit first.');return tabs.open(String(payload?.url),payload?.activate!==false);}
     case 'tabs-close':return tabs.close(String(payload));
     case 'tabs-activate':return tabs.activate(String(payload));
@@ -878,11 +896,11 @@ async function api(event,method,payload){
     case 'deck-backdrop':return deckBackdrop(String(payload?.theme||workstations.activeTheme));
     case 'deck-backdrop-set':{
       const t=String(payload?.theme||workstations.activeTheme);if(!workstations.themes.some(x=>x.id===t))throw Error('Unknown hall.');
-      if(payload?.reset){const cur=settings.get().deckBackdrops||{};delete cur[t];applySettings({deckBackdrops:{...cur}});broadcast('deck',{type:'backdrop',theme:t,...deckBackdrop(t)});return deckBackdrop(t);}
+      if(payload?.reset){const cur=settings.get().deckBackdrops||{};delete cur[t];await applySettings({deckBackdrops:{...cur}});broadcast('deck',{type:'backdrop',theme:t,...deckBackdrop(t)});return deckBackdrop(t);}
       const res=await dialog.showOpenDialog(displays?.console&&!displays.console.isDestroyed()?displays.console:null,{title:'Choose a picture for the second screen',properties:['openFile'],filters:[{name:'Pictures',extensions:['jpg','jpeg','png','webp']}]});
       if(res.canceled||!res.filePaths[0])return null;const from=res.filePaths[0];if(fs.statSync(from).size>40*1024*1024)throw Error('Use a picture under 40 MB.');
       const name=`deck-${t}-${Date.now()}${path.extname(from).toLowerCase()}`;const dir=path.join(userDir,'assets');fs.mkdirSync(dir,{recursive:true});fs.copyFileSync(from,path.join(dir,name));
-      applySettings({deckBackdrops:{...(settings.get().deckBackdrops||{}),[t]:name}});const out=deckBackdrop(t);broadcast('deck',{type:'backdrop',theme:t,...out});return out;
+      await applySettings({deckBackdrops:{...(settings.get().deckBackdrops||{}),[t]:name}});const out=deckBackdrop(t);broadcast('deck',{type:'backdrop',theme:t,...out});return out;
     }
     case 'briefing':{if(role!=='main')return false;return talk(payload==='status'?'status':'briefing');}
     case 'tower-get':return towerView(typeof payload?.theme==='string'?payload.theme:workstations.activeTheme);
@@ -911,7 +929,7 @@ async function api(event,method,payload){
       const a=towerRunner.approve(String(payload?.runId||''),Number(payload?.i),!!payload?.yes);
       if(payload?.yes){let url='';
         if(a.type==='email'){const to=/[\w.+-]+@[\w-]+\.[\w.-]+/.exec(a.to)?.[0]||'';url=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(a.title)}&body=${encodeURIComponent(String(payload?.body||'').slice(0,1800))}`;}
-        else if(a.type==='post'){const p=a.to.toLowerCase();url=p.includes('linkedin')?'https://www.linkedin.com/feed/?shareActive=true':p.includes('x')||p.includes('twitter')?'https://x.com/compose/post':p.includes('facebook')?'https://www.facebook.com/':p.includes('instagram')?'https://www.instagram.com/':'';}
+        else if(a.type==='post'){const p=a.to.toLowerCase();url=p.includes('linkedin')?'https://www.linkedin.com/feed/?shareActive=true':/\b(x|twitter)\b/.test(p)?'https://x.com/compose/post':p.includes('facebook')?'https://www.facebook.com/':p.includes('instagram')?'https://www.instagram.com/':'';}
         if(url)await shell.openExternal(url);return {...a,opened:!!url};}
       return a;
     }
@@ -928,7 +946,7 @@ async function api(event,method,payload){
     case 'hologram-open':{if(role!=='main')return false;const u=String(payload?.url||'');if(!/^https?:\/\//i.test(u))throw Error('Only web links can open.');broadcast('hologram',{kind:/google\.com\/maps/.test(u)?'map':'link',url:u,title:String(payload?.title||'').slice(0,80)});return true;}
     case 'focus-start':return talk('focus',{minutes:Number(payload?.minutes)||25});
     case 'focus-stop':return talk('focus-stop');
-    case 'focus-add':{if(!focusActive())return false;const add=Math.max(-60,Math.min(60,Number(payload)||0))*60000;focus.until=Math.max(Date.now()+60000,focus.until+add);focus.minutes=Math.round((focus.until-Date.now())/60000);clearTimeout(focus.timer);focus.timer=setTimeout(()=>endFocus(),focus.until-Date.now());broadcast('focus',focusPayload());return focusPayload();}
+    case 'focus-add':{if(!focusActive())return false;const add=Math.max(-60,Math.min(60,Number(payload)||0))*60000;const was=focus.until;focus.until=Math.max(Date.now()+60000,focus.until+add);focus.minutes=Math.max(1,Math.round(focus.minutes+(focus.until-was)/60000));   /*keep the session's total so the ring doesn't snap back to full */clearTimeout(focus.timer);focus.timer=setTimeout(()=>endFocus(),focus.until-Date.now());broadcast('focus',focusPayload());return focusPayload();}
     case 'focus-state':return focusPayload();
     case 'suit-recap':return recapFor(String(payload||machine.value.selected||''));
     case 'suit-note':{const id=String(payload?.id||'');workstations.suit(id);visits.note(workstations.activeTheme,id,String(payload?.note||''));return recapFor(id);}
@@ -970,7 +988,8 @@ async function api(event,method,payload){
       const readJson=(f)=>{try{return JSON.parse(fs.readFileSync(f,'utf8'));}catch{return null;}};
       const payload={kind:'jarvis-armor-workspace-backup',version:app.getVersion(),savedAt:new Date().toISOString(),
         settings:readJson(path.join(userDir,'settings.json')),
-        workstations:readJson(path.join(userDir,'workstations.json'))};
+        workstations:readJson(path.join(userDir,'workstations.json')),
+        calendar:readJson(path.join(userDir,'calendar.json')),todos:readJson(path.join(userDir,'todos.json')),ideas:readJson(path.join(userDir,'ideas.json'))};
       fs.writeFileSync(res.filePath,JSON.stringify(payload,null,2),'utf8');
       return {saved:true,path:res.filePath};
     }
@@ -979,15 +998,28 @@ async function api(event,method,payload){
       if(res.canceled||!res.filePaths[0])return {restored:false};
       let data; try{data=JSON.parse(fs.readFileSync(res.filePaths[0],'utf8'));}catch{throw Error('That file is not a readable backup.');}
       if(!data||data.kind!=='jarvis-armor-workspace-backup')throw Error('That file is not a JARVIS workspace backup.');
+      const obj=v=>v&&typeof v==='object'&&!Array.isArray(v);
+      if(data.settings!=null&&!obj(data.settings))throw Error('The settings in that backup are damaged.');
+      if(data.workstations!=null&&(!obj(data.workstations)||!obj(data.workstations.suits)))throw Error('The suits in that backup are damaged.');
+      for(const k of ['calendar','todos','ideas'])if(data[k]!=null&&!Array.isArray(data[k]))throw Error(`The ${k} in that backup are damaged.`);
       // keep a rescue copy of what is being replaced
       const stamp=Date.now();
-      for(const f of ['settings.json','workstations.json']){
+      const files={settings:'settings.json',workstations:'workstations.json',calendar:'calendar.json',todos:'todos.json',ideas:'ideas.json'};
+      for(const [k,f] of Object.entries(files)){
         const src=path.join(userDir,f);
-        if(fs.existsSync(src))try{fs.copyFileSync(src,path.join(userDir,f.replace('.json',`.before-restore-${stamp}.json`)));}catch{}
+        if(data[k]!=null&&fs.existsSync(src))try{fs.copyFileSync(src,path.join(userDir,f.replace('.json',`.before-restore-${stamp}.json`)));}catch{}
       }
-      if(data.settings)fs.writeFileSync(path.join(userDir,'settings.json'),JSON.stringify(data.settings,null,2),'utf8');
-      if(data.workstations)fs.writeFileSync(path.join(userDir,'workstations.json'),JSON.stringify(data.workstations,null,2),'utf8');
-      return {restored:true,savedAt:data.savedAt||null,fromVersion:data.version||null};
+      const write=(f,v)=>{const p=path.join(userDir,f);fs.writeFileSync(p+'.tmp',JSON.stringify(v,null,2),'utf8');fs.renameSync(p+'.tmp',p);};
+      // load it now: out of the open suit first, then every store re-reads (and re-checks) its file
+      if(['MODULE','SUIT_SELECTED','SUIT_HOVER'].includes(machine.value.state))dispatch('home');
+      const dropped=[];
+      if(data.settings){const next=sanitizeSettings(data.settings,defaults,k=>dropped.push(k));await applySettings(Object.fromEntries(Object.keys(defaults).map(k=>[k,next[k]])));}
+      if(data.workstations){const theme=workstations.activeTheme;write(files.workstations,data.workstations);workstations=new WorkstationStore({configFile:path.join(root,'config','themes.json'),dir:userDir,log});if(theme!==workstations.activeTheme&&workstations.themes.some(t=>t.id===theme))workstations.setTheme(theme);refreshModules();broadcast('theme',themePayload());updateTray();scheduleHealth();if(settings.get().voiceEnabled)voice.listen(true);}
+      if(data.calendar){write(files.calendar,data.calendar);calendar=new CalendarStore(userDir);}
+      if(data.todos){write(files.todos,data.todos);todos=new TodoStore(userDir);}
+      if(data.ideas){write(files.ideas,data.ideas);ideas=new IdeaStore(userDir);}
+      if(dropped.length)log('backup',`Restore skipped invalid settings: ${dropped.join(', ')}`);
+      return {restored:true,live:true,savedAt:data.savedAt||null,fromVersion:data.version||null,skipped:dropped};
     }
     case 'update-check':{
       const current=app.getVersion();
@@ -1026,7 +1058,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
 
 
 
-  app.on('second-instance',()=>dispatch('wake'));
+  app.on('second-instance',()=>{if(machine)dispatch('wake');});   // a second launch while this one is still starting must not crash it
   app.whenReady().then(async()=>{
     userDir=app.getPath('userData');fs.mkdirSync(userDir,{recursive:true});
     process.on('uncaughtException',e=>{try{log('crash',e?.stack||e?.message||String(e));}catch{}});
@@ -1040,12 +1072,12 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     const camOK=(wc,perm,details)=>{if(perm!=='media')return false;const t=wc&&trusted.get(wc.id);if(!t||t.role!=='main')return false;const types=details?.mediaTypes||[];return !types.includes('audio');};
     session.defaultSession.setPermissionRequestHandler((wc,perm,callback,details)=>callback(camOK(wc,perm,details)));
     session.defaultSession.setPermissionCheckHandler((wc,perm,_origin,details)=>perm==='media'&&camOK(wc,perm,{mediaTypes:details?.mediaType==='audio'?['audio']:['video']}));
-    settings=new SettingsStore(userDir,log);visits.load();try{const st=settings.get().startup;if(st&&/startup\/welcome\.mp4$/.test(st.video||'')&&st.seconds===15)settings.update({startup:{...st,seconds:19.2}});}catch(e){log('settings',e.message);}calendar=new CalendarStore(userDir);todos=new TodoStore(userDir);ideas=new IdeaStore(userDir);
+    settings=new SettingsStore(userDir,log);visits.load();try{if(!visits.get('__','startup19').done){visits.set('__','startup19',{done:true});const st=settings.get().startup;if(st&&/startup\/welcome\.mp4$/.test(st.video||'')&&st.seconds===15)settings.update({startup:{...st,seconds:19.2}});}}catch(e){log('settings',e.message);}   /*once only, so choosing 15 s again sticks */calendar=new CalendarStore(userDir);todos=new TodoStore(userDir);ideas=new IdeaStore(userDir);
     workstations=new WorkstationStore({configFile:path.join(root,'config','themes.json'),dir:userDir,log});try{const s3=workstations.suit('im3','ironman');if(s3&&/^\s*(bay\s*0?3|mark\s*(16|xvi)|mk[\s-]*16)\s*$/i.test(s3.name||''))workstations.saveSuit('im3',{name:'Mark XXXIX'},'ironman');}catch(e){log('suits',e.message);}try{const s4=workstations.suit('bc8','batcave');if(s4&&/^\s*(cowl\s*0?4|doomsday(\s*bat)?)\s*$/i.test(s4.name||''))workstations.saveSuit('bc8',{name:'Absolute Batman'},'batcave');}catch(e){log('suits',e.message);}   /* v9.16: the fourth Batcave case is Absolute Batman */   /* v9.14: the third chamber is the Mark XXXIX now */
     modules=workstations.modules();
     missions=new MissionStore({dir:userDir});
     runner=new AgentRunner({missions,onUpdate:deckUpdate,log});
-    deck=new ControlServer({missions,runner,board:boardFor,run:runBay,hallName:id=>{try{return workstations.theme(id).name;}catch{return id;}},log});
+    deck=new ControlServer({missions,runner,board:boardFor,run:runBay,changed:t=>{try{if(workstations.themes.some(x=>x.id===t))broadcast('board',{theme:t,bays:boardFor(t)});}catch(e){log('control',e.message);}},hallName:id=>{try{return workstations.theme(id).name;}catch{return id;}},log});
     await deck.listen();
     voice=new WindowsVoice({scripts,assets,dir:userDir,grammar:()=>buildGrammar(voiceContext()),names:()=>spokenNames(voiceContext()),onClap:()=>{if(machine?.value?.state==='IDLE'){log('voice','double clap: waking');dispatch('wake');}},onMeter:m=>{broadcast('voice-meter',{level:voice.level,detected:!!m.detected,recognizer:voice.recognizer,audioState:voice.audioState});},onCommand:(text,confidence,rejected,meta={})=>{const heard=text||rejected||'';let command=text?parseCommand(text,voiceContext()):null;let handled=false,why='';
       // a quieter, less certain match still counts when it starts or ends with the assistant's name (or JARVIS has just answered you)
@@ -1085,13 +1117,13 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     monitor=new SystemMonitor(data=>{telemetry=data;broadcast('telemetry',data);},()=>machine.value.state!=='IDLE');monitor.start().catch(e=>log('monitor',e.message));voice.listen(settings.get().voiceEnabled);
     const reminded=new Set();reminderTimer=setInterval(()=>{for(const event of calendar.list()){const delta=Date.parse(event.start)-Date.now();if(event.reminder&&delta>=0&&delta<=300000&&!reminded.has(event.id)&&!focusActive()&&Notification.isSupported()){reminded.add(event.id);new Notification({title:event.title,body:'Starting in '+Math.ceil(delta/60000)+' minutes.'}).show();}}},30000);
     if(!settings.get().setupComplete)openSettings();else if(settings.get().autoStart||(!process.argv.includes('--startup')&&!settings.get().startMinimized))dispatch('wake');
-    app.on('activate',()=>dispatch('wake'));
+    app.on('activate',()=>{if(machine)dispatch('wake');});
   }).catch(e=>{console.error(e);app.quit();});
 }
 app.on('window-all-closed',()=>{});
 app.on('before-quit',()=>{
-  if(quitting)return;quitting=true;try{missions?.flush?.();}catch{}try{towerRunner?.stopAll();}catch{}
-  clearInterval(reminderTimer);
+  if(quitting)return;quitting=true;try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}
+  clearInterval(reminderTimer);clearTimeout(chatterTimer);clearTimeout(healthTimer);clearTimeout(focus.timer);try{deck?.close();}catch{}
   tabs?.dispose();machine?.dispose();monitor?.stop();voice?.dispose();globalShortcut.unregisterAll();
   // Let Electron close windows in its normal quit sequence, so renderer
   // beforeunload handlers can release media and graphics resources.

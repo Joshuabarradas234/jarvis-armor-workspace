@@ -31,9 +31,10 @@ export class DisplayManager {
       let successes=0;
       for(const d of (testing?[]:screen.getAllDisplays())){
         const w=this.create({role:'wallpaper',...d.bounds,show:false,frame:false,focusable:false,skipTaskbar:true,backgroundColor:'#05080a'});this.wallpapers.push(w);w.on('closed',()=>{if(!this.rebuilding&&!this.stopped&&this.settings().wallpaper)this.changed?.();});w.setIgnoreMouseEvents(true);await this.load(w,'wallpaper');
-        if(w.isDestroyed()||generation!==this.generation)return;
+        if(generation!==this.generation)return;
+        if(w.isDestroyed())continue;   // one wallpaper window gone: carry on, or the build never finishes and 'rebuilding' stays stuck on
         const handle=w.getNativeWindowHandle();const number=handle.length===8?handle.readBigUInt64LE().toString():handle.readUInt32LE().toString();
-        try{await new Promise((resolve,reject)=>execFile('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-File',path.join(this.scripts,'wallpaper.ps1'),'-Handle',number],{windowsHide:true,timeout:15000},(e,out,err)=>e?reject(Error(err||e.message)):out.includes('"attached":true')?resolve():reject(Error('No desktop acknowledgement'))));successes++;}catch(e){this.log('wallpaper',e.message);if(!w.isDestroyed())w.destroy();}
+        try{await new Promise((resolve,reject)=>execFile('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(this.scripts,'wallpaper.ps1'),'-Handle',number],{windowsHide:true,timeout:15000},(e,out,err)=>e?reject(Error(err||e.message)):out.includes('"attached":true')?resolve():reject(Error('No desktop acknowledgement'))));successes++;}catch(e){this.log('wallpaper',e.message);if(!w.isDestroyed())w.destroy();}
       }
       this.wallpaperStatus=successes===allDisplays().length?'ACTIVE BEHIND DESKTOP ICONS':successes?'PARTIAL · CHECK DISPLAY SETTINGS':'UNAVAILABLE · LIVELY FALLBACK AVAILABLE';
     }else this.wallpaperStatus=this.settings().wallpaper?'WINDOWS REQUIRED':'OFF';

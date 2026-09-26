@@ -207,13 +207,13 @@ export function mountTower(host, { theme, accent = '#7fd6e8', model = null, comp
     };
     if (model?.kind === 'glb') {
       msg.hidden = false; msg.textContent = 'Loading your tower…';
-      new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(model.url, gltf => { gltf.scene.traverse(o => { if (o.isMesh && o.material) {
+      new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(model.url, gltf => { if (!alive) return; gltf.scene.traverse(o => { if (o.isMesh && o.material) {
         // scanned/AI models often come out mirror-glossy, which just reflects the room as white: give them a satin finish instead
         const m = o.material; m.roughnessMap = null; m.metalnessMap = null; m.roughness = 0.55; m.metalness = 0.25; m.envMapIntensity = 0.55; m.needsUpdate = true;
       } });
       // a textured model only needs a soft glow on its lights, not on its walls
       renderer.toneMappingExposure = 1.2; front.intensity = 0.9;
-      msg.hidden = true; setModel(gltf.scene); }, undefined, err => { msg.hidden = false; msg.textContent = 'Could not load your model (' + (err?.message || 'unknown error') + '). Showing the stand-in.'; setModel(standIn(theme)); });
+      msg.hidden = true; setModel(gltf.scene); }, undefined, err => { if (!alive) return; msg.hidden = false; msg.textContent = 'Could not load your model (' + (err?.message || 'unknown error') + '). Showing the stand-in.'; setModel(standIn(theme)); });
     } else setModel(standIn(theme));
     stage.addEventListener('pointerdown', e => { drag = { x: e.clientX, a: angle }; stage.setPointerCapture?.(e.pointerId); });
     stage.addEventListener('pointermove', e => { if (drag) angle = drag.a + (e.clientX - drag.x) * 0.01; });
@@ -233,7 +233,7 @@ export function mountTower(host, { theme, accent = '#7fd6e8', model = null, comp
 
   function buildRings() {
     if (!root) return;
-    for (const r of rings) scene.remove(r.mesh); rings = [];
+    for (const r of rings) { scene.remove(r.mesh); r.mesh.geometry.dispose(); r.mesh.material.dispose(); } rings = [];
     floors.forEach((f, i) => {
       const h = floorHeight(i);
       const r = (profile ? profile(h) : 1) * 1.08 + 0.05;
@@ -303,7 +303,7 @@ export function mountTower(host, { theme, accent = '#7fd6e8', model = null, comp
     lastDraw = now;
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (use3d && renderer) {
-      const sw = stageW(), h = Hh();
+      const sw = stageW(), h = Hh(); const pr = Math.min(2, Math.max(1.25, devicePixelRatio || 1)); if (renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr);   // follows the window to a screen with other scaling
       if (renderer.domElement.width !== Math.floor(sw * renderer.getPixelRatio()) || renderer.domElement.height !== Math.floor(h * renderer.getPixelRatio())) { renderer.setSize(sw, h, false); renderer.domElement.style.width = sw + 'px'; renderer.domElement.style.height = h + 'px'; camera.aspect = sw / Math.max(1, h); camera.updateProjectionMatrix(); }
       if (!drag) { if (spin === 'turn') angle += dt * 0.12; else if (spin === 'sway') { swayT += dt; angle = base + Math.sin(swayT * 0.23) * SWAY; } }
       // fit the whole building: tall enough for its height, far enough for its width in this (narrow) panel
@@ -329,8 +329,8 @@ export function mountTower(host, { theme, accent = '#7fd6e8', model = null, comp
 
   return {
     update(nextFloors, nextRuns) {
-      const changed = nextFloors.map(f => f.id).join() !== floors.map(f => f.id).join();
-      floors = nextFloors.slice().sort((a, b) => a.number - b.number); runs = nextRuns;
+      const sorted = nextFloors.slice().sort((a, b) => a.number - b.number); const changed = sorted.map(f => f.id).join() !== floors.map(f => f.id).join();   // the store sends floors high-to-low; compare in our own order or the rings rebuild on every update
+      floors = sorted; runs = nextRuns;
       if (changed) buildRings(); layoutTags();
     },
     setBand(b) { band = b; buildRings(); layoutTags(); },

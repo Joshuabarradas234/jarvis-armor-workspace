@@ -109,7 +109,7 @@
           <div class="tw-lobby"><p>LOBBY · ${esc(v.head?.name || 'Director')} sends it to the right floor</p><div><input placeholder="Hand a task to the building…" maxlength="4000"><button type="button" data-tw="lobby">Send ↵</button></div></div></div>`;
         try {
           const { mountTower } = await import('./tower3d.js');
-          this.mount3d = mountTower(b.querySelector('.tw-3d'), { theme: v.theme, accent: accent(), model: v.model, onPick: id => { this.floorId = id; this.openRun = null; this.renderFloor(); this.enter(); } });
+          if (!this.open || !b.isConnected) { this.mounting = false; if (this.open) this.renderBuilding(); return; } this.mount3d = mountTower(b.querySelector('.tw-3d'), { theme: v.theme, accent: accent(), model: v.model, onPick: id => { this.floorId = id; this.openRun = null; this.renderFloor(); this.enter(); } });
         } catch (e) { b.querySelector('.tw-3d').innerHTML = `<p class="tw-err">The 3D view could not start: ${esc(e.message)}</p>`; }
         this.mounting = false;
       }
@@ -143,7 +143,7 @@
         if (this.floorMounting) return; this.floorMounting = true;
         box?.remove(); box = document.createElement('div'); box.className = 'tw-floor3d fl-enter'; const t3 = b.querySelector('.tw-3d'); (t3 || b).insertAdjacentElement(t3 ? 'afterend' : 'beforeend', box);
         try {
-          const { mountFloor } = await import('./floor3d.js');
+          const { mountFloor } = await import('./floor3d.js'); if (!this.open || !box.isConnected) { this.floorMounting = false; return; }   // closed while loading: don't leave a live 3D view behind
           this.floorView = mountFloor(box, { theme: this.view.theme, accent: accent(), onExit: () => this.leave(),
             onPick: (agent, st) => {
               const run = this.liveRun(this.floorId) || this.runsFor(this.floorId)[0];
@@ -164,10 +164,10 @@
     async allTowers() {
       const m = $('.tw-modal', this.el); m.hidden = false; this.closeAll();
       m.innerHTML = `<div class="tw-all"><header><b>ALL TOWERS</b><span>Every floor, every hall, live</span><i></i><button type="button" data-tw="modal-close">×</button></header><div class="tw-all-row"></div></div>`;
-      const row = m.querySelector('.tw-all-row'); const { mountTower } = await import('./tower3d.js');
+      const row = m.querySelector('.tw-all-row'); const tok = this.deskTok; const { mountTower } = await import('./tower3d.js');
       this.allMounts = []; this.mount3d?.pause?.(true);   // the big tower behind rests while all three are up
       const views = await Promise.all(['ironman', 'batcave', 'spiderman'].map(th => call('tower-get', { theme: th }).then(v => [th, v]).catch(() => [th, null])));
-      for (const [th, v] of views) {
+      if (tok !== this.deskTok || !this.open || m.hidden) return; for (const [th, v] of views) {
         if (!v) continue;
         for (const r of v.runs) if (!this.runs.has(r.id) || !this.view?.active?.includes(r.id)) this.runs.set(r.id, r);
         const col = document.createElement('section'); col.className = 'tw-all-col'; col.style.setProperty('--ix', ({ ironman: '#7fd6e8', batcave: '#f5c542', spiderman: '#ff4d4d' })[th]);
@@ -427,7 +427,7 @@
   try { J.on('tower', m => { if (m?.type === 'run') T.onRun(m.run); }); } catch {}
   try { J.on('tower-open', () => T.show()); } catch {}
   addEventListener('keydown', e => { if (e.key === 'Escape' && T.open) { const m = T.el && $('.tw-modal', T.el); if (m && !m.hidden) { T.closeAll(); m.hidden = true; } else T.close(); } });
-  new MutationObserver(() => { if (Mini.theme && Mini.theme !== hall()) { Mini.load(); if (T.open) { T.floorId = null; T.refresh(true); T.el.style.setProperty('--ix', accent()); } } }).observe(document.body, { attributes: true, attributeFilter: ['data-theme', 'class'] });
+  new MutationObserver(() => { if (Mini.theme && Mini.theme !== hall()) { Mini.theme = hall(); Mini.load(); if (T.open) { T.floorId = null; T.refresh(true); T.el.style.setProperty('--ix', accent()); } } }).observe(document.body, { attributes: true, attributeFilter: ['data-theme', 'class'] });
   function attach() {
     const icons = $('.qp-icons');
     if (icons && !icons.querySelector('[data-tower]')) {

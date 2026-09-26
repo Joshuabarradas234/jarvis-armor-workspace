@@ -100,7 +100,7 @@ export class AgentRunner {
     child.stoppedByUser = true;
     // stop the agent and everything it started, not just the shell that launched it
     try {
-      if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true });
+      if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }).on('error', () => { try { child.kill(); } catch { /* already gone */ } });
       else process.kill(-child.pid, 'SIGTERM');
     } catch { try { child.kill(); } catch { /* already gone */ } }
     return true;

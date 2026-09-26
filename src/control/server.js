@@ -8,8 +8,9 @@ import crypto from 'node:crypto';
  * or drive it.
  */
 export class ControlServer {
-  constructor({ missions, runner, board, run, hallName, log }) {
+  constructor({ missions, runner, board, run, hallName, changed, log }) {
     Object.assign(this, { missions, runner, board, run, log: log || (() => {}) });
+    this.changed = changed || (() => {});   // tells the JARVIS screens that a bay was edited here
     this.hallName = hallName || (id => id);
     this.token = crypto.randomBytes(24).toString('hex');
     this.clients = new Set();
@@ -86,7 +87,7 @@ export class ControlServer {
         if (u.pathname === '/api/stop') this.runner.stop(hall, body.id);
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: true, bays: this.board(hall) }));
-        this.push({ hall }); return;
+        this.push({ hall }); this.changed(hall); return;
       }
       res.writeHead(404).end('not found');
     } catch (err) {
@@ -98,7 +99,7 @@ export class ControlServer {
   body(req) {
     return new Promise((resolve, reject) => {
       let raw = '';
-      req.on('data', d => { raw += d; if (raw.length > 64_000) reject(Error('Too much data.')); });
+      req.on('data', d => { raw += d; if (raw.length > 64_000) { reject(Error('Too much data.')); req.destroy(); } });   // stop reading, not just stop listening
       req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { reject(Error('Bad request.')); } });
     });
   }

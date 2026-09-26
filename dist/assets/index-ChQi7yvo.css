@@ -1076,7 +1076,7 @@ body.sx-on .bay-label .case-light{background:radial-gradient(ellipse 40% 16% at 
 /* v9.14: on a shorter screen the hall title starts below the header instead of running into it */
 @media (max-height:860px){.hall-intro{top:122px!important;margin-top:0!important}}
 /* v9.15: the hovered suit's caption sits just above the bottom line, clear of the J.A.R.V.I.S. plate in the middle */
-.selection-caption{bottom:68px;z-index:17;padding:3px 14px;border-radius:12px;background:linear-gradient(90deg,transparent,rgba(4,12,18,.72) 18%,rgba(4,12,18,.72) 82%,transparent)}
+.selection-caption{z-index:17;padding:3px 14px;border-radius:12px;background:linear-gradient(90deg,transparent,rgba(4,12,18,.72) 18%,rgba(4,12,18,.72) 82%,transparent)}
 .selection-caption>span{margin-bottom:2px}
 .selection-caption{white-space:nowrap;bottom:70px}.selection-caption>span{display:inline;margin:0 10px 0 0}
 .bf-head .bf-wx{margin:10px 0 0;font:500 12px Consolas,monospace;letter-spacing:.14em;color:#cfe3ec;text-transform:uppercase}

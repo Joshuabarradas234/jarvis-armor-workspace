@@ -276,7 +276,7 @@ function setTarget(p) {
   t.tgtPin.position.copy(at); t.tgtPin.visible = true;
   t.pulse.position.copy(ll2v(THREE, p.lat, p.lon, 1.004)); t.pulse.lookAt(at.clone().multiplyScalar(2)); t.pulse.visible = true;
   // a great-circle arc from home, lifted off the surface by how far it goes
-  if (t.arc) { t.world.remove(t.arc); t.arc.geometry.dispose(); }
+  if (t.arc) { t.world.remove(t.arc); t.arc.geometry.dispose(); t.arc.material.dispose(); t.arc = null; }
   const a = ll2v(THREE, G.home.lat, G.home.lon), b = ll2v(THREE, p.lat, p.lon); const ang = a.angleTo(b);
   if (ang > 0.02) {
     const pts = []; for (let i = 0; i <= 96; i++) { const f = i / 96; const v = new THREE.Vector3().copy(a).lerp(b, f).normalize(); v.multiplyScalar(1 + Math.sin(f * Math.PI) * (0.06 + ang * 0.16)); pts.push(v); }
@@ -313,9 +313,9 @@ function frame(now) {
   if (!G.isOpen) return;
   G.raf = requestAnimationFrame(frame);
   const t = G.three; if (!t || G.mode === 'map') { hudTick(); return; }
-  const dt = clamp((now - (G.lastT || now)) / 1000, 0, 0.1); G.lastT = now;
+  if (now - (G.lastT || 0) < 28) return; const dt = clamp((now - (G.lastT || now)) / 1000, 0, 0.1); G.lastT = now;   // ~30 fps on any refresh rate
   const { renderer, camera, stage = G.el.querySelector('.gx-stage') } = t;
-  const w = stage.clientWidth, h = stage.clientHeight;
+  const w = stage.clientWidth, h = stage.clientHeight; const pr = Math.min(2, Math.max(1, devicePixelRatio || 1)); if (renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr);
   if (renderer.domElement.width !== Math.floor(w * renderer.getPixelRatio()) || renderer.domElement.height !== Math.floor(h * renderer.getPixelRatio())) { renderer.setSize(w, h, false); renderer.domElement.style.width = w + 'px'; renderer.domElement.style.height = h + 'px'; camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix(); }
   // flying somewhere
   if (G.want) {
@@ -376,7 +376,7 @@ async function weatherFor(p) {
     const w = await call('geo-weather', { lat: p.lat, lon: p.lon });
     if (G.target !== ask || !w) return;
     G.wx = w;
-    box.innerHTML = `<b>${w.icon || ''} ${Math.round(w.temp)}°C</b><span>${esc(w.words || '')}</span><span>💧 ${w.humidity ?? '–'}%  ·  💨 ${Math.round(w.wind || 0)} km/h</span>`;
+    box.innerHTML = `<b>${esc(w.icon || '')} ${Math.round(w.temp)}°C</b><span>${esc(w.words || '')}</span><span>💧 ${w.humidity ?? '–'}%  ·  💨 ${Math.round(w.wind || 0)} km/h</span>`;
   } catch { if (G.target === ask) box.innerHTML = '<span class="gx-dim">Weather unavailable</span>'; }
 }
 
