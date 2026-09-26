@@ -18,7 +18,7 @@ This file lists what was fixed in 1.70.0 and what is still open, so the next pas
 - Voice: modern-engine fallback left two recognisers running (double to-dos); "hello Jarvis" now greets.
 - 3D: tower/floor tags rebuilt every frame so clicks were lost (now updated in place); desk-cam timer outlived its modal; suits' GPU memory leaked on hall switch; hall-switch race showed old suits; canvases resized every frame at 125%/150% scaling; second/third-screen scenes didn't release their WebGL context; muted cave sound kept running; floor folder stack made new GPU buffers on every update; map loaded twice on a fast first zoom.
 
-## Second pass (after 1.70.0, not yet built or run on Windows)
+## Second pass (released as 1.70.1)
 Every item from the old "Still open" list is fixed:
 - Settings load key by key (`sanitizeSettings` in schema.js): one bad value is dropped and logged, not a full reset (which also re-ran first-time setup).
 - Backup restore checks the file, keeps rescue copies, writes atomically and reloads settings, suits, calendar, to-dos and ideas live, with no restart. The backup now includes calendar, to-dos and ideas.

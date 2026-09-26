@@ -1,0 +1,5 @@
+{
+  "version": "1.70.1",
+  "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
+  "notes": "Fixes lost suit tabs, settings resetting on one bad value, live backup restore, 3D memory leaks and frame-rate caps, hall-switch glitches, and voice/wallpaper on PCs with the default PowerShell policy."
+}
