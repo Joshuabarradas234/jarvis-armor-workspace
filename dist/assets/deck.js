@@ -50,7 +50,7 @@ if (J && VIEW === 'console') {
       this.el.style.setProperty('--dk', ACCENT[this.theme] || '#7fd6e8');
       this.el.querySelector('.dk-hall').textContent = n; this.el.querySelector('.dk-ai').textContent = ai;
       const th = this.theme; let b = null; try { b = await call('deck-backdrop', { theme: th }); } catch {} if (this.theme !== th) return; if (b?.url) this.backdrop(b.url);   // a quick A→B hall switch must not show A's picture
-      this.living(b && !b.custom ? this.theme : null);
+      this.living(b && !b.custom && b.scene !== false ? this.theme : null);   // halls without a living scene no longer ask for one (it only logged a 404)
     },
     backdrop(url) { const bg = this.el.querySelector('.dk-bg'); const img = new Image(); img.onload = () => { bg.style.backgroundImage = `url("${url}")`; bg.classList.remove('in'); void bg.offsetWidth; bg.classList.add('in'); }; img.src = url; },
     /** the backdrop's living extras (a boat on the water, background sound), when the hall's picture has them */

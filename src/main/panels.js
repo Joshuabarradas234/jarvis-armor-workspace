@@ -10,7 +10,9 @@ const MAX=12;
 export class PanelManager{
   constructor({window,onChange,log}){this.window=window;this.onChange=onChange||(()=>{});this.log=log||(()=>{});this.panels=new Map();}
   win(){const w=this.window();return w&&!w.isDestroyed()?w:null;}
-  list(){return [...this.panels.values()].map(p=>({id:p.id,url:p.view.webContents.isDestroyed()?p.url:(p.view.webContents.getURL()||p.url),title:p.title||'',visible:p.visible}));}
+  /** A panel whose page was destroyed underneath it is dropped instead of breaking every update. */
+  prune(){for(const [id,p] of this.panels){const wc=p.view?.webContents;if(!wc||wc.isDestroyed())this.panels.delete(id);}}
+  list(){this.prune();return [...this.panels.values()].map(p=>({id:p.id,url:p.view.webContents.getURL()||p.url,title:p.title||'',visible:p.visible}));}
   changed(){try{this.onChange(this.list());}catch{}}
   open({id,url,rect}={}){
     if(!allowed(url))throw Error('Only web pages can open in a panel.');
@@ -67,7 +69,7 @@ export class PanelManager{
   }
   closeAll(){for(const id of [...this.panels.keys()])this.close(id);}
   navigate(id,command){
-    const p=this.panels.get(id);if(!p)return false;const wc=p.view.webContents;
+    this.prune();const p=this.panels.get(id);if(!p)return false;const wc=p.view.webContents;
     if(command==='back'&&wc.navigationHistory.canGoBack())wc.navigationHistory.goBack();
     else if(command==='forward'&&wc.navigationHistory.canGoForward())wc.navigationHistory.goForward();
     else if(command==='reload')wc.reload();
@@ -76,6 +78,7 @@ export class PanelManager{
   }
   /** Hand control: the top panel under a window point, if any. */
   at(x,y,only){
+    this.prune();
     const ids=only?[only]:[...this.panels.keys()];
     const win=this.win();const order=win?win.contentView.children:[];
     let best=null,bestZ=-1;

@@ -178,7 +178,8 @@ if (J && VIEW === 'main') {
     if (document.hidden || now - S.last < 32) return;   // about 30 frames a second is plenty for a slow turn
     const dt = Math.min(0.1, (now - S.last) / 1000); S.last = now;
     const back = S.canvas?.parentElement; if (!back) return;
-    const inHall = !document.querySelector('.workstation:not(.hidden)') && !document.body.classList.contains('globe-open') && !document.body.classList.contains('ideas-open');
+    // the suit page is hidden through its containers (.module-host), never by a class on itself: checking it alone switched the 3D suits off for good once any suit had been opened
+    const inHall = !document.querySelector('.module-host:not(.hidden) .workstation') && !document.body.classList.contains('globe-open') && !document.body.classList.contains('ideas-open');
     S.canvas.style.visibility = inHall ? '' : 'hidden'; if (!inHall) return;
     const W = back.offsetWidth, Hh = back.offsetHeight; if (!W || !Hh) return;
     // sharper while the hall is zoomed in on a case
@@ -187,6 +188,14 @@ if (J && VIEW === 'main') {
     r.setScissor(0, 0, W, Hh); r.setViewport(0, 0, W, Hh); r.clear();
     const M = mapper(back); const staged = placeClean(back, M);
     const hovered = S.spin?.bay?.id || (S.show && performance.now() < S.show.until ? S.show.id : null) || document.querySelector('.hotspot:hover, .hotspot.hover, .hotspot.active')?.dataset?.suit;
+    // a suit standing behind the centre hologram (Mark V in the Armor Hall): the hologram fades while you point at it
+    const ov = document.querySelector('.hall-overlay');
+    if (ov) {
+      let see = false;
+      const hb = hovered && S.bays.has(hovered) && document.querySelector(`.hotspot[data-suit="${CSS.escape(hovered)}"]`);
+      if (hb) { const a = ov.getBoundingClientRect(), b = hb.getBoundingClientRect(); see = Math.min(a.right, b.right) - Math.max(a.left, b.left) > b.width * 0.3 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > b.height * 0.3; }
+      if (ov.classList.contains('sx-see-through') !== see) ov.classList.toggle('sx-see-through', see);
+    }
     for (const bay of S.bays.values()) {
       if (!bay.ready) continue;
       const g = staged ? S.stage.bays[bay.id] : null;
@@ -307,6 +316,8 @@ if (J && VIEW === 'main') {
     root?.classList.toggle('sx-noeyes', !!sel && ['SUIT_SELECTED', 'MODULE'].includes(s.state));
     if (sel && ['SUIT_SELECTED', 'MODULE'].includes(s.state)) { zoomTo(sel, 0.9); return; }
     if (S.show && performance.now() < S.show.until && ['ARMOR_HALL', 'SUIT_HOVER'].includes(s.state)) { if (zoomTo(S.show.id, 0.6, 2.4, true)) return; }
+    // a "show me" fly-in whose own timer never ran (hall switched mid-flight): fly back out rather than stay zoomed
+    if (root?.classList.contains('sx-fly') && F.ts !== 1 && !(S.show && performance.now() < S.show.until)) zoomReset();
     if (!['ARMOR_HALL', 'SUIT_HOVER'].includes(s.state) && root?.classList.contains('sx-fly')) { cancelAnimationFrame(F.raf); F.raf = 0; F.x = F.y = 0; F.s = 1; root.classList.remove('sx-fly'); }
     S.zoomScale = 1;   // the hall has set its own zoom (none) with this change
   }
@@ -327,6 +338,6 @@ if (J && VIEW === 'main') {
 
   // the hall is re-drawn when you change hall or come back from a suit
   setInterval(() => { if (document.querySelector('.hall-backdrop')) sync().catch(e => console.warn('[suits]', e)); else stop(); }, 1500);
-  new MutationObserver(() => { if (S.theme && S.theme !== hall()) { S.list = null; cleanKey = ''; sync().catch(() => {}); } }).observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });
+  new MutationObserver(() => { if (S.theme && S.theme !== hall()) { S.list = null; cleanKey = ''; S.show = null; setTimeout(applyZoom, 60); sync().catch(() => {}); } }).observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });   // a new hall starts un-zoomed
   window.__jarvisSuits = S;
 }

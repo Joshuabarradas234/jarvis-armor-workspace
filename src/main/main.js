@@ -713,7 +713,7 @@ function deckInfo(){
 function deckBackdrop(t){
   const custom=(settings.get().deckBackdrops||{})[t];
   if(custom&&fs.existsSync(path.join(userDir,'assets',custom)))return {url:`jarvis://custom/${encodeURIComponent(custom)}`,custom:true};
-  return {url:fs.existsSync(path.join(assets,'deck',`${t}.jpg`))?`jarvis://asset/deck/${t}.jpg`:`jarvis://asset/wallpaper/${t}.jpg`,custom:false};
+  return {url:fs.existsSync(path.join(assets,'deck',`${t}.jpg`))?`jarvis://asset/deck/${t}.jpg`:`jarvis://asset/wallpaper/${t}.jpg`,custom:false,scene:fs.existsSync(path.join(assets,'deck',`${t}.json`))};   // scene: the hall has a living deck scene (only the Batcave so far)
 }
 function throwPanelDown(id){
   if(!deckUp())throw Error('The second screen is not on. Take the keyboard off to use it.');

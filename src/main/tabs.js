@@ -4,7 +4,9 @@ const allowed=url=>{try{const u=new URL(url);return ['https:','http:'].includes(
 /** Sandboxed browser tabs rendered inside the main workspace window (below the JARVIS tab strip). */
 export class TabManager{
   constructor({window,onChange,log}){this.window=window;this.onChange=onChange;this.log=log;this.tabs=[];this.active=null;this.layout={x:0,y:0,width:0,height:0};this.shown=true;}
-  list(){return this.tabs.map(t=>({id:t.id,title:t.view.webContents.getTitle()||t.url,url:t.view.webContents.getURL()||t.url,active:t.id===this.active,loading:t.view.webContents.isLoading(),popped:!!t.popped}));}
+  /** A tab whose page was destroyed underneath it (its window rebuilt or closed) is dropped instead of throwing on every update. */
+  prune(){const live=this.tabs.filter(t=>{const wc=t.view?.webContents;return !!wc&&!wc.isDestroyed();});if(live.length===this.tabs.length)return;this.tabs=live;if(!live.some(t=>t.id===this.active))this.active=live.find(t=>!t.popped)?.id||null;}
+  list(){this.prune();return this.tabs.map(t=>({id:t.id,title:t.view.webContents.getTitle()||t.url,url:t.view.webContents.getURL()||t.url,active:t.id===this.active,loading:t.view.webContents.isLoading(),popped:!!t.popped}));}
   win(){const w=this.window();return w&&!w.isDestroyed()?w:null;}
   open(url,activate=true){
     if(!allowed(url))throw Error('Only HTTP and HTTPS pages can open in a tab.');
@@ -25,10 +27,10 @@ export class TabManager{
     if(activate||!this.active)this.activate(id);else this.apply();
     this.onChange(this.list());return id;
   }
-  activate(id){const tt=this.tabs.find(t=>t.id===id);if(!tt)return false;if(tt.popped&&!tt.popped.isDestroyed()){if(tt.popped.isMinimized())tt.popped.restore();tt.popped.focus();return true;}this.active=id;this.apply();this.onChange(this.list());return true;}
+  activate(id){this.prune();const tt=this.tabs.find(t=>t.id===id);if(!tt)return false;if(tt.popped&&!tt.popped.isDestroyed()){if(tt.popped.isMinimized())tt.popped.restore();tt.popped.focus();return true;}this.active=id;this.apply();this.onChange(this.list());return true;}
   close(id){const i=this.tabs.findIndex(t=>t.id===id);if(i<0)return false;const [tab]=this.tabs.splice(i,1);if(tab.popped&&!tab.popped.isDestroyed()){const pw=tab.popped;tab.popped=null;tab.closing=true;try{pw.contentView.removeChildView(tab.view);}catch{}pw.destroy();}const win=this.win();try{win?.contentView.removeChildView(tab.view);}catch{}try{tab.view.webContents.close();}catch{}if(this.active===id)this.active=this.tabs[Math.min(i,this.tabs.length-1)]?.id||null;this.apply();this.onChange(this.list());return true;}
   closeAll(){for(const t of [...this.tabs])this.close(t.id);}
-  navigate(id,command){const tab=this.tabs.find(t=>t.id===id);if(!tab)return false;const wc=tab.view.webContents;if(command==='back'&&wc.navigationHistory.canGoBack())wc.navigationHistory.goBack();else if(command==='forward'&&wc.navigationHistory.canGoForward())wc.navigationHistory.goForward();else if(command==='reload')wc.reload();else if(command==='external')shell.openExternal(wc.getURL()).catch(e=>this.log('tabs',e.message));return true;}
+  navigate(id,command){this.prune();const tab=this.tabs.find(t=>t.id===id);if(!tab)return false;const wc=tab.view.webContents;if(command==='back'&&wc.navigationHistory.canGoBack())wc.navigationHistory.goBack();else if(command==='forward'&&wc.navigationHistory.canGoForward())wc.navigationHistory.goForward();else if(command==='reload')wc.reload();else if(command==='external')shell.openExternal(wc.getURL()).catch(e=>this.log('tabs',e.message));return true;}
   setLayout(rect){const r={x:Math.max(0,Math.round(rect.x||0)),y:Math.max(0,Math.round(rect.y||0)),width:Math.max(0,Math.round(rect.width||0)),height:Math.max(0,Math.round(rect.height||0))};this.layout=r;this.apply();}
   show(shown){this.shown=shown;this.apply();}
   apply(){for(const t of this.tabs){if(t.popped)continue;const on=this.shown&&t.id===this.active&&this.layout.width>0;t.view.setVisible(on);t.view.setBounds(on?this.layout:{x:0,y:0,width:0,height:0});}}
@@ -62,12 +64,12 @@ export class TabManager{
   }
   /** Hand-swipe scrolling for the page in the active tab. */
   /** Scroll the visible tab; at the hand cursor when a window point is given, else the middle. */
-  scroll(dy,at){const t=this.tabs.find(x=>x.id===this.active&&!x.popped);if(!t)return false;const b=t.view.getBounds();
+  scroll(dy,at){this.prune();const t=this.tabs.find(x=>x.id===this.active&&!x.popped);if(!t)return false;const b=t.view.getBounds();
     const inside=at&&at.x>=b.x&&at.y>=b.y&&at.x<b.x+b.width&&at.y<b.y+b.height;
     t.view.webContents.sendInputEvent({type:'mouseWheel',x:inside?Math.round(at.x-b.x):Math.round(b.width/2),y:inside?Math.round(at.y-b.y):Math.round(b.height/2),deltaX:0,deltaY:-dy});return true;}
   /** Hand control: move / press / release inside the visible tab, from a point in the window. */
   pointer(type,x,y){
-    const t=this.tabs.find(v=>v.id===this.active&&!v.popped);if(!t||t.view.webContents.isDestroyed())return false;
+    this.prune();const t=this.tabs.find(v=>v.id===this.active&&!v.popped);if(!t||t.view.webContents.isDestroyed())return false;
     const b=t.view.getBounds();if(!(x>=b.x&&y>=b.y&&x<b.x+b.width&&y<b.y+b.height))return false;
     const ev={x:Math.round(x-b.x),y:Math.round(y-b.y)};const wc=t.view.webContents;
     if(type==='move')wc.sendInputEvent({type:'mouseMove',...ev});
@@ -78,7 +80,7 @@ export class TabManager{
   }
   /** Hand a tab's live page over to another screen (the deck): it leaves the tab strip but keeps its place in the page. */
   release(id){
-    const i=this.tabs.findIndex(t=>t.id===id);if(i<0)return null;const tab=this.tabs[i];
+    this.prune();const i=this.tabs.findIndex(t=>t.id===id);if(i<0)return null;const tab=this.tabs[i];
     if(tab.popped&&!tab.popped.isDestroyed()){tab.closing=true;try{tab.popped.contentView.removeChildView(tab.view);}catch{}tab.popped.destroy();tab.popped=null;}
     this.tabs.splice(i,1);try{this.win()?.contentView.removeChildView(tab.view);}catch{}
     if(this.active===id)this.active=this.tabs.find(t=>!t.popped)?.id||null;

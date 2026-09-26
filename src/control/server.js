@@ -49,8 +49,9 @@ export class ControlServer {
         res.end(PAGE); return;
       }
       if (u.pathname === '/api/board') {
+        const bays = this.board(hall);   // before the reply starts, so a bad hall still gets a proper error back
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ hall, bays: this.board(hall) })); return;
+        res.end(JSON.stringify({ hall, bays })); return;
       }
       if (u.pathname === '/api/events') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
@@ -91,6 +92,8 @@ export class ControlServer {
       }
       res.writeHead(404).end('not found');
     } catch (err) {
+      // an error after the reply has started (headers already sent) can only end the reply, not start a second one
+      if (res.headersSent) { try { res.end(); } catch { /* already closed */ } return; }
       res.writeHead(400, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
     }

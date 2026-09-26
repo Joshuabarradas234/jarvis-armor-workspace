@@ -1115,3 +1115,13 @@ body.sx-on .bay-label .case-light{background:radial-gradient(ellipse 40% 16% at 
 .ix-row .ix-go{border-color:var(--ix);color:#fff;box-shadow:0 0 14px color-mix(in srgb,var(--ix) 30%,transparent)}
 .ix-cfg{text-align:left}.ix-cfg .ix-path{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c9dbe6}
 .ix-check{display:flex;gap:8px;align-items:center;font-size:13px;color:#c9dbe6}
+
+/* 1.72.1: the centre hologram turns see-through while you point at a suit standing behind it */
+.hall-overlay.sx-see-through{opacity:.14!important;transition:transform 2.8s cubic-bezier(.3,.7,.15,1),opacity .35s ease}
+/* the hall bar stays out of the way while a hall-switch video plays */
+body:has(.hall-transition) .qp{visibility:hidden}
+/* flown in on a case ("show me Mark V"), the big name plates would sit on the heading: fade it until the view flies back out */
+.hall-intro{transition:opacity .4s ease}
+body:has(.image-hall.sx-fly) .hall-intro{opacity:0}
+/* the note bar close button: the general button padding left no room for the x */
+.ws-recap .wr-x{padding:0;display:grid;place-items:center;line-height:1}

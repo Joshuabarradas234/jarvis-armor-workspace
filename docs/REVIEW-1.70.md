@@ -63,6 +63,21 @@ The three items left open after 1.70.1:
 - UI (`hands-ideas.js`): card tags and status pills, the JARVIS section in the editor (Get JARVIS on it / Approve / Change it / Not now / View the changes / Merge / Discard), a ⚙ setup panel, and a badge on the lightbulb for pending approvals. Broadcast channel `ideas`.
 - Tested: 17 end-to-end checks with stand-in engines against a real temp git repo (plain, suit, app merge, app discard, syntax repair, privacy flag, guard rails); the UI rendered in a browser harness (cards, new-idea picker, approval, review, setup).
 
+## 1.72.1: live check in the running app
+Checked in a copy of the installed app with a copied profile, driven over the DevTools protocol (screenshots of each window, the state set from code):
+- **3D suits vanished for good after opening any suit.** suits3d checked `.workstation:not(.hidden)`, but the suit page is hidden through `.module-host`/`.module-content`, so the 3D layer switched itself off. Every case then fell back to the painted hall: case 4 (Mark V, which has no painted suit) looked empty. Now it checks `.module-host:not(.hidden) .workstation`.
+- The centre hologram stands in front of a case in each hall (Mark V, Absolute Batman, Ghost-Spider). While a suit behind it is hovered or shown, the hologram fades (`.hall-overlay.sx-see-through`).
+- A "show me" fly-in whose timer never ran stayed zoomed, even across a hall switch. It now resets when the hall changes or when nothing is being shown.
+- One Skip press skipped only the lead-in clip of a hall switch; it now ends the whole sequence (`__skipAll` in transition-*.js).
+- The hall bar showed on top of hall-switch videos; it is hidden while `.hall-transition` exists.
+- The footer and the control deck printed the state name "ARMOR HALL" in every hall; they now show the hall's name.
+- The note bar's × button overflowed its box (general button padding).
+- The deck fetched `<hall>.json` living scenes that only exist for the Batcave (404s); `deck-backdrop` now says whether a scene exists.
+- From the user's real jarvis.log: `TabManager.list` threw on a tab whose page had been destroyed (23 crashes, and tab switching failed). Tabs and panels now drop dead pages (`prune`). The control deck server wrote headers twice on late errors (7 crashes) and computed the board after starting its reply; both fixed.
+- Also confirmed from that log: 1.70.0's speech and wallpaper scripts are blocked by the PC's PowerShell policy ("not digitally signed"), which 1.70.1's `-ExecutionPolicy Bypass` fixes.
+- Every case in all three halls holds the right suit, and each plate matches its suit.
+- User settings to tidy (not code): the Batcave centre bay is named "BATMOBLIE BAY"; a suit's Screens list starts an app called "cluade", which fails to open. There is no Claude API key and no Claude Code on this PC yet, so the tower runs in rehearsal mode and idea plans and meeting summaries can't run.
+
 ## Still open
 - Approvals by phone or WhatsApp come with the other chat's work: hook them into `IdeaAssistant.notify`.
 - Installing an approved and merged app change needs the self-update system (also from the other chat).
