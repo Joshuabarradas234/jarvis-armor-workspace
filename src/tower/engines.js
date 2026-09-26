@@ -38,7 +38,7 @@ export async function callApi({key, model, system, prompt, web = false, maxToken
 
 let codeProbe = null;
 /** Claude Code's command: its own install folder when it is there (the installer does not always add that folder to PATH), else whatever PATH finds. */
-const CLAUDE = (() => { const own = path.join(os.homedir(), '.local', 'bin', process.platform === 'win32' ? 'claude.exe' : 'claude'); return fs.existsSync(own) ? '"' + own + '"' : 'claude'; })();
+export const CLAUDE = (() => { const own = path.join(os.homedir(), '.local', 'bin', process.platform === 'win32' ? 'claude.exe' : 'claude'); return fs.existsSync(own) ? '"' + own + '"' : 'claude'; })();
 /** Is Claude Code installed and on the PATH? (checked once, then remembered) */
 export function detectClaudeCode(force = false) {
   if (codeProbe && !force) return codeProbe;
@@ -65,11 +65,12 @@ export function detectClaudeCode(force = false) {
  * Agents are fenced into their floor's folder: they may read and write there, and nowhere else
  * (tested: a read of any other path is refused). No shell, and no searching the rest of the disk.
  */
-function fenceFile(dir, web) {
-  const file = path.join(dir || os.tmpdir(), web ? 'tower-agent-web.json' : 'tower-agent.json');
-  const allow = ['Read(./**)', 'Edit(./**)', ...(web ? ['WebSearch', 'WebFetch'] : [])];
+function fenceFile(dir, web, custom) {
+  const file = path.join(dir || os.tmpdir(), custom ? 'jarvis-coder.json' : web ? 'tower-agent-web.json' : 'tower-agent.json');
+  const allow = custom?.allow || ['Read(./**)', 'Edit(./**)', ...(web ? ['WebSearch', 'WebFetch'] : [])];
+  const deny = custom?.deny || ['Bash', 'Glob', 'Grep', 'NotebookEdit', ...(web ? [] : ['WebSearch', 'WebFetch'])];
   fs.mkdirSync(path.dirname(file), {recursive: true});
-  fs.writeFileSync(file, JSON.stringify({permissions: {allow, deny: ['Bash', 'Glob', 'Grep', 'NotebookEdit', ...(web ? [] : ['WebSearch', 'WebFetch'])]}}, null, 1));
+  fs.writeFileSync(file, JSON.stringify({permissions: {allow, deny}}, null, 1));
   return file;
 }
 const q = a => /[\s"&|<>^()]/.test(a) ? `"${String(a).replace(/"/g, '\\"')}"` : a;   // arguments go through the shell (claude may be a .cmd)
@@ -87,15 +88,15 @@ function describeTool(c) {
   if (c.name === 'WebFetch') return `Reading ${String(i.url || '').replace(/^https?:\/\//, '').slice(0, 80)}`;
   return `${c.name}`;
 }
-export function callClaudeCode({cwd, prompt, model = 'sonnet', web = false, maxTurns = 14, onLine, onEvent, register, settingsDir}) {
+export function callClaudeCode({cwd, prompt, model = 'sonnet', web = false, maxTurns = 14, onLine, onEvent, register, settingsDir, fence, timeoutMin = 20, extraArgs = []}) {
   return new Promise((resolve, reject) => {
-    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--max-turns', String(maxTurns), '--settings', fenceFile(settingsDir, web)];
+    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--max-turns', String(maxTurns), '--settings', fenceFile(settingsDir, web, fence), ...extraArgs];
     let child;
     try { child = spawn(CLAUDE, args.map(q), {cwd, shell: true, windowsHide: true, detached: process.platform !== 'win32'}); }
     catch (e) { reject(Error('Claude Code could not start: ' + e.message)); return; }
     register?.(child);
     let buf = '', err = '', result = null, draft = '';
-    const timer = setTimeout(() => { killTree(child); reject(Error('Claude Code took longer than 20 minutes.')); }, 20 * 60000);
+    const timer = setTimeout(() => { killTree(child); reject(Error(`Claude Code took longer than ${timeoutMin} minutes.`)); }, timeoutMin * 60000);
     const line = l => {
       let o; try { o = JSON.parse(l); } catch { return; }
       if (o.type === 'assistant') for (const c of o.message?.content || []) {

@@ -56,7 +56,11 @@ public static class JvSide {
     gb.Append(new GrammarBuilder(new Choices(names)), 0, 1);   // the name can be left off right after he answers
     gb.Append(new Choices(new string[] { "open a map of", "open a map for", "show me a map of", "show me the map of", "show me a satellite map of", "pull up a map of", "take me to", "fly to", "fly me to", "zoom in on", "where is", "search for", "look up", "google",
       "note that", "make a note that", "take a note", "remind me to", "add to my list", "remember to", "new idea", "i have an idea", "save an idea",
-      "tell the tower to", "ask the tower to", "give the tower" }));
+      "tell the tower to", "ask the tower to", "give the tower",
+      "wake me up at", "wake me up in", "wake me at", "call me at", "call me in", "set an alarm for", "set a wake up call for",
+      "add a feature", "add the ability to", "i want you to", "can you", "could you", "ask", "tell me", "message me", "whatsapp me", "text me",
+      "approve", "approve number", "deny", "deny number", "decline", "decline number", "yes to", "no to", "ring me at", "ring me in",
+      "what", "whats", "how", "how many", "who", "is", "are", "did", "do i", "have i", "why", "when" }));
     gb.AppendDictation();
     Grammar g = new Grammar(gb);
     g.Name = "jarvis-dictation";

@@ -1,4 +1,4 @@
-import {app,BrowserWindow,ipcMain,Tray,Menu,nativeImage,screen,globalShortcut,powerMonitor,protocol,net,shell,dialog,safeStorage,Notification,session,WebContentsView,desktopCapturer} from 'electron';
+import {app,BrowserWindow,ipcMain,Tray,Menu,nativeImage,screen,globalShortcut,powerMonitor,powerSaveBlocker,protocol,net,shell,dialog,safeStorage,Notification,session,WebContentsView,desktopCapturer} from 'electron';
 import fs from 'node:fs';
 import https from 'node:https';
 import path from 'node:path';
@@ -27,22 +27,37 @@ import {TodoStore} from '../services/todos.js';
 import {IdeaStore} from '../services/ideas.js';
 import {IdeaAssistant} from '../ideas/assistant.js';
 import {weather,askAI} from '../services/integrations.js';
+import {createJarvisCore} from '../brain/index.js';
+import {SelfUpdater} from '../brain/selfupdate.js';
 
 protocol.registerSchemesAsPrivileged([{scheme:'jarvis',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true,corsEnabled:true}}]);
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+/** Set by boot.js: which approved self-update is running (root), and the installed app underneath it (asarRoot). */
+const BOOT=globalThis.__jarvisBoot||null;
+const baseRoot=BOOT?.asarRoot||root;
+const distRoots=[...new Set([path.join(root,'dist'),path.join(baseRoot,'dist')])];   // a self-update carries only the files it can change; the rest come from the installed app
 const smoke=process.env.JARVIS_TEST==='1';
-if(smoke)app.setPath('userData',path.join(root,'test-results','profile'));
+if(smoke&&!BOOT)app.setPath('userData',path.join(root,'test-results','profile'));
 const devURL=!app.isPackaged&&process.env.JARVIS_DEV_URL==='http://127.0.0.1:5173'?'http://127.0.0.1:5173':null;
 const trusted=new Map(),mediaFiles=new Map();let tray,settings,displays,machine,monitor,voice,calendar,settingsWindow,todos=null,ideas=null;
 let workstations,tabs,layout,telemetry=null,weatherCache=null,weatherChecked=0,onBattery=false,voiceStatus='MICROPHONE OFF',quitting=false,pendingModule=null,modules=[],reminderTimer,mainReady=false,pendingWake=false;
 const status={errors:[],commandHistory:[]};
-const scripts=app.isPackaged?path.join(process.resourcesPath,'windows'):path.join(root,'scripts','windows');
-const assets=app.isPackaged?path.join(process.resourcesPath,'assets'):path.join(root,'assets');
+const scripts=app.isPackaged?path.join(process.resourcesPath,'windows'):path.join(baseRoot,'scripts','windows');
+const assets=app.isPackaged?path.join(process.resourcesPath,'assets'):path.join(baseRoot,'assets');
 let userDir;
 function log(kind,message){const row={time:new Date().toISOString(),kind,message:String(message).slice(0,800)};status.errors.push(row);status.errors=status.errors.slice(-50);try{const f=path.join(userDir,'jarvis.log');if(fs.existsSync(f)&&fs.statSync(f).size>2e6)fs.renameSync(f,f+'.previous');fs.appendFileSync(f,JSON.stringify(row)+'\n');}catch{}broadcast('status',getStatus());}
-let followUntil=0,panels=null,tower=null,towerRunner=null,towerKey=null;
+let followUntil=0,panels=null,tower=null,towerRunner=null,towerKey=null,core=null,coreError='',lastUserAction=Date.now(),awakeBlock=null,bootMarked=false;
 function voiceContext(){return {theme:workstations.theme(),themes:workstations.themes,modules,idle:machine?.value?.state==='IDLE',follow:Date.now()<followUntil};}
 function themePayload(){return {...workstations.describe(),allSuits:undefined};}
+/** Speech that started with the assistant's name (or came right after he spoke) but matched no command. */
+function heardName(text){const nm=clean(workstations.theme()?.assistant||'');if(!nm)return false;const t=clean(text);return [nm,...(NAME_ALIASES[nm]||[])].some(n=>t.startsWith(n+' ')||t.endsWith(' '+n));}
+/** What to hand to the brain: the words after the name, when it is a real sentence heard in full (dictation). */
+function brainAsk(text,meta={}){
+  if(!meta.dictation)return '';const nm=clean(workstations.theme()?.assistant||'');const t=clean(text);
+  let rest='';for(const n of [nm,...(NAME_ALIASES[nm]||[])].sort((a,b)=>b.length-a.length)){if(t.startsWith(n+' ')){rest=t.slice(n.length+1);break;}if(t.endsWith(' '+n)){rest=t.slice(0,-(n.length+1));break;}}
+  if(!rest&&Date.now()<followUntil)rest=t;
+  return rest&&rest.split(' ').length>=2?rest:'';
+}
 
 /** The active hall's voice profile and in-character reply lines. */
 function voiceProfile(){return workstations.theme()?.voice||null;}
@@ -137,7 +152,9 @@ function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate
   {type:'separator'},{label:'MICROPHONE',type:'checkbox',checked:settings.get().voiceEnabled,click:item=>applySettings({voiceEnabled:item.checked})},
   {label:'WALLPAPER',type:'checkbox',checked:settings.get().wallpaper,click:item=>applySettings({wallpaper:item.checked})},
   {label:'THIRD SCREEN VIEW',type:'checkbox',checked:settings.get().thirdScreen!==false,click:item=>applySettings({thirdScreen:item.checked})},
-  {label:'SETTINGS',click:openSettings},{type:'separator'},{label:'QUIT',click:()=>app.quit()}
+  {label:'JARVIS CORE',click:()=>{dispatch('wake');setTimeout(()=>broadcast('core',{type:'open'}),1500);}},{label:'SETTINGS',click:openSettings},
+  ...(BOOT?.version?[{type:'separator'},{label:`RUNNING SELF-UPDATE ${BOOT.n||''}`.trim(),enabled:false},{label:'UNDO LAST SELF-UPDATE',click:()=>{try{const u=new SelfUpdater({userDir,boot:BOOT,approvals:null,log}).undo();log('self-update',`Undo from the tray: ${u.from}`);}catch(e){log('self-update',e.message);}app.relaunch();app.quit();}},{label:'RESTART WITHOUT SELF-UPDATES',click:()=>{app.relaunch({args:[...process.argv.slice(1).filter(a=>a!=='--safe-mode'),'--safe-mode']});app.quit();}}]:[]),
+  {type:'separator'},{label:'QUIT',click:()=>app.quit()}
 ]));}
 /** The control deck: every bay's objective, progress and agent, for the hall you are in. */
 let missions=null,runner=null,deck=null;
@@ -262,6 +279,7 @@ function briefingData(mode='briefing'){
     {const wait=assistant?.pending()||[];if(wait.length)parts.push(`${wait.length} ${wait.length===1?'idea needs':'ideas need'} your approval in the Ideas room: ${wait.slice(0,3).map(i=>i.title).join(', ')}.`);}
     const recent=bays.filter(b=>b.last).sort((a,b)=>b.last-a.last);if(recent.length)parts.push(`You were last working in ${recent[0].name}, ${recent[0].lastAgo}${recent[1]?`, and before that ${recent[1].name}`:''}.`);
   }
+  try{const w=core?.approvals.waiting()||[];if(w.length&&mode!=='status')parts.push(`${w.length===1?'One thing is':`${w.length} things are`} waiting for your OK in JARVIS Core.`);}catch{}
   if(focusActive())parts.push(`Focus mode: ${Math.ceil((focus.until-Date.now())/60000)} minutes left.`);
   let towerToday=[];
   try{const act=towerRunner.active(workstations.activeTheme);if(act.length)parts.push(`In ${towerName()}, ${act.map(r=>`${r.floorName} is ${r.progress} percent through ${r.title}`).join(', and ')}.`);
@@ -274,7 +292,7 @@ function briefingData(mode='briefing'){
 function talk(action,cmd={}){
   const who=addr();
   if(action==='attention'){say(pick([`Yes, ${who}?`,`${cap(who)}?`,`Go ahead, ${who}.`]),{listenThrough:true});return true;}   // keep listening while he answers, so the command can follow straight on
-  if(action==='greet'){say(`Good ${partOfDay()}, ${who}.`);return true;}
+  if(action==='greet'){say(`Good ${partOfDay()}, ${who}.`);try{core?.noteAwake(Date.now(),true);}catch{}return true;}
   if(action==='thanks'){say(pick([`You're welcome, ${who}.`,`Always a pleasure, ${who}.`,`Any time, ${who}.`]));return true;}
   if(action==='briefing'||action==='status'){
     (async()=>{const b=briefingData(action);
@@ -543,6 +561,7 @@ function statusReport(){
   return parts.join(' ');
 }
 function dispatch(action,id,opts={}){
+  if(typeof action==='string'&&action.startsWith('core-')){if(!core)return false;core.voice(action,opts).catch(e=>{log('brain',e.message);say(e.message);});if(action==='core-bedtime')setTimeout(()=>{if(machine?.value?.state&&machine.value.state!=='IDLE')dispatch('standdown');},6500);return true;}
   if(TALK.includes(action)){if(action==='status'&&machine?.value?.state==='IDLE')return false;return talk(action,opts);}
   if(action==='settings'){openSettings();return true;}
   if(action==='run'){try{runBay(null,id);say(`Running ${workstations.suit(id)?.name||'it'}.`);}catch(e){say(e.message);log('control',e.message);}return true;}
@@ -877,11 +896,12 @@ function importFiles(dest,files){
 async function api(event,method,payload){
   assertSender(event);if(typeof method!=='string')throw Error('Invalid request.');
   const role=trusted.get(event.sender.id).role;
+  if(method==='action'||(method==='core'&&!['status','report','details','orders-text','notes'].includes(payload?.method)))lastUserAction=Date.now();
   if(['wallpaper','identify'].includes(role)&&method!=='bootstrap')throw Error('Read-only display.');
   switch(method){
-    case 'bootstrap':return {snapshot:machine.snapshot(),settings:settings.get(),modules,theme:themePayload(),displays:displays.describe(),single:displays.roles?.single??true,telemetry,status:getStatus(),platform:process.platform,version:app.getVersion(),preview:false,audioAssets:Object.fromEntries(['hover','wake','lock','launch','standby','ready'].filter(n=>fs.existsSync(path.join(assets,'audio',n+'.wav'))).map(n=>[n,`jarvis://asset/audio/${n}.wav`]))};
+    case 'bootstrap':return {snapshot:machine.snapshot(),settings:settings.get(),modules,theme:themePayload(),displays:displays.describe(),single:displays.roles?.single??true,telemetry,status:getStatus(),platform:process.platform,version:BOOT?.label||app.getVersion(),preview:false,audioAssets:Object.fromEntries(['hover','wake','lock','launch','standby','ready'].filter(n=>fs.existsSync(path.join(assets,'audio',n+'.wav'))).map(n=>[n,`jarvis://asset/audio/${n}.wav`]))};
     case 'action':if(!['wake','hover','select','home','back','standdown','settings','debug-hall','debug-helmet','theme','skip'].includes(payload?.action))throw Error('Unknown command.');return dispatch(payload.action,payload.id,{fast:payload.fast===true});
-    case 'renderer-ready':if(role==='main'){mainReady=true;if(pendingWake){pendingWake=false;dispatch('wake');}if(pendingDirect){pendingDirect=false;directHall();}}return true;
+    case 'renderer-ready':if(role==='main'){mainReady=true;if(pendingWake){pendingWake=false;dispatch('wake');}if(pendingDirect){pendingDirect=false;directHall();}if(!bootMarked&&(core||coreError)){bootMarked=true;globalThis.__jarvisBoot?.markGood?.();setTimeout(()=>{try{core?.booted();}catch(e){log('brain',e.message);}},5000);}}return true;
     case 'settings':return applySettings(payload);
     case 'identify':displays.identify();return true;
     case 'setup-complete':await applySettings({...payload,setupComplete:true});settingsWindow?.close();dispatch('wake');return true;
@@ -1128,7 +1148,8 @@ async function api(event,method,payload){
         return {current,latest:data.version,update:newer,url:data.url||'',notes:data.notes||''};
       }catch(e){return {current,error:e.message};}
     }
-    case 'diagnostics':return {status:getStatus(),displays:displays.describe(),version:app.getVersion(),platform:process.platform,gpu:app.getGPUFeatureStatus(),settingsPath:path.join(userDir,'settings.json')};
+    case 'core':{if(!['main','console','settings'].includes(role))throw Error('JARVIS Core is not available here.');if(!core)throw Error(coreError?`JARVIS Core could not start: ${coreError}`:'JARVIS Core is still starting.');if(typeof payload?.method!=='string')throw Error('Invalid request.');return core.api(payload.method,payload.data&&typeof payload.data==='object'?payload.data:{});}
+    case 'diagnostics':return {status:getStatus(),displays:displays.describe(),version:app.getVersion(),running:BOOT?.label||app.getVersion(),platform:process.platform,gpu:app.getGPUFeatureStatus(),settingsPath:path.join(userDir,'settings.json')};
     case 'open-logs':{const file=path.join(userDir,'jarvis.log');if(!fs.existsSync(file))fs.writeFileSync(file,'No errors recorded in this session.\n');const error=await shell.openPath(file);if(error)throw Error(error);return true;}
     case 'clear-cache':await session.defaultSession.clearCache();return true;
     case 'reset-settings':{const response=await dialog.showMessageBox({type:'question',buttons:['Cancel','Reset settings'],defaultId:0,cancelId:0,message:'Reset JARVIS settings?',detail:'Your local calendar and imported assets are kept.'});if(response.response===1){await applySettings(structuredClone(defaults));openSettings();}return true;}
@@ -1173,7 +1194,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     protocol.handle('jarvis',request=>{
       const url=new URL(request.url);let target;
       if(url.host==='media'){target=mediaFiles.get(url.pathname.split('/')[1]);if(!target)return new Response('Missing media',{status:404});}
-      else {const base=url.host==='app'?path.join(root,'dist'):url.host==='asset'?assets:url.host==='custom'?path.join(userDir,'assets'):null;if(!base)return new Response('Forbidden',{status:403});const rel=decodeURIComponent(url.pathname).replace(/^\/+/, '');target=path.resolve(base,rel||'index.html');if(!target.startsWith(base+path.sep))return new Response('Forbidden',{status:403});}
+      else {let bases=url.host==='app'?distRoots:url.host==='asset'?[assets]:url.host==='custom'?[path.join(userDir,'assets')]:null;if(!bases)return new Response('Forbidden',{status:403});const rel=decodeURIComponent(url.pathname).replace(/^\/+/, '');if(/[:*?"<>|\u0000]/.test(rel))return new Response('Forbidden',{status:403});if(url.host==='app'&&/^(vendor|wallpaper)\//i.test(rel))bases=[path.join(baseRoot,'dist')];   /* the big shared libraries only ever come from the installed app */for(const base of bases){const t=path.resolve(base,rel||'index.html');if(!t.startsWith(base+path.sep))return new Response('Forbidden',{status:403});target=t;if(bases.length===1||fs.existsSync(t))break;}}
       return net.fetch(pathToFileURL(target).toString(),{headers:request.headers}).then(res=>{const headers=new Headers(res.headers);headers.set('Access-Control-Allow-Origin','*');return new Response(res.body,{status:res.status,statusText:res.statusText,headers});}).catch(()=>new Response('Not found',{status:404}));
     });
     const camOK=(wc,perm,details)=>{if(perm!=='media')return false;const t=wc&&trusted.get(wc.id);if(!t||t.role!=='main')return false;const types=details?.mediaTypes||[];return !types.includes('audio')||!!meetings?.m;};   /* audio only for a meeting */
@@ -1186,11 +1207,12 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     runner=new AgentRunner({missions,onUpdate:deckUpdate,log});
     deck=new ControlServer({missions,runner,board:boardFor,run:runBay,changed:t=>{try{if(workstations.themes.some(x=>x.id===t))broadcast('board',{theme:t,bays:boardFor(t)});}catch(e){log('control',e.message);}},hallName:id=>{try{return workstations.theme(id).name;}catch{return id;}},log});
     await deck.listen();
-    voice=new WindowsVoice({scripts,assets,dir:userDir,grammar:()=>buildGrammar(voiceContext()),names:()=>spokenNames(voiceContext()),onClap:()=>{if(machine?.value?.state==='IDLE'){log('voice','double clap: waking');dispatch('wake');}},onMeter:m=>{broadcast('voice-meter',{level:voice.level,detected:!!m.detected,recognizer:voice.recognizer,audioState:voice.audioState});},onCommand:(text,confidence,rejected,meta={})=>{const heard=text||rejected||'';let command=text?parseCommand(text,voiceContext()):null;let handled=false,why='';
+    voice=new WindowsVoice({scripts,assets,dir:userDir,grammar:()=>buildGrammar(voiceContext()),names:()=>spokenNames(voiceContext()),onClap:()=>{if(machine?.value?.state==='IDLE'){log('voice','double clap: waking');dispatch('wake');}},onMeter:m=>{broadcast('voice-meter',{level:voice.level,detected:!!m.detected,recognizer:voice.recognizer,audioState:voice.audioState});},onCommand:(text,confidence,rejected,meta={})=>{const heard=text||rejected||'';let command=text?parseCommand(text,voiceContext()):null;let handled=false,why='';if(text)lastUserAction=Date.now();
       // a quieter, less certain match still counts when it starts or ends with the assistant's name (or JARVIS has just answered you)
       if(command&&meta.low){const ctx=voiceContext();const nm=clean(ctx.theme?.assistant||'');const t=clean(text);const named=!!nm&&[nm,...(NAME_ALIASES[nm]||[])].some(n=>t===n||t.startsWith(n+' ')||t.endsWith(' '+n));if(!named&&!(ctx.follow&&confidence>=0.25)){command=null;why='unsure';}}
       if(text&&!command&&!why)why='no-match';if(!text)why=meta.mine?'own-voice':meta.rejected?'unclear':'quiet';
-      if(command){if(command.theme&&command.theme!==workstations.activeTheme){try{workstations.setTheme(command.theme);refreshModules();broadcast('theme',themePayload());updateTray();scheduleChatter();scheduleHealth();setTimeout(()=>{if(settings.get().voiceEnabled)voice.listen(true);},0);}catch(e){log('voice',e.message);}}handled=!!dispatch(command.action,command.id,command);if(handled){followUntil=Date.now()+12000;if(!TALK.includes(command.action))setTimeout(()=>{try{acknowledge(command.action,command.id);}catch{}},260);}}broadcast('heard',{text:heard,confidence:Math.round((confidence||0)*100),handled,why:handled?'':why,name:voiceContext().theme?.assistant||'Jarvis'});status.commandHistory.unshift({time:Date.now(),text:heard,confidence:Math.round((confidence||0)*100),accepted:!!text,handled});status.commandHistory=status.commandHistory.slice(0,50);tray?.setToolTip(`JARVIS · heard: “${heard}” ${Math.round((confidence||0)*100)}%${handled?' ✓':''}`);broadcast('status',getStatus());},onStatus:text=>{voiceStatus=text;broadcast('status',getStatus());},log});
+      if(!command&&text&&why==='no-match'){const ask=brainAsk(text,meta);if(ask){try{core?.recordMiss(text);}catch{}handled=!!core;why=core?'':'no-match';if(core){followUntil=Date.now()+20000;core.voice('core-chat',{text:ask}).catch(e=>{log('brain',e.message);say(e.message);});}}else if(core&&heardName(text))core.recordMiss(text);}
+      if(command){if(command.theme&&command.theme!==workstations.activeTheme){try{workstations.setTheme(command.theme);refreshModules();broadcast('theme',themePayload());updateTray();scheduleChatter();scheduleHealth();setTimeout(()=>{if(settings.get().voiceEnabled)voice.listen(true);},0);}catch(e){log('voice',e.message);}}handled=!!dispatch(command.action,command.id,command);if(handled){followUntil=Date.now()+12000;if(!TALK.includes(command.action)&&!String(command.action).startsWith('core-'))setTimeout(()=>{try{acknowledge(command.action,command.id);}catch{}},260);}}broadcast('heard',{text:heard,confidence:Math.round((confidence||0)*100),handled,why:handled?'':why,name:voiceContext().theme?.assistant||'Jarvis'});status.commandHistory.unshift({time:Date.now(),text:heard,confidence:Math.round((confidence||0)*100),accepted:!!text,handled});status.commandHistory=status.commandHistory.slice(0,50);tray?.setToolTip(`JARVIS · heard: “${heard}” ${Math.round((confidence||0)*100)}%${handled?' ✓':''}`);broadcast('status',getStatus());},onStatus:text=>{voiceStatus=text;broadcast('status',getStatus());},log});
     machine=new WorkspaceMachine({modules,onChange:s=>{
       displays?.setActive(s.state!=='IDLE');broadcast('snapshot',s);
       if(s.state==='WAKE')say('System starting up.');
@@ -1210,6 +1232,15 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     assistant=new IdeaAssistant({ideas:()=>ideas,tower:()=>tower,runner:()=>towerRunner,workstations:()=>workstations,board:t=>boardFor(t),readKey:readTowerKey,settings:()=>settings.get(),
       dir:userDir,appRoot:root,desktop:app.getPath('desktop'),log,broadcast,say:t=>say(t),addr:()=>addr(),notify:(title,body)=>{try{if(Notification.isSupported()&&!focusActive()&&!meetings?.active)new Notification({title,body}).show();}catch{}}});
     setInterval(()=>assistant.night(()=>visits.get('__','ideasNight').day,day=>visits.set('__','ideasNight',{day})).catch(e=>log('ideas',e.message)),10*60000);
+    try{core=createJarvisCore({userDir,docs:app.getPath('documents'),appVersion:app.getVersion(),boot:BOOT||{asarRoot:root,root,base:app.getVersion(),version:null,label:app.getVersion()},log,broadcast,
+      say:t=>say(t),notify:(title,body)=>{try{if(Notification.isSupported())new Notification({title,body:String(body).slice(0,240)}).show();}catch{}broadcast('core',{type:'notice',title,body});},
+      pcAwake:()=>machine?.value?.state!=='IDLE',isIdle:()=>machine?.value?.state==='IDLE'&&Date.now()-lastUserAction>5*60000,
+      getKey:readTowerKey,crypt:{available:()=>safeStorage.isEncryptionAvailable()&&!(process.platform==='linux'&&safeStorage.getSelectedStorageBackend()==='basic_text'),encrypt:t=>safeStorage.encryptString(t),decrypt:b=>safeStorage.decryptString(b)},
+      fetch:(u,o)=>net.fetch(u,o),settings:{get:()=>settings.get(),apply:p=>applySettings(p),validate:p=>validateSettings(p,settings.get())},
+      todos,calendar,ideas,tower,towerRunner,towerLobby:(text,hall)=>towerLobby(text,hall&&workstations.themes.some(t=>t.id===hall)?hall:workstations.activeTheme),
+      briefing:()=>briefingData('briefing'),weather:briefWeather,health:()=>checkHealth(),openUrl:(url,title)=>broadcast('hologram',{kind:'link',url,title}),
+      keepAwake:on=>{try{if(on&&awakeBlock===null)awakeBlock=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awakeBlock!==null){powerSaveBlocker.stop(awakeBlock);awakeBlock=null;}}catch(e){log('brain',e.message);}},
+      relaunch:()=>{app.relaunch();app.quit();},logFile:path.join(userDir,'jarvis.log')});core.start();}catch(e){core=null;coreError=String(e?.message||e);log('brain','JARVIS Core did not start: '+(e?.stack||e?.message));if(BOOT?.version&&!e?.code)BOOT.markBad?.(`JARVIS Core did not start: ${coreError.slice(0,200)}`);}   /* a code fault rolls the update back; a disk or permission problem (e.code) would fail on any version */
     panels=new PanelManager({window:()=>displays?.work,onChange:list=>broadcast('panels',list),log});
     deckPanels=new PanelManager({window:()=>displays?.console,onChange:list=>broadcast('deck',{type:'panels',list}),log});
     tabs=new TabManager({window:()=>displays?.work,onChange:list=>{broadcast('tabs',list);scheduleSessionSave(list);},log});
@@ -1233,7 +1264,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
 }
 app.on('window-all-closed',()=>{});
 app.on('before-quit',()=>{
-  if(quitting)return;quitting=true;try{meetings?.saveNow();}catch{}try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}
+  if(quitting)return;quitting=true;try{meetings?.saveNow();}catch{}try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}try{core?.dispose();}catch{}
   clearInterval(reminderTimer);clearTimeout(chatterTimer);clearTimeout(healthTimer);clearTimeout(focus.timer);try{deck?.close();}catch{}
   tabs?.dispose();machine?.dispose();monitor?.stop();voice?.dispose();globalShortcut.unregisterAll();
   // Let Electron close windows in its normal quit sequence, so renderer

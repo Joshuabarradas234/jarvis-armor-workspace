@@ -8,7 +8,7 @@ export const defaults = {
   weather:{latitude:null,longitude:null,enabled:false},
   ai:{endpoint:'',model:'',enabled:false},
   jaeAsset:'', shortcuts:[], favorites:[], updateFeed:'', deckBackdrops:{},
-  meeting:{to:'Joshuabrunobarradas@gmail.com',from:''},
+  meeting:{to:'',from:''},   // both typed in the meeting panel and kept in settings.json on this PC
   ideas:{sourceRepo:'',nightly:true},
   startup:{enabled:true,video:'jarvis://asset/startup/welcome.mp4',sound:'jarvis://asset/startup/welcome.mp3',seconds:15,loopVideo:true}
 };

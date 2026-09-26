@@ -1,3 +1,4 @@
+import {wordsToNumber} from '../brain/util.js';
 export const cleanSpeech=t=>String(t).toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
 const clean=cleanSpeech;
 /* ---------- how suit names are actually said: "Mark I" is "mark one", "Bay 03" is "bay three" ---------- */
@@ -42,6 +43,39 @@ const BRIEFING=['tell me what we got on the calendar today','tell me what weve g
 const STATUS=['status','status report','progress report','how are we doing','where are we','give me a status report','give me a status report on the app',
   'report','progress','how is everything going','sitrep','give me an update','whats the status','how are things'];
 const EARTH=['show me the earth','show the earth','open the earth','the earth','earth','show me earth','show me the planet','show me the world','show me the globe','open the globe','the globe','world map','open the world map','open the global map','global map','open global map','open the map','open a map','show me the map','back to the globe','back to the earth','show me the whole earth','zoom all the way out'];
+/* ---------- JARVIS Core: bedtime, reports, approvals, the audit, self-updates, calls, email ---------- */
+const BEDTIME=['good night','goodnight','night night','night','im going to bed','going to bed','im off to bed','off to bed','bed time','bedtime','im heading to bed','heading to bed','time for bed'];
+const OVERNIGHT=['overnight report','give me the overnight report','whats the overnight report','the overnight report','what happened overnight','what happened last night','what did i miss','what did you do last night','what did you do overnight','morning report','give me the morning report','catch me up'];
+const APPROVALS=['any approvals','what needs my approval','what needs approval','what needs me','what do you need from me','anything waiting for me','whats waiting for me','read me the approvals','pending approvals','any requests','what are you waiting for'];
+const AUDIT=['run the audit','run an audit','run the overnight audit','audit yourself','optimize','optimise','run optimize','run optimise','optimize yourself','optimise yourself','check yourself','check your agents','audit the agents'];
+const IMPROVE=['improve yourself','upgrade yourself','update yourself','check for improvements','look for improvements','find improvements','what can you improve','review yourself','run a self review','self review'];
+const UNDO=['undo the last update','undo that update','undo the update','undo your update','roll back','rollback','roll back the update','go back to the old version','revert the update'];
+const INSTALL=['install the update','restart and update','finish the update','switch on the update','restart to update'];
+const CALLME=['call me','call my phone','ring me','ring my phone','give me a call','call me now','phone me','test my phone'];
+const EMAIL=['check my email','check my emails','check my inbox','sort my email','sort my emails','sort my inbox','any new emails','any emails','any new email','whats in my inbox','do i have any emails','check email'];
+export const CORE_PHRASES=[...BEDTIME.filter(p=>p!=='night'),...OVERNIGHT,...APPROVALS,...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME,...EMAIL];
+/* these change things, cost money or ring your phone: they always need the name, never just "roll back" in the moment after he speaks */
+const NAME_REQUIRED=new Set(['core-undo','core-install','core-call','core-audit','core-improve','core-feature','core-message']);
+const NEEDS_NAME=new Set([...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME]);
+const idList=w=>{const t=w.replace(/\b(number|numbers|request|requests|and|please|jarvis)\b/g,' ').replace(/\s+/g,' ').trim();if(/^(all|everything|all of them|them all)$/.test(t))return 'all';const ids=[];for(const part of t.split(/ (?=\d)|,/).flatMap(x=>/^\d+( \d+)*$/.test(x.trim())?x.trim().split(' '):[x.trim()])){if(!part)continue;const n=wordsToNumber(part);if(n===null||!Number.isInteger(n)||n<1)return null;ids.push(n);}return ids.length?ids:null;};
+function coreCommand(rest){
+  if(BEDTIME.includes(rest))return {action:'core-bedtime'};
+  if(OVERNIGHT.includes(rest))return {action:'core-report'};
+  if(APPROVALS.includes(rest))return {action:'core-approvals'};
+  if(AUDIT.includes(rest))return {action:'core-audit'};
+  if(IMPROVE.includes(rest))return {action:'core-improve'};
+  if(UNDO.includes(rest))return {action:'core-undo'};
+  if(INSTALL.includes(rest))return {action:'core-install'};
+  if(CALLME.includes(rest))return {action:'core-call'};
+  if(EMAIL.includes(rest))return {action:'core-email'};
+  let m;
+  if((m=/^(?:approve|accept|yes to|go ahead with|confirm) (?:number |request )?(.+)$/.exec(rest))){const ids=idList(m[1]);if(ids)return {action:'core-approve',ids};}
+  if((m=/^(?:deny|decline|reject|no to|refuse) (?:number |request )?(.+)$/.exec(rest))){const ids=idList(m[1]);if(ids)return {action:'core-deny',ids};}
+  if((m=/^(?:wake me up|wake me|call me|ring me|set an alarm|set my alarm|set a wake up call|set an wake up call|set a wakeup call)(?: for| at| in)? (.+)$/.exec(rest)))return {action:'core-alarm',when:rest,text:rest};
+  if((m=/^(?:add a feature|add the feature|new feature|build a feature|add the ability|i want you to be able to|can you add|could you add|i want a feature)(?: that| to| for| where| so| which)? (.{6,})$/.exec(rest)))return {action:'core-feature',text:m[1]};
+  if((m=/^(?:message me|whatsapp me|text me|send me a message|send to my phone)(?: saying| that)? (.+)$/.exec(rest)))return {action:'core-message',text:m[1]};
+  return null;
+}
 /** The words JARVIS listens for as its own name, for the side listener that handles claps and "map of ..." dictation. */
 export function spokenNames(context){
   const out=new Set();
@@ -83,6 +117,7 @@ export function parseCommand(text,context){
   if(BRIEFING.includes(rest))return {action:'briefing'};
   if(GREET.test(rest)){const m=/morning|afternoon|evening/.exec(rest);return {action:'greet',part:m?m[0]:''};}
   if(THANKS.includes(rest))return {action:'thanks'};
+  {const c=coreCommand(rest);if(c&&!(heard==='(follow)'&&NAME_REQUIRED.has(c.action)))return c;}
   // "open a map of New York", "where is Leeds", "search for arc reactors"
   const MAP=/^(?:open|show me|show|pull up|bring up|get me|give me|can you show me|can i see)?\s*(?:a |the )?(?:street |satellite |live )?map (?:of|for) (.+)$|^where is (.+)$|^(?:open |show me |show |pull up |find )?(.+?) on the map$/;
   const mm=MAP.exec(rest);if(mm){const q=(mm[1]||mm[2]||mm[3]||'').trim();if(q)return /satellite/.test(rest)?{action:'map',query:q,style:'satellite'}:{action:'map',query:q};}
@@ -196,7 +231,7 @@ export function buildGrammar(context){
   const THX=['thank you','thanks','cheers','nice one','well done','thank you very much'];
   const TOWERP=['open the tower','show me the tower','hows the tower','tower report','tower status','open the global map','global map','open the globe','world map','open the map','show me the earth','show me the world','the earth','satellite view','hologram view','night view','zoom in','zoom out','spin the globe','stop spinning','back to the globe','calibrate hands','close all the tabs','close everything','close this page'];
   const FOCUSP=['focus mode','start focus','stop focus','end focus',...[15,20,25,30,45,60,90].map(n=>`focus for ${n} minutes`),'focus for an hour','focus for half an hour'];
-  const TALK=[...STATUS,...BRIEFING,...FOCUSP,...TOWERP,'close the map','close that','close the window','hide the map','close the tab','close the page'];
+  const TALK=[...STATUS,...BRIEFING,...FOCUSP,...TOWERP,...CORE_PHRASES,'close the map','close that','close the window','hide the map','close the tab','close the page'];
   for(const n of [context.theme.assistant,...(GRAMMAR_ALIASES[active]||[])]){
     phrases.push(n,`hey ${n}`,`ok ${n}`,`hey ${n} wake up`,`hey ${n} lets get to work`);
     for(const g of GREETS)phrases.push(`${g} ${n}`);
@@ -205,7 +240,7 @@ export function buildGrammar(context){
     for(const t of STATUS.slice(0,6))phrases.push(`hey ${n} ${t}`);
   }
   // follow-up: right after he answers, the same things without the name (ignored at any other time)
-  phrases.push(...TALK,...THX,...GREETS.slice(0,3));
+  phrases.push(...TALK.filter(t=>!NEEDS_NAME.has(t)),...THX,...GREETS.slice(0,3));
   for(const c of ['go home','take me back','exit','stand down','next tab','previous tab','close tab','reload','launch everything','set up my workspace','open my folder','arrange my screens'])phrases.push(c);
   for(const m of context.modules||[])for(const f of spokenForms(m.name))phrases.push(`open ${f}`,`show ${f}`,`show me ${f}`,`show me the ${f}`);
   // Other halls' assistants: only their wake phrases, which only count while JARVIS is closed
@@ -221,7 +256,7 @@ export function buildGrammar(context){
   // recogniser matched the bare decoy and the command was thrown away. Anything that is
   // also a command tail is dropped here, and the rest still soak up everyday speech.
   const tails=new Set([
-    ...CORE,...STATUS,...BRIEFING,...THANKS,'hello','hi','hey','morning','good morning','good afternoon','good evening','close the map','close that',
+    ...CORE,...STATUS,...BRIEFING,...THANKS,...CORE_PHRASES,'hello','hi','hey','morning','good morning','good afternoon','good evening','good night','close the map','close that',
     ...switches,
     ...switches.flatMap(p=>LEADINS.map(L=>L+p)),
     ...(context.modules||[]).flatMap(m=>spokenForms(m.name).flatMap(f=>['open','show','show me','show me the','run','start','launch'].map(v=>`${v} ${f}`))),

@@ -1,0 +1,25 @@
+diff -ru -x package.json -x node_modules a/lib/commands/handlers/fetch.js b/lib/commands/handlers/fetch.js
+--- a/lib/commands/handlers/fetch.js	2016-01-10 10:33:03.000000000 +0000
++++ b/lib/commands/handlers/fetch.js	2026-09-26 10:03:03.359816729 +0100
+@@ -165,9 +165,7 @@
+         start = partial.shift() || 0;
+         length = partial.pop();
+         value = value.substr(start, length ? length : 0);
+-        if (query.partial.length === 2 && query.partial[1] > value.length) {
+-            query.partial.pop();
+-        }
++        /* test patch: do not mutate the shared query (hoodiecrow bug: later messages came back empty) */
+     }
+ 
+     return {
+diff -ru -x package.json -x node_modules a/lib/plugins/x-gm-ext-1.js b/lib/plugins/x-gm-ext-1.js
+--- a/lib/plugins/x-gm-ext-1.js	2016-01-10 10:33:03.000000000 +0000
++++ b/lib/plugins/x-gm-ext-1.js	2026-09-26 10:03:29.335583678 +0100
+@@ -23,6 +23,7 @@
+  */
+ 
+ module.exports = function(server) {
++    server.registerCapability("X-GM-EXT-1"); /* test patch: real Gmail advertises this */
+ 
+     server["HIGHESTX-GM-MSGID"] = new Big(server.options["HIGHESTX-GM-MSGID"] || SEED);
+ 

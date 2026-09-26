@@ -11,6 +11,8 @@ A cinematic, multi-screen desktop workspace for Windows, built on Electron. Each
 - **The tower:** floors of Claude-powered agents that plan, work and review tasks, using the Claude API or Claude Code, with per-floor budgets and approvals.
 - **Meeting mode:** "Jarvis, start a meeting for Mark 5" (or the meeting button) records your microphone and the call audio from any app, transcribes it offline with Windows speech recognition, adds a Claude summary, and emails the notes from your Gmail when you end it.
 - **Ideas that get worked on:** link an idea to a suit or to the JARVIS app and press **Get JARVIS on it**. JARVIS drafts a plan for your OK; suit ideas go to that hall's tower agents, app ideas are built by Claude Code in a separate copy of the source and merged only after a second OK. Quiet ideas get drafted plans overnight.
+- **JARVIS Core (works while you are away):** wake-up calls and a 06:00 overnight report by phone (Twilio), WhatsApp messages you can reply to, an overnight audit, email sorting and drafted replies in Gmail, and watched numbers. Anything that touches your business, other people, money or his own code waits for your OK: a numbered request with a four-character code on WhatsApp, a button at the PC, or your voice. Text messages can never approve.
+- **Self-updates with your approval:** JARVIS can change his own code in a private copy, check it, show you every changed line and install it only after you approve it. Each installed version is checked file by file at every start, and one that does not start goes back by itself. Setup: [docs/JARVIS-CORE.md](docs/JARVIS-CORE.md).
 - **Daily tools:** briefing, calendar, to-dos, ideas board, focus timer, globe and maps, and weather.
 
 ## Run from source
@@ -34,6 +36,8 @@ The app's **Check for updates** reads [`latest.json`](latest.json) from this rep
 - `src/tower/`: tower store, agent orchestration and engines
 - `src/ideas/`: the idea assistant (plans, approvals, tower hand-off, Claude Code builds in a git worktree)
 - `src/meeting/`: meeting recording, offline transcription queue and the Gmail sender
+- `src/brain/`: JARVIS Core (phone and WhatsApp, approvals, schedule, email desk, audit, self-updates); `src/main/boot.js` picks which approved version to start
+- `tests/core/`: JARVIS Core tests against local stand-ins for Twilio, Gmail and Claude
 - `src/voice/`, `scripts/windows/`: speech recognition and PowerShell helpers
 - `dist/`: the prebuilt renderer, patched directly (there is no build step for it)
 - `docs/REVIEW-1.70.md`: latest review notes and open items

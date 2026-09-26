@@ -1,4 +1,4 @@
-# JARVIS Armor Workspace: review notes (version 1.70.0)
+# JARVIS Armor Workspace: review notes (versions 1.70.0 to 1.80.1)
 
 A full review of the app was done by three reviewers (main process; hands and voice; 3D and screens).
 This file lists what was fixed in 1.70.0 and what is still open, so the next pass can start from here.
@@ -84,10 +84,68 @@ Checked in a copy of the installed app with a copied profile, driven over the De
 - Meeting panel: typed email fields survive redraws and closing the panel (`this.draft`); `meeting-state` reports `hasPassword` separately from `gmailReady`.
 - The live wallpaper cannot show on this PC (Windows 11 25H2): its icon view paints the wallpaper itself, so a window placed under the icons (between SHELLDLL_DefView and the WorkerW inside Progman, layered, as other wallpaper apps do) stays hidden. The attempt was reverted, and the status stays UNAVAILABLE.
 
+## 1.80.1: JARVIS Core merged, reviewed and hardened
+JARVIS Core 1.80.0 was built in a separate chat on top of 1.70.0. It is merged here on top of 1.72.2, so meeting mode, the Ideas room work and every 1.70.1–1.72.2 fix are kept. It adds `src/brain/*` (phone, WhatsApp, approvals, schedule, email desk, audit, self-updates), `src/main/boot.js` (package.json `main`) and `dist/assets/core.js`. Setup: `docs/JARVIS-CORE.md`.
+
+The merge:
+- main.js keeps both startups (IdeaAssistant with its nightly timer, and createJarvisCore), and both shutdowns (meetings, missions, tower, `core.dispose()`).
+- index.html loads both meeting.js and core.js. preload allows `meeting`, `ideas` and `core`. The voice TALK list has page-close and the core phrases.
+- engines.js keeps the Claude Code path lookup (`CLAUDE`, now exported) and the fenced Claude Code calls.
+- The owner's phone number was built into store.js, orders.js, the docs and the tests. It is gone: the number is typed in Settings → JARVIS Core and stays on the PC. Nothing is sent to a phone until it is set.
+
+A security review found these, now fixed:
+- **Boot never re-checked an installed self-update.** install() now writes file contents only, hashes each file as written, and refuses if what was written differs from what was approved. It stores `versions/vN/manifest.json` with that manifest's hash in state.json. boot.js starts a version only when every file matches, with nothing extra or missing. It accepts version names of the form `v<number>` only (no `../`).
+- **The update checker was a count-based deny list.** Any added line that looks like a server or tunnel is refused, whether or not lines were removed. More forms are caught: createSecureServer, `new X.Server(`, `['listen']`, more tunnel tools. Also refused in any script:
+  - process and network modules, `eval` and `new Function`, and changes to window security;
+  - naming the approvals or self-update machinery;
+  - imports of Windows streams (`./util.js:x.js`, which folder listings cannot see), full paths, URLs, `data:`, or computed names.
+- **Approval codes were 2 characters.** They are now 4 (letter digit letter digit), and old waiting requests get new codes. Wrong codes pause approvals by message for 30 minutes (5 in 10 minutes) or for a day (10 in a day), and a message stops being read once it trips the pause. `YES ALL` takes only the latest message's code, and never covers emails or code updates. Codes are masked in the activity log.
+- **Text messages.** SMS can no longer answer a request at all (not even NO). `sms`, `call`, `link` and `chat` are removed from the approval channels in approvals.js and selfupdate.js.
+- **Voice.** "Approve <n>" for a code update opens its changes on screen instead of approving.
+- **Other fixes:**
+  - The coder refuses Claude Code when it cannot be isolated (`--strict-mcp-config`, `--setting-sources`), and finds it off PATH.
+  - Watched numbers read public pages only.
+  - IMAP label names are stripped of control characters.
+  - A `PLAIN:` secrets file is read only in tests.
+
+A bug review found these, now fixed:
+- **Phone:**
+  - A failed message check moved the watermark, so later messages were lost. It now only moves after a clean check.
+  - Commands sent more than 15 minutes before JARVIS saw them (call me, goodnight, undo, quiet, wake-up times, features, audit) are not carried out late; he says so instead.
+  - "+44 (0)7…" became an invalid number.
+  - `ready()` now needs your number.
+  - A WhatsApp message not yet seen as delivered no longer counts as proof that the route works.
+  - WhatsApp "call me" now replies when calls are not set up.
+- **Email:**
+  - A bad HTML entity (`&#x110000;`) stopped every later check.
+  - More than 40 new emails skipped the older ones; they are now taken oldest first.
+  - A FETCH line without a UID gave NaN.
+  - Commands after a dropped connection now fail at once instead of waiting 45 s.
+  - A failed login left its socket open.
+  - SMTP had no close handler.
+  - An email that cannot be read is skipped, not fatal.
+- **Voice:**
+  - Undo, restart to update, call me, the audit, self-review, features and "message me" need the name, even right after JARVIS speaks.
+  - "approve/deny <n>" and "ring me at" are added to the dictation lead-ins, so Windows speech can actually hear them.
+- **Other:**
+  - A self-update was rolled back whenever Core failed to start (markGood waited for `core`).
+  - Keep-awake was never released when switched off.
+  - The report buttons sent a new report instead of the one selected.
+  - A BOM broke local number files.
+  - "alert below $100" lost its threshold.
+  - A call still running at 6 minutes counted as missed.
+
+Tested:
+- `tests/core/core.test.mjs` on Windows: 121 passed. It now imports through `pathToFileURL`, and the Windows stream case is checked as "never copied, and loading it is refused".
+- The build started in a copy of the installed app with a copied profile: it runs as 1.80.1 through boot.js, and the hall bar has the meeting, JARVIS Core and Ideas buttons side by side.
+- `boot.test.mjs` (Linux/Xvfb) gained a tampered-version case and a made-up-name case, but was not run here.
+
 ## Still open
 - Live wallpaper on Windows 11 24H2+ desktops where the icon view paints the wallpaper: needs a different technique (a resident helper that owns a layered holder window).
-- Approvals by phone or WhatsApp come with the other chat's work: hook them into `IdeaAssistant.notify`.
-- Installing an approved and merged app change needs the self-update system (also from the other chat).
+- Idea approvals (`IdeaAssistant.notify`) still go to the screen only. They could use JARVIS Core's WhatsApp digest and codes.
+- A merged app idea is not installed by itself. It could be handed to the self-update checks as a staged update.
+- Calls are one-way (JARVIS speaks, you answer on WhatsApp). Two-way calls need either an opening from the internet to this PC, or the call logic running on Twilio's side.
+- Voice notes and pictures sent on WhatsApp are not read yet.
 - Offline dictation is rough on real call audio. A Whisper-compatible engine could be added as an option later.
 - On speakers (no headphones), the mic also picks up the call, so some lines may appear twice in the transcript.
 

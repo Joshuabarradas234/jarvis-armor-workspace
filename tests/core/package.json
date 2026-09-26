@@ -1,0 +1,16 @@
+{
+  "name": "jarvis-core-tests",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end tests for JARVIS Core (not shipped in the app).",
+  "scripts": {
+    "postinstall": "patch -N -p1 -d node_modules/hoodiecrow-imap < hoodiecrow.patch || true",
+    "test": "node core.test.mjs",
+    "test:boot": "node boot.test.mjs",
+    "test:ui": "node electron.test.mjs ui"
+  },
+  "devDependencies": {
+    "hoodiecrow-imap": "2.1.0",
+    "smtp-server": "^3.19.13"
+  }
+}
