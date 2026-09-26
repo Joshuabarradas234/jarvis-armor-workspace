@@ -14,7 +14,7 @@ JARVIS Armor Workspace is a Windows desktop app built on Electron 44. It uses ES
 - Match the surrounding code: compact modern JavaScript, the same naming, and the same comment density. Everything
   the user sees is British English, short and calm, and says what to do next.
 - Add a short section to `docs/REVIEW-1.70.md` for anything notable.
-- Do not bump the version in `package.json` or `latest.json` unless the owner asks for it.
+- When the change should reach the owner's PC, make it an update, as described in "Releasing an update" below.
 
 ## Rules that must not be broken
 
@@ -68,11 +68,33 @@ cd tests/core && npm install && npm test
   transcription), Windows speech recognition, and window placement across real screens. Leave them unchanged unless
   the task is about them, and say that they were not tested.
 
+## Releasing an update
+
+The owner installs updates by running `INSTALL-UPDATE.bat` from a zip on the GitHub releases page. To ship your
+change that way, put all of this in your pull request:
+
+1. **Raise the version** in `package.json`: the last number for fixes (`1.80.1` → `1.80.2`), the middle number for
+   new features (`1.80.2` → `1.81.0`).
+2. **Update `latest.json`**: set the same `version` and a one-sentence `notes`. The app's "Check for updates" reads it.
+3. **Write `docs/release-notes/<version>.md`**:
+   - The first line is `## JARVIS <version>: <short title>`. The title also appears in the installer window, so keep
+     it short and plain.
+   - Then say what changed, in plain words for a non-programmer.
+   - Then copy the **Install** section from the previous notes file.
+4. **Check that the package builds**: `node scripts/release/build-update.mjs`. It writes
+   `release/JARVIS-Armor-Workspace-<version>-update.zip`, and it fails if `app.asar` would reach 30 MB. Do not commit
+   the zip; `release/` is ignored.
+5. If your change adds or changes files under `assets/` that the owner's PC needs, add them to `EXTRA_ASSETS` in
+   `scripts/release/build-update.mjs`. The rest of `assets/` is large and already installed.
+
+When the owner merges the pull request into `main`, the **Publish update** GitHub Action does the rest:
+- it runs the tests;
+- it builds the zip;
+- it creates the release `v<version>`, with the zip and your notes.
+
+Never create tags or releases yourself, and never publish from a branch.
+
 ## Not for agents
 
-Do not do these; they happen with the owner:
-
-- building the release zip or `app.asar`;
-- publishing GitHub releases;
-- editing `latest.json`;
-- anything involving the owner's accounts (Twilio, Gmail, Anthropic).
+- Merging into `main`: the owner does this after reviewing.
+- Anything involving the owner's accounts or secrets (Twilio, Gmail, Anthropic, GitHub settings).

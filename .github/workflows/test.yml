@@ -1,0 +1,37 @@
+# Checks every pull request (and every change on main): scripts parse, JARVIS Core's tests pass, and the update
+# package still builds under the size limit.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Every script parses
+        run: |
+          fail=0
+          for f in $(git ls-files -- '*.js' '*.cjs' '*.mjs' | grep -E '^(src|dist/assets|scripts|tests)/'); do
+            node --check "$f" || { echo "::error file=$f::does not parse"; fail=1; }
+          done
+          exit $fail
+
+      - name: JARVIS Core tests
+        working-directory: tests/core
+        run: npm install && npm test
+
+      - name: The update package builds
+        run: node scripts/release/build-update.mjs

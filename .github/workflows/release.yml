@@ -1,0 +1,62 @@
+# Publishes an update when the version in package.json changes on main (that is, when the owner merges a pull
+# request that raises it): runs the tests, builds release/JARVIS-Armor-Workspace-<version>-update.zip and creates
+# the GitHub release v<version> with that zip and the notes in docs/release-notes/<version>.md.
+# A version that is already published is left alone, so running this again is harmless.
+name: Publish update
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json, .github/workflows/release.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Is this version new?
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if gh release view "v$v" >/dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"; echo "v$v is already published; nothing to do."
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"; echo "v$v is new: testing, building and publishing it."
+          fi
+
+      - name: JARVIS Core tests
+        if: steps.v.outputs.new == 'true'
+        working-directory: tests/core
+        run: npm install && npm test
+
+      - name: Build the update package
+        if: steps.v.outputs.new == 'true'
+        run: node scripts/release/build-update.mjs
+
+      - name: Publish the release
+        if: steps.v.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          notes="docs/release-notes/$V.md"
+          if [ ! -f "$notes" ]; then printf 'JARVIS %s\n\nInstall: download the zip below, extract it and run INSTALL-UPDATE.bat.\n' "$V" > "$RUNNER_TEMP/notes.md"; notes="$RUNNER_TEMP/notes.md"; fi
+          title=$(sed -n 's/^## *//p' "$notes" | head -1); [ -n "$title" ] || title="JARVIS $V"
+          gh release create "v$V" "release/JARVIS-Armor-Workspace-$V-update.zip" --title "$title" --notes-file "$notes" --target "$GITHUB_SHA"
+          echo "Published v$V."
