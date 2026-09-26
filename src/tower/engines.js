@@ -37,6 +37,8 @@ export async function callApi({key, model, system, prompt, web = false, maxToken
 }
 
 let codeProbe = null;
+/** Claude Code's command: its own install folder when it is there (the installer does not always add that folder to PATH), else whatever PATH finds. */
+const CLAUDE = (() => { const own = path.join(os.homedir(), '.local', 'bin', process.platform === 'win32' ? 'claude.exe' : 'claude'); return fs.existsSync(own) ? '"' + own + '"' : 'claude'; })();
 /** Is Claude Code installed and on the PATH? (checked once, then remembered) */
 export function detectClaudeCode(force = false) {
   if (codeProbe && !force) return codeProbe;
@@ -44,7 +46,7 @@ export function detectClaudeCode(force = false) {
     let out = '', done = false;
     const finish = v => { if (!done) { done = true; resolve(v); } };
     try {
-      const child = spawn('claude', ['--version'], {shell: true, windowsHide: true});
+      const child = spawn(CLAUDE, ['--version'], {shell: true, windowsHide: true});
       child.stdout.on('data', d => { out += d; });
       child.on('error', () => finish({ready: false, reason: 'Claude Code is not installed on this computer.'}));
       child.on('close', code => finish(code === 0 && /\d+\.\d+/.test(out) ? {ready: true, version: out.trim().split(/\s+/)[0]} : {ready: false, reason: 'Claude Code is not installed on this computer.'}));
@@ -89,7 +91,7 @@ export function callClaudeCode({cwd, prompt, model = 'sonnet', web = false, maxT
   return new Promise((resolve, reject) => {
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--max-turns', String(maxTurns), '--settings', fenceFile(settingsDir, web)];
     let child;
-    try { child = spawn('claude', args.map(q), {cwd, shell: true, windowsHide: true, detached: process.platform !== 'win32'}); }
+    try { child = spawn(CLAUDE, args.map(q), {cwd, shell: true, windowsHide: true, detached: process.platform !== 'win32'}); }
     catch (e) { reject(Error('Claude Code could not start: ' + e.message)); return; }
     register?.(child);
     let buf = '', err = '', result = null, draft = '';
