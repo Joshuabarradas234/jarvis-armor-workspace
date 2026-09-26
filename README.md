@@ -10,6 +10,7 @@ A cinematic, multi-screen desktop workspace for Windows, built on Electron. Each
 - **Control deck:** each bay can run an agent command and show its progress, tasks and log, with a copyable status report.
 - **The tower:** floors of Claude-powered agents that plan, work and review tasks, using the Claude API or Claude Code, with per-floor budgets and approvals.
 - **Meeting mode:** "Jarvis, start a meeting for Mark 5" (or the meeting button) records your microphone and the call audio from any app, transcribes it offline with Windows speech recognition, adds a Claude summary, and emails the notes from your Gmail when you end it.
+- **Ideas that get worked on:** link an idea to a suit or to the JARVIS app and press **Get JARVIS on it**. JARVIS drafts a plan for your OK; suit ideas go to that hall's tower agents, app ideas are built by Claude Code in a separate copy of the source and merged only after a second OK. Quiet ideas get drafted plans overnight.
 - **Daily tools:** briefing, calendar, to-dos, ideas board, focus timer, globe and maps, and weather.
 
 ## Run from source
@@ -31,6 +32,7 @@ The app's **Check for updates** reads [`latest.json`](latest.json) from this rep
 - `src/main/`: Electron main process (windows, IPC, tabs, panels)
 - `src/control/`: control deck server, missions and agent runner
 - `src/tower/`: tower store, agent orchestration and engines
+- `src/ideas/`: the idea assistant (plans, approvals, tower hand-off, Claude Code builds in a git worktree)
 - `src/meeting/`: meeting recording, offline transcription queue and the Gmail sender
 - `src/voice/`, `scripts/windows/`: speech recognition and PowerShell helpers
 - `dist/`: the prebuilt renderer, patched directly (there is no build step for it)

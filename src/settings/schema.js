@@ -9,6 +9,7 @@ export const defaults = {
   ai:{endpoint:'',model:'',enabled:false},
   jaeAsset:'', shortcuts:[], favorites:[], updateFeed:'', deckBackdrops:{},
   meeting:{to:'Joshuabrunobarradas@gmail.com',from:''},
+  ideas:{sourceRepo:'',nightly:true},
   startup:{enabled:true,video:'jarvis://asset/startup/welcome.mp4',sound:'jarvis://asset/startup/welcome.mp3',seconds:15,loopVideo:true}
 };
 const bools = ['setupComplete','startWithWindows','startMinimized','autoStart','wallpaper','voiceEnabled','animations','singleScreen','thirdScreen','reduceOnBattery'];
@@ -67,6 +68,10 @@ export function validateSettings(patch, current=defaults) {
       const ok=v=>typeof v==='string'&&v.length<=254&&(!v||/^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[a-z]{2,}$/i.test(v));
       if(!ok(value.to)||!ok(value.from))throw Error('Enter a valid email address.');
       next.meeting={to:value.to,from:value.from};
+    } else if(key==='ideas') {
+      if(!value||typeof value!=='object'||typeof value.nightly!=='boolean'||typeof value.sourceRepo!=='string'||value.sourceRepo.length>1024)throw Error('Invalid ideas settings.');
+      if(value.sourceRepo&&!/^([a-z]:[\\/]|\/|\\\\)/i.test(value.sourceRepo))throw Error('The source folder must be a full path.');
+      next.ideas={sourceRepo:value.sourceRepo,nightly:value.nightly};
     } else if(key==='favorites') {if(!Array.isArray(value)||value.length>20||value.some(x=>typeof x!=='string'||x.length>2048))throw Error('Invalid folders.');next.favorites=[...value];}
   }
   return next;

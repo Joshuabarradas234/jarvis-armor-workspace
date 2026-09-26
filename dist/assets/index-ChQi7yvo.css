@@ -1092,3 +1092,26 @@ body.sx-on .bay-label .case-light{background:radial-gradient(ellipse 40% 16% at 
 /* v9.19: the little case numbers over the buttons are hidden; the name plates already say which case is which */
 .hotspot-tag{display:none!important}
 .dk-empty{display:none!important}
+
+/* 1.72: ideas that get worked on — what an idea is for, JARVIS's plan, approvals */
+.ix-edit form{max-height:90vh;overflow:auto}
+.ix-edit form>*{flex-shrink:0}
+.ix-edit select{background:#050a0f;color:#e6f2f8;border:1px solid #ffffff1f;border-radius:9px;padding:9px 10px;font:13.5px "Segoe UI",system-ui,sans-serif}
+.ix-edit select:focus{outline:none;border-color:var(--ix)}
+.ix-for{display:inline-block;margin-left:6px;padding:3px 8px;border-radius:20px;font:600 10px "Segoe UI",system-ui,sans-serif;color:#cfe4ef;background:#ffffff10;border:1px solid #ffffff22;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+.ix-as{margin-top:8px;padding:4px 9px;border-radius:7px;font:700 10px Consolas,monospace;letter-spacing:.1em;text-transform:uppercase;display:inline-block}
+.ix-as-thinking{color:#9ecbff;background:#9ecbff1c}.ix-as-working{color:#5fd4ff;background:#5fd4ff1c}
+.ix-as-waiting,.ix-as-review{color:#ffd166;background:#ffd16622;box-shadow:0 0 12px #ffd16633;animation:ixask 2s ease-in-out infinite}
+@keyframes ixask{50%{box-shadow:0 0 2px #ffd16611}}
+.ix-assist{border-top:1px solid #ffffff14;padding-top:10px;display:flex;flex-direction:column;gap:8px;text-align:left}
+.ix-assist:empty{display:none}
+.ix-assist p{margin:0;font-size:13px;line-height:1.45}
+.ix-as-now{color:#9ecbff}.ix-as-sum{font-weight:600;color:#e6f2f8}.ix-as-note{color:#8fa9b8;font-size:12px!important}
+.ix-as-bad{color:#ff9b9b}.ix-as-ok{color:#a6ff84}
+.ix-plan{max-height:32vh;overflow:auto;background:#050a0f;border:1px solid #ffffff14;border-radius:9px;padding:8px 12px;font-size:13px;line-height:1.5;color:#c9dbe6;text-align:left}
+.ix-plan h5{margin:8px 0 4px;font:600 12px Consolas,monospace;letter-spacing:.1em;color:var(--ix);text-transform:uppercase}
+.ix-plan ul{margin:4px 0;padding-left:18px}.ix-plan p{margin:4px 0}.ix-plan code,.ix-cfg code{background:#ffffff12;padding:1px 5px;border-radius:4px;font:12px Consolas,monospace}
+.ix-change textarea{width:100%;box-sizing:border-box}
+.ix-row .ix-go{border-color:var(--ix);color:#fff;box-shadow:0 0 14px color-mix(in srgb,var(--ix) 30%,transparent)}
+.ix-cfg{text-align:left}.ix-cfg .ix-path{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c9dbe6}
+.ix-check{display:flex;gap:8px;align-items:center;font-size:13px;color:#c9dbe6}

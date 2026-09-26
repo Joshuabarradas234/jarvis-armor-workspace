@@ -25,6 +25,7 @@ import {ControlServer} from '../control/server.js';
 import {CalendarStore} from '../services/calendar.js';
 import {TodoStore} from '../services/todos.js';
 import {IdeaStore} from '../services/ideas.js';
+import {IdeaAssistant} from '../ideas/assistant.js';
 import {weather,askAI} from '../services/integrations.js';
 
 protocol.registerSchemesAsPrivileged([{scheme:'jarvis',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true,corsEnabled:true}}]);
@@ -258,6 +259,7 @@ function briefingData(mode='briefing'){
     if(running.length)parts.push(`${running.map(b=>b.name).join(' and ')} ${running.length===1?'is':'are'} running.`);
     if(blocked.length)parts.push(`${blocked.map(b=>b.name).join(' and ')} ${blocked.length===1?'needs':'need'} you.`);
     if(ideaList.length)parts.push(`Top idea: ${ideaList[0].title}, ${ideaList[0].progress} percent there.`);
+    {const wait=assistant?.pending()||[];if(wait.length)parts.push(`${wait.length} ${wait.length===1?'idea needs':'ideas need'} your approval in the Ideas room: ${wait.slice(0,3).map(i=>i.title).join(', ')}.`);}
     const recent=bays.filter(b=>b.last).sort((a,b)=>b.last-a.last);if(recent.length)parts.push(`You were last working in ${recent[0].name}, ${recent[0].lastAgo}${recent[1]?`, and before that ${recent[1].name}`:''}.`);
   }
   if(focusActive())parts.push(`Focus mode: ${Math.ceil((focus.until-Date.now())/60000)} minutes left.`);
@@ -341,7 +343,7 @@ function endFocus(){
   dispatch('home');pendingModule=back;
 }
 /* ---------- meeting mode: record a call for a suit, transcribe it offline, email the notes ---------- */
-let meetings=null,meetingFlush=null,meetingWatch=null;
+let meetings=null,meetingFlush=null,meetingWatch=null,assistant=null;
 function gmailFile(){return path.join(userDir,'gmail-app-password.enc');}
 function gmailPassword(){try{return fs.existsSync(gmailFile())?safeStorage.decryptString(fs.readFileSync(gmailFile())):'';}catch(e){log('meeting','Could not read the Gmail app password: '+e.message);return '';}}
 function meetingInfo(){
@@ -493,7 +495,7 @@ function towerUpdate(run){
   const final=['done','failed','stopped','budget'].includes(run.status);
   towerLatest.set(run.id,run);
   const send=()=>{towerThrottle.delete(run.id);const latest=towerLatest.get(run.id)||run;broadcast('tower',{type:'run',run:latest});if(['done','failed','stopped','budget'].includes(latest.status))towerLatest.delete(run.id);};
-  if(final){clearTimeout(towerThrottle.get(run.id));send();
+  if(final){clearTimeout(towerThrottle.get(run.id));send();if(run.ideaId){try{assistant?.towerFinished(run);}catch(e){log('ideas',e.message);}}
     if(towerAnnounced.has(run.id))return;towerAnnounced.add(run.id);if(towerAnnounced.size>200)towerAnnounced.delete(towerAnnounced.values().next().value);   // approving or commenting afterwards doesn't announce it again
     if(run.status==='done')say(`${run.floorName} has finished "${run.title}".${run.rehearsal?' That was a rehearsal.':''}`);
     else if(run.status==='failed')say(`${run.floorName} hit a problem: ${String(run.error||'').slice(0,120)}`);
@@ -1029,6 +1031,18 @@ async function api(event,method,payload){
     case 'ideas-list':return ideas.list();
     case 'ideas-save':return ideas.save(payload);
     case 'ideas-remove':return ideas.remove(String(payload||''));
+    case 'ideas-targets':{const t=workstations.activeTheme;return {theme:t,hallName:workstations.theme(t).name,suits:workstations.modules(t).map(m=>({id:m.id,name:m.name,centre:!!m.isVehicle}))};}
+    case 'idea-assist':{const id=String(payload?.id||'');assistant.get(id);assistant.think(id,{feedback:String(payload?.feedback||'').slice(0,2000)}).catch(e=>log('ideas',e.message));return true;}
+    case 'idea-approve':return assistant.approve(String(payload?.id||''));
+    case 'idea-decline':return assistant.decline(String(payload?.id||''));
+    case 'idea-open':{const a=assistant.get(String(payload?.id||'')).assist||{};const f=payload?.what==='diff'?a.diffFile:insideTower(a.resultFile);if(!f||!fs.existsSync(f))throw Error('That file is not there any more.');const err=await shell.openPath(f);if(err)throw Error(err);return true;}
+    case 'ideas-config':{
+      if(payload&&typeof payload==='object'&&('nightly' in payload||'sourceRepo' in payload)){const cur=settings.get().ideas||{};const next={sourceRepo:typeof payload.sourceRepo==='string'?payload.sourceRepo:cur.sourceRepo||'',nightly:typeof payload.nightly==='boolean'?payload.nightly:cur.nightly!==false};
+        if(next.sourceRepo&&!IdeaAssistant.isRepo(next.sourceRepo))throw Error('That folder is not the JARVIS source (a git folder with src/main/main.js).');await applySettings({ideas:next});}
+      const {detectClaudeCode}=await import('../tower/engines.js');const code=await detectClaudeCode(!!payload?.recheck);
+      return {...assistant.config(),claudeCode:code,hasKey:!!readTowerKey(),building:assistant.building};
+    }
+    case 'ideas-choose-source':{const res=await dialog.showOpenDialog({title:'Choose your JARVIS source folder',properties:['openDirectory']});if(res.canceled||!res.filePaths[0])return null;const p=res.filePaths[0];if(!IdeaAssistant.isRepo(p))throw Error('That folder is not the JARVIS source (a git folder with src/main/main.js).');const cur=settings.get().ideas||{};await applySettings({ideas:{sourceRepo:p,nightly:cur.nightly!==false}});return p;}
     case 'ideas-claude':{if(role!=='main')return false;return ideaClaude(event.sender,payload);}
     case 'tabs-popout':{const id=String(payload?.id||'');const o={};if(Number.isInteger(payload?.display))o.display=payload.display;if(Number.isFinite(payload?.x)&&Number.isFinite(payload?.y)){o.x=payload.x;o.y=payload.y;}return tabs.popOut(id,o);}
     case 'tabs-dock':return tabs.dock(String(payload));
@@ -1188,6 +1202,9 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     layout=new WindowLayout({scripts,log});
     meetings=new MeetingManager({dir:userDir,docs:app.getPath('documents'),scripts,log,onUpdate:st=>broadcast('meeting',{type:'state',state:st})});
     tower=new TowerStore({dir:userDir,docs:app.getPath('documents')});towerRunner=new TowerRunner({store:tower,getKey:readTowerKey,onUpdate:towerUpdate,onDone:towerDone,log});setInterval(towerNightShift,30000);setTimeout(towerNightShift,20000);
+    assistant=new IdeaAssistant({ideas:()=>ideas,tower:()=>tower,runner:()=>towerRunner,workstations:()=>workstations,board:t=>boardFor(t),readKey:readTowerKey,settings:()=>settings.get(),
+      dir:userDir,appRoot:root,desktop:app.getPath('desktop'),log,broadcast,say:t=>say(t),addr:()=>addr(),notify:(title,body)=>{try{if(Notification.isSupported()&&!focusActive()&&!meetings?.active)new Notification({title,body}).show();}catch{}}});
+    setInterval(()=>assistant.night(()=>visits.get('__','ideasNight').day,day=>visits.set('__','ideasNight',{day})).catch(e=>log('ideas',e.message)),10*60000);
     panels=new PanelManager({window:()=>displays?.work,onChange:list=>broadcast('panels',list),log});
     deckPanels=new PanelManager({window:()=>displays?.console,onChange:list=>broadcast('deck',{type:'panels',list}),log});
     tabs=new TabManager({window:()=>displays?.work,onChange:list=>{broadcast('tabs',list);scheduleSessionSave(list);},log});

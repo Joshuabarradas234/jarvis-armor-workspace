@@ -53,7 +53,19 @@ The three items left open after 1.70.1:
 - On end: Claude summary via the tower key (`plannerModel`), then email through Gmail SMTP (`src/meeting/mailer.js`, app password stored with safeStorage in `gmail-app-password.enc`). Settings key `meeting: {to, from}`.
 - Tested on Windows: transcribe.ps1 on a synthesized WAV; the manager end to end (chunk offset, transcript, clean-up, history); the Gmail TLS/EHLO/AUTH flow with fake credentials (clear refusal message). Not yet tested: live capture inside Electron, and a real send.
 
+## 1.72.0: ideas that get worked on
+- Ideas carry a `target`: `{kind:'app'}`, `{kind:'suit',theme,id,name}` or null. They also carry an `assist` record, which only the main process writes (`IdeaStore.setAssist`). The editor has a "What is it for?" picker: this hall's suits including the centre bay, or the JARVIS app.
+- `src/ideas/assistant.js`, `think` → **waiting**: Claude (tower key, else Claude Code) returns a JSON plan. Suit plans pick a tower floor. `approve`:
+  - suit → `towerRunner.start(..., {ideaId})` → **working**; `towerFinished` (hooked in `towerUpdate`) → **done**/**failed**.
+  - app → `git worktree add` on a `jarvis/idea-*` branch under `<userData>/idea-builds`. Claude Code (fenced to Read/Edit, no shell) builds it, JARVIS commits, and every changed .js is checked with `node --check`, with one repair pass if needed. Added lines that look like phone numbers, keys or personal emails are flagged → **review**. A second approve merges (`--no-ff`) into the source repo; discard removes the worktree and branch. Nothing is pushed or installed automatically.
+  - unlinked → the plan is appended to the notes.
+- Night shift: between 1 and 5 am, once a night, up to 3 ideas untouched for 3+ days get drafted plans. They wait for approval, and the morning briefing lists them. Setting: `ideas: {sourceRepo, nightly}`, found automatically at the app root or `Desktop/JARVIS-source-1.70.0`.
+- UI (`hands-ideas.js`): card tags and status pills, the JARVIS section in the editor (Get JARVIS on it / Approve / Change it / Not now / View the changes / Merge / Discard), a ⚙ setup panel, and a badge on the lightbulb for pending approvals. Broadcast channel `ideas`.
+- Tested: 17 end-to-end checks with stand-in engines against a real temp git repo (plain, suit, app merge, app discard, syntax repair, privacy flag, guard rails); the UI rendered in a browser harness (cards, new-idea picker, approval, review, setup).
+
 ## Still open
+- Approvals by phone or WhatsApp come with the other chat's work: hook them into `IdeaAssistant.notify`.
+- Installing an approved and merged app change needs the self-update system (also from the other chat).
 - Offline dictation is rough on real call audio. A Whisper-compatible engine could be added as an option later.
 - On speakers (no headphones), the mic also picks up the call, so some lines may appear twice in the transcript.
 

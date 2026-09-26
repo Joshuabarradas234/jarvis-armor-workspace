@@ -1098,6 +1098,17 @@
   };
 
   /* =================================================================== IDEAS ROOM */
+  function ixmd(src) {
+    const inline = t => esc(t).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+    let html = '', list = false;
+    for (const raw of String(src || '').replace(/\r/g, '').split('\n')) {
+      const l = raw.trimEnd(), m = /^\s*(?:[-*]|\d+[.)])\s+(.*)$/.exec(l), hd = /^#{1,4}\s+(.*)$/.exec(l);
+      if (m) { if (!list) { html += '<ul>'; list = true; } html += `<li>${inline(m[1])}</li>`; continue; }
+      if (list) { html += '</ul>'; list = false; }
+      if (hd) html += `<h5>${inline(hd[1])}</h5>`; else if (l.trim()) html += `<p>${inline(l)}</p>`;
+    }
+    return html + (list ? '</ul>' : '');
+  }
   const STAGES = [['spark', 'Spark'], ['designing', 'Designing'], ['building', 'Building'], ['testing', 'Testing'], ['done', 'Done']];
   const Room = {
     open: false, zoom: 1, el: null, ideas: [], coreCtl: null,
@@ -1125,7 +1136,7 @@
         <canvas class="ix-core"></canvas>
         <div class="ix-name">${ASSIST[hall()] || 'J.A.R.V.I.S.'}</div>
         <header class="ix-head"><p>IDEAS · ${esc(hall() === 'batcave' ? 'THE CAVE' : hall() === 'spiderman' ? 'WEB LAB' : 'ARMOR HALL')}</p><h2>What we're building.</h2>
-          <div class="ix-actions"><button type="button" data-ix="new">+ New idea</button><button type="button" data-ix="tab">+ Tab</button><button type="button" data-ix="claude">✦ Brainstorm with Claude</button><button type="button" class="ix-x" data-ix="close" title="Close (Esc)">×</button></div></header>
+          <div class="ix-actions"><button type="button" data-ix="new">+ New idea</button><button type="button" data-ix="tab">+ Tab</button><button type="button" data-ix="claude">✦ Brainstorm with Claude</button><button type="button" data-ix="cfg" title="How JARVIS works on ideas">⚙</button><button type="button" class="ix-x" data-ix="close" title="Close (Esc)">×</button></div></header>
         <div class="ix-cards"></div>
         <div class="ix-addtab" hidden></div>
         <footer class="ix-stages"></footer>
@@ -1139,7 +1150,7 @@
       const box = this.el.querySelector('.ix-cards');
       box.innerHTML = this.ideas.map((d, i) => `
         <article class="ix-card st-${d.stage}" data-id="${d.id}" style="left:${d.x}%;top:${d.y}%;--ph:${(i * 0.9) % 6}s">
-          <div class="ix-chip">${this.stageName(d.stage)}</div>
+          <div class="ix-chip">${this.stageName(d.stage)}</div>${this.forTag(d)}${this.assistPill(d)}
           <h3>${esc(d.title)}</h3>
           <div class="ix-bar"><i style="width:${d.progress}%"></i></div>
           <div class="ix-meta"><span>${d.progress}%</span><span>${new Date(d.updated).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span></div>
@@ -1161,6 +1172,7 @@
         if (k === 'claude') return this.claude();
         if (k === 'tab') return this.addTab(this.el.querySelector('.ix-addtab').hidden);
         if (k.startsWith('open:')) { this.addTab(false); return Holo.open({ url: b.dataset.url, title: b.dataset.title || '', scope: 'ideas' }); }
+        if (await this.onAssist(k, b)) return;
         if (k === 'cancel') return this.editEl(false);
         if (k === 'delete') { const id = this.el.querySelector('.ix-edit form').dataset.id; if (id) this.ideas = await call('ideas-remove', id); this.editEl(false); return this.draw(); }
         if (k.startsWith('stage:')) { const f = this.el.querySelector('.ix-edit form'); f.elements.stage.value = k.slice(6); f.querySelectorAll('[data-ix^="stage:"]').forEach(x => x.classList.toggle('on', x === b)); return; }
@@ -1189,27 +1201,132 @@
       addEventListener('pointermove', move); addEventListener('pointerup', up);
     },
     editEl(show) { const w = this.el.querySelector('.ix-edit'); w.hidden = !show; if (!show) w.innerHTML = ''; Holo.pauseAll(!!show); return w; },
-    edit(d) {
+    async edit(d) {
       if (!d) return;
+      let tg = { theme: hall(), hallName: '', suits: [] };
+      try { tg = await call('ideas-targets'); } catch {}
+      const cur = d.target?.kind === 'app' ? 'app' : d.target?.kind === 'suit' ? `suit:${d.target.theme}:${d.target.id}` : '';
+      const suitOpts = tg.suits.map(x => ({ v: `suit:${tg.theme}:${x.id}`, n: x.name + (x.centre ? ' · centre bay' : '') }));
+      if (cur.startsWith('suit:') && !suitOpts.some(o => o.v === cur)) suitOpts.unshift({ v: cur, n: (d.target.name || 'A suit') + ' · another hall' });
       const w = this.editEl(true);
       w.innerHTML = `<form data-id="${d.id || ''}">
         <p class="ix-k">${d.id ? 'IDEA' : 'NEW IDEA'}</p>
         <input name="title" maxlength="120" placeholder="Name the idea" value="${esc(d.title)}" autocomplete="off">
+        <label class="ix-k">What is it for?</label>
+        <select name="target" class="ix-for-pick">
+          <option value="">Just an idea (not linked to anything)</option>
+          <option value="app" ${cur === 'app' ? 'selected' : ''}>⚙ The JARVIS app itself: a new feature or a fix</option>
+          <optgroup label="${esc(tg.hallName || 'This hall')}: suits">${suitOpts.map(o => `<option value="${esc(o.v)}" ${o.v === cur ? 'selected' : ''}>${esc(o.n)}</option>`).join('')}</optgroup>
+        </select>
         <input type="hidden" name="stage" value="${d.stage}">
         <div class="ix-seg">${STAGES.map(([k, n]) => `<button type="button" data-ix="stage:${k}" class="st-${k} ${k === d.stage ? 'on' : ''}">${n}</button>`).join('')}</div>
         <label class="ix-k">How far along <output>${d.progress}%</output></label>
         <input type="range" name="progress" min="0" max="100" step="5" value="${d.progress}">
-        <textarea name="notes" rows="6" placeholder="Notes, next steps, what we decided…">${esc(d.notes)}</textarea>
-        <div class="ix-row">${d.id ? '<button type="button" class="ix-del" data-ix="delete">Delete</button>' : ''}<span></span><button type="button" data-ix="cancel">Cancel</button><button type="submit" class="ix-save">Save</button></div>
+        <textarea name="notes" rows="5" placeholder="Notes, next steps, what we decided…">${esc(d.notes)}</textarea>
+        <div class="ix-assist"></div>
+        <div class="ix-row">${d.id ? '<button type="button" class="ix-del" data-ix="delete">Delete</button>' : ''}<span></span><button type="button" data-ix="cancel">Cancel</button>${d.id ? '' : '<button type="button" data-ix="save-assist">Save & get JARVIS on it</button>'}<button type="submit" class="ix-save">Save</button></div>
       </form>`;
       const f = w.querySelector('form');
+      f.__names = Object.fromEntries([['app', 'JARVIS app'], ...suitOpts.map(o => [o.v, o.n.replace(/ · .*$/, '')])]);
       f.elements.progress.oninput = () => { f.querySelector('output').textContent = f.elements.progress.value + '%'; };
-      f.onsubmit = async ev => {
-        ev.preventDefault();
-        const p = { id: d.id, title: f.elements.title.value, stage: f.elements.stage.value, progress: +f.elements.progress.value, notes: f.elements.notes.value, x: d.x, y: d.y };
-        try { this.ideas = await call('ideas-save', p); this.editEl(false); this.draw(); } catch (x) { toast(x.message || String(x)); }
-      };
+      f.onsubmit = async ev => { ev.preventDefault(); await this.saveForm(f, d); };
+      if (d.id) this.renderAssist(d);
       setTimeout(() => f.elements.title.focus(), 30);
+    },
+    /** Save the editor; returns the saved idea (so "Save & get JARVIS on it" knows which one). */
+    async saveForm(f, d) {
+      const tv = f.elements.target.value;
+      const target = tv === 'app' ? { kind: 'app' } : tv.startsWith('suit:') ? { kind: 'suit', theme: tv.split(':')[1], id: tv.split(':').slice(2).join(':'), name: f.__names[tv] || '' } : null;
+      const p = { id: d.id, title: f.elements.title.value, stage: f.elements.stage.value, progress: +f.elements.progress.value, notes: f.elements.notes.value, x: d.x, y: d.y, target };
+      try {
+        this.ideas = await call('ideas-save', p); this.editEl(false); this.draw();
+        return d.id ? this.ideas.find(x => x.id === d.id) : this.ideas.filter(x => x.title === p.title.replace(/[\r\n]+/g, ' ').trim().slice(0, 120)).sort((a, b) => b.created - a.created)[0];
+      } catch (x) { toast(x.message || String(x)); return null; }
+    },
+    forTag(d) { const t = d.target; if (!t) return ''; return `<div class="ix-for">${t.kind === 'app' ? '⚙ JARVIS app' : esc(t.name || 'Suit')}</div>`; },
+    assistPill(d) {
+      const st = d.assist?.status, L = { thinking: 'JARVIS is thinking', waiting: 'Needs your OK', working: 'Being worked on', review: 'Ready to review' };
+      return L[st] ? `<div class="ix-as ix-as-${st}">${L[st]}</div>` : '';
+    },
+    /** The JARVIS part of the editor: ask, approve, change, review. Redrawn on its own as things move. */
+    renderAssist(d) {
+      const box = this.el?.querySelector(`.ix-edit form[data-id="${d.id}"] .ix-assist`); if (!box) return;
+      if (box.contains(document.activeElement) && document.activeElement.tagName === 'TEXTAREA') return;   // typing feedback: leave it be
+      const a = d.assist, st = a?.status, kind = d.target?.kind;
+      const hint = kind === 'app' ? 'JARVIS plans the change. After your OK, Claude Code builds it in a separate copy of the source, and you approve again before anything is merged.'
+        : kind === 'suit' ? 'JARVIS plans it and picks the right agents in the tower. They only start after your OK.'
+        : 'JARVIS thinks it through and suggests next steps.';
+      let h = '';
+      if (st === 'thinking') h = `<p class="ix-as-now">✦ JARVIS is thinking it through…</p>`;
+      else if (st === 'waiting') h = `<p class="ix-k">JARVIS PROPOSES${a.source === 'night' ? ' · DRAFTED OVERNIGHT' : ''}</p>
+          <p class="ix-as-sum">${esc(a.summary)}</p>${a.floorName ? `<p class="ix-as-note">Agents: ${esc(a.floorName)} (tower)</p>` : ''}
+          <div class="ix-plan">${ixmd(a.plan)}</div>
+          <div class="ix-row"><button type="button" data-ix="as-decline">Not now</button><span></span><button type="button" data-ix="as-change">Change it…</button><button type="button" class="ix-save" data-ix="as-approve">Approve</button></div>
+          <div class="ix-change" hidden><textarea name="feedback" rows="3" placeholder="What should be different?"></textarea><div class="ix-row"><span></span><button type="button" data-ix="as-send">Send to JARVIS</button></div></div>`;
+      else if (st === 'working') h = `<p class="ix-as-now">⏳ ${esc(a.phase || 'Working on it…')}</p>${a.runId ? '<div class="ix-row"><span></span><button type="button" data-ix="as-tower">Watch in the tower</button></div>' : ''}`;
+      else if (st === 'review') h = `<p class="ix-k">READY TO REVIEW · ${esc(a.stat || '')}</p>
+          ${(a.warnings || []).map(x => `<p class="ix-as-bad">⚠ ${esc(x)}</p>`).join('')}
+          <div class="ix-plan">${ixmd(a.report || a.summary)}</div>
+          <p class="ix-as-note">${(a.files || []).slice(0, 12).map(x => esc(x.replace(/\t/g, ' '))).join('<br>')}</p>
+          <div class="ix-row"><button type="button" data-ix="as-diff">View the changes</button><span></span><button type="button" data-ix="as-decline">Discard</button><button type="button" class="ix-save" data-ix="as-approve">Merge into JARVIS</button></div>`;
+      else {
+        if (st === 'failed') h += `<p class="ix-as-bad">Problem: ${esc(a.error || '')}</p>`;
+        if (st === 'done') h += `<p class="ix-as-ok">✓ ${esc(a.result || 'Done.')}</p>${a.resultFile ? '<div class="ix-row"><span></span><button type="button" data-ix="as-result">Open the result</button></div>' : ''}`;
+        if (st === 'declined') h += '<p class="ix-as-note">You said not now.</p>';
+        h += `<div class="ix-row"><button type="button" data-ix="as-go" class="ix-go">✦ ${a ? 'Ask JARVIS again' : 'Get JARVIS on it'}</button><span></span></div><p class="ix-as-note">${hint}</p>`;
+      }
+      box.innerHTML = h;
+    },
+    async onAssist(k, b) {
+      const f = this.el.querySelector('.ix-edit form'), id = f?.dataset.id;
+      try {
+        if (k === 'cfg') { await this.config(); return true; }
+        if (k === 'cfg-source') { const p = await call('ideas-choose-source'); if (p) toast('Source folder set.'); await this.config(); return true; }
+        if (k === 'cfg-recheck') { await this.config(true); return true; }
+        if (k === 'save-assist') { const d = this.ideas.find(x => x.id === id) || { x: 50, y: 50, ...this.ringSpot(this.ideas.length) }; const saved = await this.saveForm(f, d); if (saved) { await call('idea-assist', { id: saved.id }); toast('JARVIS is on it. The plan will wait for your OK.'); } return true; }
+        if (!k.startsWith('as-') || !id) return false;
+        if (k === 'as-go') { await call('idea-assist', { id }); return true; }
+        if (k === 'as-change') { const c = f.querySelector('.ix-change'); c.hidden = !c.hidden; if (!c.hidden) c.querySelector('textarea').focus(); return true; }
+        if (k === 'as-send') { const fb = f.querySelector('[name=feedback]').value.trim(); if (!fb) return true; f.querySelector('[name=feedback]').blur(); await call('idea-assist', { id, feedback: fb }); return true; }
+        if (k === 'as-approve') { b.disabled = true; this.ideas = await call('idea-approve', { id }); this.draw(); const d = this.ideas.find(x => x.id === id); if (d) this.renderAssist(d); return true; }
+        if (k === 'as-decline') { this.ideas = await call('idea-decline', { id }); this.draw(); const d = this.ideas.find(x => x.id === id); if (d) this.renderAssist(d); return true; }
+        if (k === 'as-diff') { await call('idea-open', { id, what: 'diff' }); return true; }
+        if (k === 'as-result') { await call('idea-open', { id, what: 'result' }); return true; }
+        if (k === 'as-tower') { this.editEl(false); this.close(); window.__jarvisTower?.show(); return true; }
+      } catch (x) { toast(x.message || String(x)); if (b) b.disabled = false; return true; }
+      return false;
+    },
+    /** How JARVIS works on ideas: the source folder, Claude Code, overnight drafts. */
+    async config(recheck) {
+      let c; try { c = await call('ideas-config', recheck ? { recheck: true } : {}); } catch (x) { toast(x.message || String(x)); return; }
+      const w = this.editEl(true);
+      w.innerHTML = `<form class="ix-cfg">
+        <p class="ix-k">HOW JARVIS WORKS ON IDEAS</p>
+        <p class="ix-as-note">Ideas for a suit go to that hall's tower agents. Ideas for the JARVIS app are built by Claude Code in a separate copy of the source. Nothing starts, and nothing is merged, without your OK.</p>
+        <label class="ix-k">JARVIS source folder</label>
+        <div class="ix-row"><code class="ix-path">${esc(c.sourceRepo || 'Not found yet')}</code><button type="button" data-ix="cfg-source">Choose…</button></div>
+        <label class="ix-k">Claude Code (builds app ideas)</label>
+        ${c.claudeCode?.ready ? `<p class="ix-as-ok">✓ Installed (${esc(c.claudeCode.version || '')})</p>` : `<p class="ix-as-bad">Not installed yet.</p><p class="ix-as-note">Open PowerShell and run:<br><code>irm https://claude.ai/install.ps1 | iex</code><br>then run <code>claude</code> once to sign in with your Claude account, and restart JARVIS.</p>`}
+        <div class="ix-row"><span></span><button type="button" data-ix="cfg-recheck">Check again</button></div>
+        <label class="ix-k">Claude API key (plans)</label>
+        <p class="${c.hasKey ? 'ix-as-ok' : 'ix-as-note'}">${c.hasKey ? '✓ Set in the tower' : 'Not set: plans use Claude Code instead. You can add a key in the tower (⚙ Engines).'}</p>
+        <label class="ix-check"><input type="checkbox" name="nightly" ${c.nightly ? 'checked' : ''}> Work on quiet ideas overnight (up to 3 a night; the plans wait for your OK)</label>
+        <div class="ix-row"><span></span><button type="button" data-ix="cancel">Close</button></div>
+      </form>`;
+      w.querySelector('[name=nightly]').onchange = async e => { try { await call('ideas-config', { nightly: e.target.checked }); } catch (x) { toast(x.message || String(x)); } };
+    },
+    onIdeas(m) {
+      if (!m || !Array.isArray(m.list)) return;
+      Room.badge(m.pending);
+      if (!this.open || !this.el) return;
+      this.ideas = m.list; this.draw();
+      const f = this.el.querySelector('.ix-edit form[data-id]'); const d = f?.dataset.id && this.ideas.find(x => x.id === f.dataset.id); if (d) this.renderAssist(d);
+    },
+    badge(n) {
+      const i = document.querySelector('.qp-ico[data-ideas] [data-ix-badge]'); if (!i) return;
+      if (n === undefined) { call('ideas-list').then(l => this.badge(l.filter(x => ['waiting', 'review'].includes(x.assist?.status)).length)).catch(() => {}); return; }
+      i.textContent = n ? String(n) : ''; i.hidden = !n;
+      const b = i.parentElement; if (b) b.title = n ? `Ideas room: ${n} waiting for your OK` : 'Ideas room';
     },
     /* Claude as a floating panel: drag it anywhere, resize it, and it keeps its place next time */
     claude() {
@@ -1256,6 +1373,8 @@
       b.addEventListener('click', e => { e.stopPropagation(); if (Brief.el) Brief.close(); else call('briefing').catch(() => {}); });
       const bulb = icons.querySelector('[data-ideas]'); bulb ? bulb.insertAdjacentElement('beforebegin', b) : icons.appendChild(b);
     }
+    const bulbEl = icons && icons.querySelector('[data-ideas]');
+    if (bulbEl && !bulbEl.querySelector('[data-ix-badge]')) { const i = document.createElement('i'); i.dataset.ixBadge = '1'; i.hidden = true; bulbEl.appendChild(i); Room.badge(); }
     const mic = $('[data-mic]');
     if (mic && toggle.parentElement !== mic.parentElement) mic.insertAdjacentElement('afterend', toggle);
     if (toggle.parentElement && hset.previousElementSibling !== toggle) toggle.insertAdjacentElement('afterend', hset);
@@ -1265,6 +1384,7 @@
   window.__jarvisHolo = Holo;
   if (!MAIN) return;
   setInterval(attach, 1200); setTimeout(attach, 800);
+  try { J.on('ideas', m => Room.onIdeas(m)); } catch {}
   if (store.get('handsOn', false)) setTimeout(() => startHands(), 2500);
   Amb.install(); window.__jarvisAmb = Amb; window.__jarvisHolo = Holo;
   try { J.on('health', h => Health.apply(h)); } catch {}

@@ -1,5 +1,5 @@
 {
-  "version": "1.71.0",
+  "version": "1.72.0",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "New: meeting mode. Record any call (Zoom, Teams, Meet, WhatsApp...) for a suit, get an offline transcript with a Claude summary, emailed to you when it ends."
+  "notes": "New: ideas that get worked on. Link an idea to a suit or to the JARVIS app, press Get JARVIS on it, approve the plan, and the tower agents (suit ideas) or Claude Code (app ideas) do the work. App changes need a second OK before they are merged. JARVIS also drafts plans for quiet ideas overnight."
 }

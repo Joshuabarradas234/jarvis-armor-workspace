@@ -3,6 +3,13 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 /** The Ideas room: each idea, how far along it is, and where its card sits. */
 export const STAGES=['spark','designing','building','testing','done'];
+/** What an idea is for: one suit in a hall, the JARVIS app itself, or nothing in particular. */
+function target(t){
+  if(!t||typeof t!=='object')return null;
+  if(t.kind==='app')return {kind:'app'};
+  if(t.kind==='suit'&&typeof t.theme==='string'&&typeof t.id==='string'&&t.theme&&t.id)return {kind:'suit',theme:t.theme.slice(0,32),id:t.id.slice(0,64),name:String(t.name||'').slice(0,60)};
+  return null;
+}
 export class IdeaStore{
   constructor(dir){
     this.file=path.join(dir,'ideas.json');
@@ -15,9 +22,18 @@ export class IdeaStore{
       progress:Math.max(0,Math.min(100,Math.round(n(p.progress)??prev.progress??0))),
       notes:String(p.notes??prev.notes??'').slice(0,4000),
       x:Math.max(0,Math.min(100,n(p.x)??prev.x??50)),y:Math.max(0,Math.min(100,n(p.y)??prev.y??50)),
+      target:target(p.target===undefined?prev.target:p.target),
+      assist:prev.assist||null,   // JARVIS's plan and where it stands; only the main process changes it (setAssist)
       created:prev.created||Date.now(),updated:Date.now()};
     return out;
   }
+  /** Update what JARVIS is doing with an idea (null clears it). */
+  setAssist(id,patch){
+    const i=this.items.find(x=>x.id===id);if(!i)throw Error('That idea no longer exists.');
+    i.assist=patch===null?null:{...(i.assist||{}),...patch,updatedAt:Date.now()};
+    this.flush();return i.assist;
+  }
+  get(id){return this.items.find(x=>x.id===id)||null;}
   list(){return [...this.items].sort((a,b)=>a.created-b.created);}
   save(p){
     if(!p||typeof p!=='object')throw Error('Invalid idea.');
