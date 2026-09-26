@@ -45,7 +45,7 @@ Then press **Save**, **Send a test WhatsApp** and **Test call**.
   - If it does lapse, he says so on the morning call and by CallMeBot or text, and shows it in JARVIS Core.
 
   While it has lapsed, approvals by message wait until you rejoin. A WhatsApp sender of your own never lapses. You register one in the Twilio Console under Messaging → Senders → WhatsApp senders.
-- **Twilio trial accounts** only call verified numbers and play a short trial notice at the start of each call. Upgrading the account removes the notice.
+- **Twilio's free trial is not enough.** Since 2026 a trial account only sends Twilio's own sample messages and calls, so JARVIS's calls, WhatsApps and texts are refused ("trial accounts have limited parameter access"). Upgrade the account (Console → **Upgrade**, pay as you go) and add some credit. Your trial number and settings carry over. Calls and messages cost pennies each: see twilio.com/pricing.
 - **Keep the PC on and plugged in** overnight. JARVIS stops Windows from sleeping while something is scheduled, but closing the lid can still put the PC to sleep.
 
 ## 3. Talking to him

@@ -82,6 +82,7 @@ export class Phone {
     let res;
     try { res = await this.f(url, init); } catch (e) { throw Error(`Could not reach Twilio: ${e.message}`); }
     const data = await res.json().catch(() => ({}));
+    if (!res.ok && /trial account/i.test(data.message || '')) { const err = Error('Twilio refused it: a free trial account only sends Twilio’s own sample messages and calls, not JARVIS’s. Upgrade the Twilio account (Console → Upgrade, pay as you go) to use calls, WhatsApp and texts.'); err.code = data.code || 'TRIAL'; err.status = res.status; throw err; }
     if (!res.ok) { const err = Error(`Twilio ${res.status}: ${data.message || res.statusText}${data.code ? ` (error ${data.code})` : ''}`); err.code = data.code; err.status = res.status; throw err; }
     return data;
   }
