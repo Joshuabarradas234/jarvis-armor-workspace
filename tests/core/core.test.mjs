@@ -51,7 +51,7 @@ const onData = (stream, session, cb) => { let b = ''; stream.on('data', d => b +
 const onAuth = (a, s, cb) => a.username === 'me@gmail.com' && a.password === 'abcdefghijklmnop' ? cb(null, {user: 'me'}) : cb(new Error('Invalid login'));
 const smtp = new SMTPServer({secure: false, key, cert, authMethods: ['PLAIN'], onAuth, onData, logger: false});
 const smtpPort = await new Promise(r => smtp.listen(0, '127.0.0.1', () => r(smtp.server.address().port)));
-let smtp465 = null; try { smtp465 = new SMTPServer({secure: true, key, cert, authMethods: ['PLAIN'], onAuth, onData, logger: false}); await new Promise((r, j) => { smtp465.server.once('error', j); smtp465.listen(465, '127.0.0.1', r); }); } catch { smtp465 = null; }
+let smtp465 = null; try { smtp465 = new SMTPServer({secure: true, key, cert, authMethods: ['PLAIN'], onAuth, onData, logger: false}); await new Promise((r, j) => { smtp465.on('error', j); smtp465.listen(465, '127.0.0.1', r); }); } catch { smtp465 = null; }
 
 // the app's own stores, as main.js makes them
 const {TodoStore} = await import(pathToFileURL(B + '/services/todos.js').href);

@@ -57,7 +57,7 @@ node --check path/to/changed-file.js
 cd tests/core && npm install && npm test
 ```
 
-- Needs Node 22 or newer and `openssl`. The last run passed 121 of 121 tests. Run it more than once if you touch
+- Needs Node 22 or newer and `openssl`. The last runs passed 121 of 121 on Windows and 120 of 120 on Linux (the port-465 mail check needs admin rights there). Run it more than once if you touch
   timing, saving or polling code.
 - Environment variables: `JARVIS_BUILD` (the repo root, found by default) and `JARVIS_TEST_DIR` (the scratch folder).
 - A quick voice-parser check:
