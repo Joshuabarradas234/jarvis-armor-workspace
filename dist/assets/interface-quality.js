@@ -42,7 +42,7 @@ if(typeof document!=='undefined'){
     const paused=shouldPauseAmbient({hidden:document.hidden,reduced:motion.matches,still:budget.quiet||root.classList.contains('still'),state:root.dataset.state,covered:!!document.querySelector('.jc.in,.tw.in,.ix-room.in,.gx.in')});
     for(const v of root.querySelectorAll('.hall-overlay .ov-vid')){
       v.playbackRate=budget.videoRate;
-      if(paused){if(!v.paused)v.pause();}
+      if(paused||v.closest('.has-vehicle-hologram')){if(!v.paused)v.pause();}
       else if(v.paused&&v.readyState>=2&&!v.error)v.play()?.catch(()=>{});
     }
   }
