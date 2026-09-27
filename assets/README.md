@@ -1,6 +1,6 @@
 # Asset slots
 
-All built-in 3D geometry and HUD graphics are original and generated in code.
+The procedural geometry and HUD graphics are generated in code. Replacement models can be supplied separately.
 
 - `armor/`: self-contained GLB replacement models. Prefer importing from Settings.
 - `helmet/`: future authored mechanical models; the current helmet is `src/scenes/helmet.js`.
@@ -15,3 +15,5 @@ All built-in 3D geometry and HUD graphics are original and generated in code.
 - `wallpaper/`: standalone offline HTML used by the Lively export.
 
 Do not delete the icon files before packaging. Empty replacement slots are intentional: every supplied feature has a code-generated fallback.
+
+- vehicles/batmobile.glb: the user-supplied model used by the rotating centre Batcave hologram. The original model is preserved without geometric edits; it ships outside app.asar in the update ZIP. No author or licence metadata was supplied with this file. The source backup follows the requested format and excludes binary media; keep the update ZIP for this model.

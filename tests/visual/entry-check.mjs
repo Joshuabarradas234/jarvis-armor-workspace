@@ -26,7 +26,7 @@ try{
  win.webContents.on('render-process-gone',(_e,details)=>console.error('RENDERER_EXIT',details));win.on('unresponsive',()=>console.error('RENDERER_UNRESPONSIVE'));
  const js=code=>Promise.race([win.webContents.executeJavaScript(code),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Renderer timeout: '+code.slice(0,110))),15000);timer.unref();})]);await until(()=>js('!!window.jarvis&&!!window.__jarvisHall'));
  const call=(method,payload)=>js('window.jarvis.call('+JSON.stringify(method)+','+JSON.stringify(payload)+')');
- await (await import('./entry-suite.mjs')).check({win,js,call,sleep,until,out});
+ await (await import(process.env.JARVIS_VISUAL_SUITE||'./entry-suite.mjs')).check({win,js,call,sleep,until,out});
  fs.writeFileSync(path.join(out,'console.json'),JSON.stringify(errors,null,2));console.log('ALL_COMPLETE',out);app.quit();
 }catch(e){console.error(e);fs.writeFileSync(path.join(out,'console.json'),JSON.stringify(errors,null,2));app.exit(1);}
 });

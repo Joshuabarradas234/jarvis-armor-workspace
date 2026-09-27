@@ -930,7 +930,7 @@ async function api(event,method,payload){
     case 'ai-chat':{if(!Array.isArray(payload)||payload.length>40||payload.some(m=>!['user','assistant'].includes(m.role)||typeof m.content!=='string'||m.content.length>10000))throw Error('Invalid conversation.');let key='';try{key=safeStorage.decryptString(fs.readFileSync(path.join(userDir,'ai-key.enc')));}catch{}return askAI(settings.get().ai,key,payload);}
     case 'workstations':return workstations.describe();
     case 'board':return boardFor(payload?.theme);
-    case 'board-save':{if(!payload||typeof payload.id!=='string')throw Error('Choose a bay.');const t=payload.theme||workstations.activeTheme;missions.set(t,payload.id,payload.patch||{});deck?.push({hall:t});return boardFor(t);}   // an open control deck tab refreshes too
+    case 'board-save':{if(!payload||typeof payload.id!=='string')throw Error('Choose a bay.');const t=payload.theme||workstations.activeTheme;missions.set(t,payload.id,payload.patch||{});deckUpdate(t,payload.id);return boardFor(t);}   // an open control deck tab refreshes too
     case 'board-run':return runBay(payload?.theme,payload.id);
     case 'board-stop':return runner.stop(payload?.theme||workstations.activeTheme,payload.id);
     case 'deck-url':return deck.url(payload?.theme||workstations.activeTheme);

@@ -115,3 +115,23 @@ body.view-main button:is([data-action=settings],[data-action=standdown]):hover{b
 /* The vehicle source has black margins: crop those, preserving the car proportions. */
 body[data-theme="batcave"] .hall-overlay.plain{overflow:hidden}
 body[data-theme="batcave"] .hall-overlay.plain .ov-vid{object-fit:cover}
+
+/* The 3D car replaces only the Batcave video; the calibrated centre box still positions it. */
+.hall-overlay .vehicle-hologram{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.hall-overlay.has-vehicle-hologram .ov-vid{display:none!important}
+.hall-overlay.has-vehicle-hologram .ov-dim{opacity:0}
+/* Visible progress survives the new plates and does not cover their click targets. */
+.view-main .bay-label:has(.mission-progress)>.prog{display:none!important}
+body.view-main .bay-labels.plaques .bay-label .mission-progress{--mission-colour:#75deff;position:absolute;left:3%;top:calc(100% + 3px);width:94%;height:24px;display:flex!important;flex-direction:column;gap:4px;box-sizing:border-box;padding:4px 6px;background:#031019ed;border:1px solid #5793a655;border-radius:3px;pointer-events:none;box-shadow:0 3px 9px #0007;line-height:1;overflow:hidden;transform:none;filter:none}
+body.view-main .bay-labels.plaques .bay-label .mission-progress[data-status=done]{--mission-colour:#adf190}
+body.view-main .bay-labels.plaques .bay-label .mission-progress[data-status=blocked]{--mission-colour:#ffb27d}
+body.view-main .bay-labels.plaques .bay-label .mission-state{display:flex!important;align-items:center;gap:5px;width:100%;height:9px;overflow:hidden;transform:none;background:none;border:0;border-radius:0;box-shadow:none;padding:0}
+body.view-main .bay-labels.plaques .bay-label .mission-state b{display:block!important;flex:1;min-width:0;width:auto!important;height:auto!important;font:600 8px/1 Consolas,monospace!important;color:var(--mission-colour)!important;text-align:left!important;letter-spacing:.025em!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transform:none!important}
+body.view-main .bay-labels.plaques .bay-label .mission-state>i{width:5px;height:5px;border-radius:50%;background:var(--mission-colour);flex:none}
+body.view-main .bay-labels.plaques .bay-label .mission-progress[data-status=running] .mission-state>i{width:6px;height:6px;background:none;border:1px solid #28434d;border-top-color:var(--mission-colour);animation:mission-turn 1.6s linear infinite}
+body.view-main .bay-labels.plaques .bay-label .mission-track{display:block!important;position:relative;height:3px!important;min-height:3px;width:100%!important;overflow:hidden;border:0;padding:0;box-shadow:none;background:#1b303c;border-radius:2px;transform:none!important;mask:none!important;-webkit-mask:none!important}
+body.view-main .bay-labels.plaques .bay-label .mission-track>i{display:block;height:100%;width:var(--mission-progress);background:var(--mission-colour);transition:width .2s ease}
+body.view-main .bay-labels.plaques .bay-label .indeterminate .mission-track>i{width:30%;animation:mission-sweep 2s ease-in-out infinite}
+.mission-motion-off .mission-progress *{animation:none!important;transition:none!important}
+@keyframes mission-turn{to{rotate:360deg}}
+@keyframes mission-sweep{0%,100%{translate:0}50%{translate:230%}}

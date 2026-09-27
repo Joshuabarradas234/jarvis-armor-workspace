@@ -212,3 +212,7 @@ Packaged the cumulative suit showcase as version 1.81.0 with the unchanged build
 ## Release 1.81.1: suit entry fixes
 
 Restored entry on battery and audio readiness, removed guessed skinning and overlapping launch noise, strengthened Iron Man eye/reactor power-up, added brief Batman/Web Lab projections, and enlarged centre displays. Validated all 21 real models in the Windows package with unchanged vertices, visible eye pixels, glass movement, audio, reduced motion and mute. Core 121/121, frontend 67/67 and 85 syntax checks pass. app.asar is 29663625 bytes. Protected source files, build configuration and the loopback Control Deck are unchanged. See RELEASE-1.81.1.md for installation, exact ZIP contents and remaining limits.
+
+## Release 1.81.2: Batmobile hologram and live suit progress
+
+Connected the supplied Batmobile GLB to a rotating, uniformly scaled centre hologram and restored clear progress on every active suit. Fresh runs reset old progress, final unterminated output is retained, and status updates survive hall changes. Verified the built Windows app with all 21 suit progress cards, real local Control Deck agents, vehicle rotation, pause/resume, theme re-entry and the loopback-only listener. Core 121/121 twice, frontend 72/72 and 87 syntax checks pass. app.asar is 29676475 bytes. Protected files and build configuration are unchanged. See RELEASE-1.81.2.md for exact ZIP contents and limits.

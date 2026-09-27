@@ -39,7 +39,7 @@ export class AgentRunner {
     const child = spawn(mission.agent, { shell: true, windowsHide: true, env, detached: process.platform !== 'win32' });
     child.stoppedByUser = false;
     this.running.set(key, child);
-    this.missions.set(theme, id, { status: 'running' });
+    this.missions.set(theme, id, { status: 'running', progress: 0, tasks: mission.tasks.map(t => ({ ...t, done: false })) });
     const started = this.missions.get(theme, id);
     started.startedAt = Date.now(); started.endedAt = null;
     this.missions.data[key] = started; this.missions.persist();
@@ -62,13 +62,15 @@ export class AgentRunner {
       this.running.delete(key); this.onUpdate(theme, id);
     });
     child.on('close', code => {
+      if (!child.stoppedByUser && buffer.trim()) this.handle(theme, id, buffer.trim());
+      buffer = '';
       this.running.delete(key);
       const s = this.missions.get(theme, id);
       if (child.stoppedByUser) this.missions.set(theme, id, { status: 'idle' });
       else if (s.status === 'running') this.missions.set(theme, id, { status: code === 0 ? 'done' : 'blocked' });
       const fin = this.missions.get(theme, id);
       fin.endedAt = Date.now();
-      if (code === 0 && fin.progress < 100 && !fin.tasks.length) fin.progress = 100;
+      if (code === 0 && fin.status === 'done' && fin.progress < 100 && !fin.tasks.length) fin.progress = 100;
       this.missions.data[key] = fin; this.missions.persist();
       this.missions.note(theme, id, child.stoppedByUser ? 'stopped' : code === 0 ? 'finished' : `stopped with code ${code}`);
       this.onUpdate(theme, id);
