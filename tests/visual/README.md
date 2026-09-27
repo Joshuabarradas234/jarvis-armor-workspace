@@ -1,0 +1,7 @@
+# Native Windows entry check
+
+Run with Electron 44 from this repository. Set JARVIS_VISUAL_BASE to a runtime folder containing assets/, dist/vendor/ and scripts/windows/. Set JARVIS_VISUAL_APP to an unpacked app.asar to validate the built archive instead of the checkout.
+
+The runner is tests/visual/entry-check.mjs. It launches the actual main process and protected preload with a fresh test-only userData, Documents and Desktop under test-results/; it never reads or changes the owner's profile. JARVIS_TEST bypasses the single-instance lock, test display bounds avoid fullscreen, and test-specific shortcuts avoid normal JARVIS shortcuts. It opens only the existing Control Deck listener on 127.0.0.1. No debugging port or test web server is used.
+
+The suite uses real IPC and GPU rendering to enter and return from all 21 suits; checks eye pixels (lit versus unlit), unchanged model vertex hashes, rigid movement, door travel, zoom and mechanical audio output; plays the Batman hall transition to completion and loads/skips the Spider-Man transition; and checks reduced motion and master mute. It saves screenshots and JSON evidence, and closes the test app when done. It does not record the microphone or use real account credentials. Audio output is measured electronically, not subjectively heard. Windows voice recognition, hand gestures and multiple physical monitors still require manual checks.

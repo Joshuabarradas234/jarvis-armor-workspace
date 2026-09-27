@@ -3,9 +3,9 @@ const clamp = x => Math.max(0, Math.min(1, x));
 const smooth = x => { x = clamp(x); return x * x * (3 - 2 * x); };
 const REST = Object.freeze({ door: 0, eyes: 0, scan: 0, pulse: 0, yaw: 0, lean: 0, roll: 0, lift: 0, forward: 0, stance: 0 });
 export const PROFILES = Object.freeze({
-  ironman: { yaw: -.14, lean: -.018, roll: 0, lift: .035, forward: .14 },
-  batcave: { yaw: .22, lean: -.025, roll: -.012, lift: 0, forward: .10 },
-  spiderman: { yaw: -.22, lean: .035, roll: -.045, lift: .012, forward: .12 },
+  ironman: { yaw: -.14, lean: -.008, roll: 0, lift: .008, forward: .055 },
+  batcave: { yaw: .16, lean: -.010, roll: 0, lift: 0, forward: .04 },
+  spiderman: { yaw: -.18, lean: .012, roll: -.008, lift: .003, forward: .05 },
 });
 export function entryFrame(theme, seconds, reduced = false) {
   if (reduced) return { ...REST, door: 1, eyes: 1 };
@@ -19,9 +19,9 @@ export function entryFrame(theme, seconds, reduced = false) {
 export function createEntryMotion(theme, id) {
   let active = false, start = 0, closing = null, last = { ...REST };
   return {
-    update(snapshot, now, reduced = false) {
+    update(snapshot, now, reduced = false, elapsed = null) {
       const wanted = snapshot?.selected === id && ['SUIT_SELECTED', 'MODULE'].includes(snapshot.state);
-      if (wanted && !active) { active = true; closing = null; start = now - (snapshot.state === 'MODULE' ? 3000 : 0); }
+      if (wanted && !active) { active = true; closing = null; start = now - (snapshot.state === 'MODULE' ? 3000 : Math.max(0, Math.min(3000, elapsed || 0))); }
       if (!wanted && active) { active = false; closing = { at: now, from: { ...last } }; }
       if (active) last = entryFrame(theme, (now - start) / 1000, reduced);
       else if (closing && !reduced) {
@@ -29,7 +29,7 @@ export function createEntryMotion(theme, id) {
         last = Object.fromEntries(Object.keys(REST).map(key => [key, key === 'scan' || key === 'pulse' ? 0 : closing.from[key] * k]));
         if (!k) closing = null;
       } else { last = { ...REST }; closing = null; }
-      return { ...last, engaged: active || !!closing };
+      return { ...last, seconds: active ? (now - start) / 1000 : 0, engaged: active || !!closing };
     },
   };
 }

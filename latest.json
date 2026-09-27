@@ -1,5 +1,5 @@
 {
-  "version": "1.81.0",
+  "version": "1.81.1",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "New Armor Hall, Batcave and Web Lab with larger suits, opening glass, fitted eye lights, calibration controls and mechanical sound."
+  "notes": "Smoother suit entry without stretched bodies, cinematic glass sounds, working eye lights and larger centre holograms."
 }

@@ -12,7 +12,8 @@ import { disposeObject, reducedMotion } from './scene-quality.js';
 import { createEntryMotion, entryZoom, makeDoors, placeDoors, makeEyes } from './suit-entry.js';
 import { calibratedStage } from './hall-calibration-data.js';
 import { renderBudget, fitSuit, suitRenderScale, concealedHall } from './render-budget.js';
-import { createSuitRig, authoredPose } from './suit-rig.js';
+import { authoredPose } from './suit-rig.js';
+import { signatureFrame, addEyeHalos, lightEyes, makeSignature, makeReactorRing } from './suit-signatures.js';
 import { EYE_PATCHES, EYE_COLOURS } from './suit-eyes.js';
 const J = window.jarvis;
 const VIEW = new URLSearchParams(location.search).get('view') || 'main';
@@ -101,7 +102,8 @@ if (J && VIEW === 'main') {
     const pivot = new THREE.Group(); scene.add(pivot);
     const scan = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
     scan.renderOrder = 8; scan.visible = false; scene.add(scan);
-    const bay = { scan, shade, id, scene, camera, pivot, pad, doors, pulse, entry: createEntryMotion(hall(), id), eyes: [], top, ready: false, t: Math.random() * 10, hover: 0, width: 0.5, depth: 0.3, spinA: 0, holding: false, up: null, level: 0.5, lvl: 0.5, reactor: null };
+    const signature = makeSignature(THREE,hall()); if(signature)scene.add(signature);
+    const bay = { signature, scan, shade, id, scene, camera, pivot, pad, doors, pulse, entry: createEntryMotion(hall(), id), eyes: [], top, ready: false, t: Math.random() * 10, hover: 0, width: 0.5, depth: 0.3, spinA: 0, holding: false, up: null, level: 0.5, lvl: 0.5, reactor: null };
     new GLTFLoader().setMeshoptDecoder(Meshopt).load(url, g => {
       if (bay.disposed) { disposeObject(g.scene); return; }
       const o = g.scene; o.updateMatrixWorld(true);
@@ -109,11 +111,11 @@ if (J && VIEW === 'main') {
       const s = 1 / (size.y || 1); o.scale.setScalar(s); o.position.set(-c.x * s, -b.min.y * s, -c.z * s);
       o.traverse(m => { if (m.isMesh && m.material) { for (const mt of [].concat(m.material)) { mt.envMapIntensity = 1.1; if (mt.roughness !== undefined) mt.roughness = Math.max(0.12, mt.roughness); mt.needsUpdate = true; } } });
       pivot.add(o); bay.width = size.x * s; bay.depth = size.z * s; bay.model = o;
-      bay.rig = authoredPose(THREE,o,g.animations,hall()) || createSuitRig(THREE,o,id,hall());
-      if (bay.rig?.root) { pivot.remove(o); pivot.add(bay.rig.root); bay.rig.releaseOriginal(); bay.model = bay.rig.root; }
+      bay.rig = authoredPose(THREE,o,g.animations,hall());
+      // Keep original vertices and materials. Unrigged models move as one solid object.
       bay.ready = true;
-      bay.eyes = makeEyes(THREE, pivot, EYE_PATCHES[id], EYE_COLOURS[id] || '#ccf8ff');
-      pivot.updateMatrixWorld(true); for (const eye of bay.eyes) { eye.geometry.computeBoundingBox(); const centre=eye.geometry.boundingBox.getCenter(new THREE.Vector3()); eye.geometry.translate(-centre.x,-centre.y,-centre.z); eye.position.copy(centre); if(bay.rig?.head)bay.rig.head.attach(eye); eye.userData.rest=eye.position.clone(); }
+      bay.eyes = makeEyes(THREE, pivot, EYE_PATCHES[id], EYE_COLOURS[id] || (hall()==='ironman'?'#e8fcff':'#ccf8ff'));
+      pivot.updateMatrixWorld(true); for (const eye of bay.eyes) { eye.geometry.computeBoundingBox(); const centre=eye.geometry.boundingBox.getCenter(new THREE.Vector3()); eye.geometry.translate(-centre.x,-centre.y,-centre.z); eye.position.copy(centre); addEyeHalos(THREE,eye,hall()); if(bay.rig?.head)bay.rig.head.attach(eye); eye.userData.rest=eye.position.clone(); }
       bay.materialBudget = '';
       // the arc reactor: find the front of the chest and light it
       if (stage?.reactor !== false) try {   // only suits with an arc reactor (not the Batcave)
@@ -122,6 +124,7 @@ if (J && VIEW === 'main') {
         const hit = new THREE.Raycaster(new THREE.Vector3(0, ry, 5), new THREE.Vector3(0, 0, -1)).intersectObject(bay.model, true)[0];
         const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: reactorTexture(), color: '#bff3ff', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
         sp.position.set(0, ry, (hit ? hit.point.z : bay.depth * 0.5) + 0.012); sp.renderOrder = 5; pivot.add(sp); if(bay.rig?.chest)bay.rig.chest.attach(sp); bay.reactor = sp;
+        if(hall()==='ironman'){bay.reactorRing=makeReactorRing(THREE);bay.reactorRing.position.copy(sp.position);bay.reactorRing.position.z+=.012;pivot.add(bay.reactorRing);if(bay.rig?.chest)bay.rig.chest.attach(bay.reactorRing);}
       } catch (e) { console.warn('[suits] reactor', e); }
     }, undefined, e => { if (!bay.disposed) console.warn('[suits]', url, e?.message || e); });
     return bay;
@@ -263,28 +266,30 @@ if (J && VIEW === 'main') {
       if (w < 8 || h < 8) continue;
       const quiet = S.budget.quiet || document.querySelector('.image-hall')?.classList.contains('still');
       const preview = S.preview?.id===bay.id && now<S.preview.until;
-      const entry = bay.entry.update(S.inspectId===bay.id ? {state:'MODULE',selected:bay.id} : preview ? {state:'SUIT_SELECTED',selected:bay.id} : S.snap, now, quiet || S.inspectId===bay.id);
+      const entry = bay.entry.update(S.inspectId===bay.id ? {state:'MODULE',selected:bay.id} : preview ? {state:'SUIT_SELECTED',selected:bay.id} : S.snap, now, quiet || S.inspectId===bay.id, !preview && !S.inspectId && Number.isFinite(S.snap?.since) ? Date.now()-S.snap.since : null);
       if(bay.materialBudget!==S.budget.quality){bay.materialBudget=S.budget.quality;bay.model.traverse(m=>{for(const mat of [].concat(m.material||[]))for(const value of Object.values(mat))if(value?.isTexture){value.anisotropy=Math.min(S.budget.anisotropy,S.renderer.capabilities.getMaxAnisotropy());value.needsUpdate=true;}});} bay.up = entry.engaged;
       bay.t = quiet ? 0 : bay.t + dt; bay.hover += ((hovered === bay.id ? 1 : 0) - bay.hover) * Math.min(1, dt * 5);
       const o = g || {};   // per-case settings: face = stands facing you, fill/widthFit = how much of the case it fills, spill = may reach past the glass edge
       // suit-up: the glass slides away, the case light flares, the suit turns to you and steps out
-      const gs = entry.door, st = entry.stance;
-      bay.rig?.update(st * (o.pose ?? 1));
+      const gs = entry.door, st = entry.stance, movement = o.pose ?? 1;
+      const signature = signatureFrame(hall(), entry.seconds, quiet || !!S.inspectId);
+      bay.rig?.update(st * movement);
       const face = Math.max(bay.hover, st);
       if (!bay.holding) bay.spinA *= Math.exp(-dt * 2.4);   // let go and it turns back
       const sway = o.face ? Math.sin(bay.t * 0.3) * 0.04 : Math.sin(bay.t * 0.32) * 0.38 * Math.min(1, 0.42 / Math.max(bay.width, bay.depth, 0.3));   // wide suits turn less, so they stay inside the glass
-      bay.pivot.rotation.set(entry.lean, sway * (1 - face) + bay.spinA + entry.yaw, entry.roll);   // turns slowly; faces you when you point at it
+      bay.pivot.rotation.set(entry.lean * movement, sway * (1 - face) + bay.spinA + entry.yaw * movement, entry.roll * movement);   // turns slowly; faces you when you point at it
       // size: tall enough to fill the case, narrow enough to fit its width (even while turning, unless it faces you)
       const reach = o.face ? Math.max(bay.width, 0.3) : Math.max(bay.width, bay.depth * 0.75, 0.3);
       const suitPx = fitSuit({height:footPx,width:w,modelWidth:bay.width,modelDepth:bay.depth,fill:o.fill||.97,widthFit:o.widthFit||.96,yaw:o.face?0:sway});
       const doorH = h, doorY = y;
       const spill = (o.spill || 0) + gs * 0.7 + (Math.abs(bay.spinA) > 0.05 ? 0.08 : 0), gw = w; if (spill) { x -= w * spill; w *= 1 + 2 * spill; }
       { const lift = st * 0.16 * h; if (lift) { y -= lift; h += lift; footPx += lift; } }   // room above the case for the suit stepping out
-      bay.pivot.position.set(0, entry.lift, entry.forward); bay.pivot.scale.setScalar(1);
-      for (const eye of bay.eyes) { const on=S.inspectId===bay.id?1:entry.eyes; eye.visible=on>.001; eye.material.opacity=on*.92;eye.position.copy(eye.userData.rest).add(new THREE.Vector3(...(o.eyeOffset||[0,0,0])));eye.scale.setScalar(o.eyeScale||1); }
+      bay.pivot.position.set(0, entry.lift * movement, entry.forward * movement); bay.pivot.scale.setScalar(1);
+      for (const eye of bay.eyes) { const on=S.inspectId===bay.id?1:entry.eyes; lightEyes(eye,on,signature,S.budget.detail);eye.position.copy(eye.userData.rest).add(new THREE.Vector3(...(o.eyeOffset||[0,0,0])));eye.scale.setScalar(o.eyeScale||1); }
       // a scan line runs up the suit as it powers on
       const sk = entry.scan; bay.scan.visible = S.budget.particles && sk > 0 && sk < 1;
       if (bay.scan.visible) { bay.scan.position.set(0, sk * 1.02, bay.depth * 0.5 + 0.5 * st + 0.04); bay.scan.scale.set(Math.max(bay.width, 0.4) * 1.3, 0.012, 1); bay.scan.material.opacity = 0.9 * Math.sin(sk * Math.PI); }
+      if(bay.signature){bay.signature.visible=signature.projection>.001&&entry.engaged;bay.signature.position.set(0,hall()==='batcave'?.88:.55,-bay.depth*.65-.04);bay.signature.scale.setScalar(hall()==='batcave'?.8:.85);bay.signature.material.uniforms.opacity.value=signature.projection;bay.signature.material.uniforms.sweep.value=hall()==='spiderman'?signature.sweep:1;}
       bay.top.intensity = 26 * (1 + entry.pulse * .55 + st * .2);
       const cam = bay.camera; cam.aspect = w / h;
       const Hw = h / suitPx, tan = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)), dist = Hw / (2 * tan);
@@ -300,8 +305,9 @@ if (J && VIEW === 'main') {
       bay.pad.material.opacity = (0.55 + 0.2 * Math.sin(bay.t * 1.6)) * (bay.reactor ? 1 : 0.55 + 0.6 * bay.lvl) + bay.hover * 0.25 + st * 0.3;   // no reactor: the case floor shows how busy the suit is
       // the arc reactor: bright and pulsing while the suit is busy, dim when it has not been used for days
       bay.lvl += (bay.level - bay.lvl) * Math.min(1, dt * 1.5);
-      if (bay.reactor) { const busy = bay.busy ? 0.18 * (0.5 + 0.5 * Math.sin(bay.t * 3.2)) : 0.05 * Math.sin(bay.t * 1.3); const L = clamp(bay.lvl + busy + st * 0.7 + bay.hover * 0.15, 0.08, 1.8);
-        bay.reactor.material.opacity = clamp(0.15 + L * 0.85, 0, 1); const sz = 0.035 + L * 0.055; bay.reactor.scale.set(sz, sz, 1); }
+      if (bay.reactor) { const busy = bay.busy ? 0.18 * (0.5 + 0.5 * Math.sin(bay.t * 3.2)) : 0.05 * Math.sin(bay.t * 1.3); const L = clamp(bay.lvl + busy + entry.eyes * signature.reactor + bay.hover * 0.15, 0.08, 1.8);
+        bay.reactor.material.opacity = clamp(0.15 + L * 0.85, 0, 1); const sz = 0.035 + L * 0.055 + entry.eyes * signature.reactor * .032; bay.reactor.scale.set(sz, sz, 1); }
+      if(bay.reactorRing){bay.reactorRing.visible=signature.ring>.001&&entry.engaged;bay.reactorRing.material.opacity=signature.ring*.85;bay.reactorRing.scale.setScalar(.07+signature.ringProgress*.24);}
       r.setViewport(x, Hh - y - h, w, h); r.setScissor(x, Hh - y - h, w, h);
       bay.rect={x,y,w,h}; bay.pixelsPerUnit=suitPx; r.render(bay.scene, cam);
     }
@@ -404,6 +410,7 @@ if (J && VIEW === 'main') {
   const syncTimer = setInterval(() => { if (document.querySelector('.hall-backdrop')) sync().catch(e => console.warn('[suits]', e)); else stop(); }, 1500);
   new MutationObserver(() => { if (S.theme && S.theme !== hall()) { S.list = null; cleanKey = ''; S.show = null; setTimeout(applyZoom, 60); sync().catch(() => {}); } }).observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });   // a new hall starts un-zoomed
   addEventListener('pagehide', () => { clearInterval(syncTimer); clearInterval(activityTimer); clearTimeout(activityStart); clearTimeout(S.showTimer); cancelAnimationFrame(F.raf); stop(); });
+  S.reconcileEntry = applyZoom;
   S.calibrate = patch => { S.calibration=patch;S.stage=calibratedStage(S.baseStage,patch);S.calibrationRevision++;for(const b of S.bays.values())b.plateAt=0;cleanKey=''; };
   S.inspect = id => {S.inspectId=id;S.calibrationRevision++;if(id)zoomTo(id,.8,3.2,true);else zoomReset();};
   S.previewEntry = id => {S.preview={id,until:performance.now()+2800};};

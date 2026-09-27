@@ -208,3 +208,7 @@ Validation: 56 frontend checks, Core 121/121 twice on Windows, changed-script sy
 ## Release 1.81.0 packaging
 
 Packaged the cumulative suit showcase as version 1.81.0 with the unchanged build configuration and protected source files. Restored the original vendor libraries and legacy wallpaper files omitted from the source-only handoff. All 84 requested syntax checks, 121 Core checks and 56 frontend checks pass. The Windows x64 app.asar is 29660232 bytes. See RELEASE-1.81.0.md for the exact package contents, install/undo steps, verified local-only Control Deck binding and testing limits.
+
+## Release 1.81.1: suit entry fixes
+
+Restored entry on battery and audio readiness, removed guessed skinning and overlapping launch noise, strengthened Iron Man eye/reactor power-up, added brief Batman/Web Lab projections, and enlarged centre displays. Validated all 21 real models in the Windows package with unchanged vertices, visible eye pixels, glass movement, audio, reduced motion and mute. Core 121/121, frontend 67/67 and 85 syntax checks pass. app.asar is 29663625 bytes. Protected source files, build configuration and the loopback Control Deck are unchanged. See RELEASE-1.81.1.md for installation, exact ZIP contents and remaining limits.
