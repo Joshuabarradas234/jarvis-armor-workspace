@@ -8,7 +8,7 @@ import {HallCalibrationStore} from '../../src/services/hall-calibration.js';
 import {renderBudget,fitSuit,suitRenderScale,watchRenderBudget} from '../../dist/assets/render-budget.js';
 import {SourceTextModule,createContext} from 'node:vm';
 import {mechanicalCues,mechanicalGain} from '../../dist/assets/mechanical-audio.js';
-import {signaturePose} from '../../dist/assets/suit-rig.js';
+import {authoredPose} from '../../dist/assets/suit-rig.js';
 
 test('calibration saves and reloads independently of the source artwork',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'jarvis-calibration-'));
@@ -45,15 +45,18 @@ test('battery reduction can be enabled or disabled and still mode disables poses
 });
 
 test('close-up supersampling sharpens geometry on a 1× display while keeping a bounded GPU buffer',()=>{
-  for(const [quality,maxPixels]of Object.entries({low:1200000,medium:2200000,high:4200000,ultra:8300000})){const b=renderBudget({quality},{},{dpr:1}),scale=suitRenderScale(b,1920,1080,true);assert.ok(1920*1080*scale*scale<=maxPixels+1);if(quality==='low')assert.equal(scale,suitRenderScale(b,1920,1080,false));else assert.ok(scale>suitRenderScale(b,1920,1080,false));}
+  for(const [quality,maxPixels]of Object.entries({low:4200000,medium:5000000,high:6500000,ultra:8300000})){const b=renderBudget({quality},{},{dpr:1}),scale=suitRenderScale(b,1920,1080,true);assert.ok(1920*1080*scale*scale<=maxPixels+1);assert.ok(scale>suitRenderScale(b,1920,1080,false));}
 });
 test('mechanical effects honour both volume controls and cues fit inside entry/return',()=>{
   assert.equal(mechanicalGain({master:0,mechanical:1}),0);assert.equal(mechanicalGain({master:1,mechanical:0}),0);assert.equal(mechanicalGain({master:.5,mechanical:.4}),.2);
   for(const theme of ['ironman','batcave','spiderman']){assert.ok(mechanicalCues(theme).every(c=>c.at+c.duration<3));assert.ok(mechanicalCues(theme,true).every(c=>c.at+c.duration<=.7));}
 });
-test('signature poses articulate different chains and return exactly to rest',()=>{
-  for(const t of ['ironman','batcave','spiderman'])assert.ok(Object.values(signaturePose(t,0)).every(x=>x===0));
-  assert.ok(signaturePose('spiderman',1).knee>.5);assert.equal(signaturePose('batcave',1).knee,0);assert.ok(signaturePose('ironman',1).shoulder<-.5);assert.ok(signaturePose('batcave',1).elbow<-.7);
+test('only an authored matching clip can articulate a replacement model',()=>{
+  let played=0,updates=0,disposed=0;const head={isBone:true,name:'Head'},model={traverse(fn){fn(head);}},action={time:0,play(){played++;}};
+  class Mixer{constructor(root){assert.equal(root,model);}clipAction(clip){assert.equal(clip.name,'guard');return action;}update(dt){assert.equal(dt,0);updates++;}stopAllAction(){disposed++;}uncacheRoot(root){assert.equal(root,model);}}
+  const T={AnimationMixer:Mixer};assert.equal(authoredPose(T,model,[],'batcave'),null);assert.equal(authoredPose(T,model,[{name:'idle',duration:2}],'batcave'),null);
+  const rig=authoredPose(T,model,[{name:'guard',duration:2}],'batcave');assert.equal(rig.kind,'authored-clip');assert.equal(rig.head,head);assert.equal(played,1);assert.equal(action.paused,true);
+  rig.update(.4);assert.equal(action.time,.8);rig.update(2);assert.equal(action.time,2);rig.update(0);assert.equal(action.time,0);assert.equal(updates,3);rig.dispose();assert.equal(disposed,1);
 });
 
 test('shared graphics subscriptions hydrate, follow live settings and battery status, and detach',async()=>{
@@ -71,9 +74,9 @@ test('mechanical audio schedules once per entry, cancels on return/mute/hidden a
   const bridge={on(k,f){listeners[k]=f;return()=>removed++;},async call(){return{settings:{master:.5,mechanical:.4}};}};
   const context=createContext({window:{jarvis:bridge},document,location:{search:''},URLSearchParams,AudioContext:Audio,Float32Array,addEventListener(k,f){events[k]=f;},removeEventListener(){removed++;}});
   const module=new SourceTextModule(fs.readFileSync(new URL('../../dist/assets/mechanical-audio.js',import.meta.url),'utf8'),{context});await module.link(()=>{});await module.evaluate();await Promise.resolve();await events.pointerdown();
-  listeners.snapshot({state:'SUIT_SELECTED',selected:'im1'});assert.equal(sources.length,3);assert.ok(Math.abs(gainValues.at(-1)-.2)<1e-10);assert.equal(sources[0].starts[0],5.1);
-  listeners.snapshot({state:'SUIT_SELECTED',selected:'im1'});assert.equal(sources.length,3);
-  listeners.snapshot({state:'RETURNING',selected:'im1'});assert.equal(sources.length,5);assert.equal(sources[0].stops.length,2);
-  listeners.settings({master:0,mechanical:1});assert.equal(sources[3].stops.length,2);listeners.snapshot({state:'SUIT_SELECTED',selected:'im2'});assert.equal(sources.length,5);
-  listeners.settings({master:1,mechanical:1});document.hidden=true;events.visibilitychange();listeners.snapshot({state:'SUIT_SELECTED',selected:'im3'});assert.equal(sources.length,5);events.pagehide();assert.equal(closed,1);assert.equal(removed,6);
+  listeners.snapshot({state:'SUIT_SELECTED',selected:'im1'});await new Promise(setImmediate);assert.equal(sources.length,3);assert.ok(Math.abs(gainValues.at(-1)-.2)<1e-10);assert.equal(sources[0].starts[0],5.1);
+  listeners.snapshot({state:'SUIT_SELECTED',selected:'im1'});await new Promise(setImmediate);assert.equal(sources.length,3);
+  listeners.snapshot({state:'RETURNING',selected:'im1'});await new Promise(setImmediate);assert.equal(sources.length,5);assert.equal(sources[0].stops.length,2);
+  listeners.settings({master:0,mechanical:1});assert.equal(sources[3].stops.length,2);listeners.snapshot({state:'SUIT_SELECTED',selected:'im2'});await new Promise(setImmediate);assert.equal(sources.length,5);
+  listeners.settings({master:1,mechanical:1});document.hidden=true;events.visibilitychange();listeners.snapshot({state:'SUIT_SELECTED',selected:'im3'});await new Promise(setImmediate);assert.equal(sources.length,5);events.pagehide();assert.equal(closed,1);assert.equal(removed,6);
 });

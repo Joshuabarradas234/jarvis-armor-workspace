@@ -246,9 +246,9 @@
     "overlay": {
       "video": "jarvis://asset/transitions/jarvis-ring.mp4",
       "x": 50,
-      "y": 73.5,
-      "w": 28,
-      "h": 22,
+      "y": 64,
+      "w": 46,
+      "h": 44,
       "blend": "screen",
       "dim": 0.15,
       "gain": 1,
@@ -537,9 +537,9 @@
       "video": "jarvis://asset/transitions/batmobile7-spin.webm",
       "intro": "jarvis://asset/transitions/batmobile7-intro.webm",
       "x": 50,
-      "y": 74,
-      "w": 43,
-      "h": 25,
+      "y": 67.5,
+      "w": 56,
+      "h": 42,
       "blend": "normal",
       "dim": 0.15,
       "gain": 1
@@ -858,9 +858,9 @@
     "overlay": {
       "video": "jarvis://asset/transitions/spidey3.webm",
       "x": 50,
-      "y": 80.5,
-      "w": 30,
-      "h": 20.5,
+      "y": 64,
+      "w": 33,
+      "h": 47,
       "blend": "normal",
       "dim": 0.15,
       "gain": 1

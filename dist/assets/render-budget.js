@@ -13,8 +13,9 @@ export function fitSuit({height,width,modelWidth,modelDepth=0,fill=.97,widthFit=
   return Math.max(1,Math.min(height*fill,width*widthFit/Math.max(.05,reach)));
 }
 export function suitRenderScale(budget,width,height,detail=false){
-  const pixels={low:1200000,medium:2200000,high:4200000,ultra:8300000}[budget.quality];
-  const wanted=detail&&budget.detail?Math.max(budget.dpr,{medium:1.5,high:2.2,ultra:3.2}[budget.quality]):budget.dpr;
+  // A short entry gets a sharper buffer; steady-state and battery FPS limits stay in place.
+  const pixels=(detail?{low:4200000,medium:5000000,high:6500000,ultra:8300000}:{low:1200000,medium:2200000,high:4200000,ultra:8300000})[budget.quality];
+  const wanted=detail?Math.max(budget.dpr,{low:2,medium:2,high:2.4,ultra:3.2}[budget.quality]):budget.dpr;
   return Math.min(wanted,Math.sqrt(pixels/Math.max(1,width*height)));
 }
 export function concealedHall(doc){return doc.hidden||!!doc.querySelector('.jc.in,.tw.in,.ix-room.in,.gx.in,.module-host:not(.hidden) .workstation');}

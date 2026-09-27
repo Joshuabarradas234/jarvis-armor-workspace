@@ -71,7 +71,9 @@ for(const theme of themes){
     for(const suit of suits){const b=stage.bays[suit.id];assert.ok(b.x0>0&&b.x1<stage.w&&b.y0>0&&b.foot<stage.h);assert.ok(b.x1>b.x0&&b.foot>b.y0);assert.ok(b.widthFit<=.99&&!b.spill);}
     const centre=theme.suits.find(s=>s.isVehicle);
     assert.ok(centre.hotspot.y*stage.h/100>Math.max(...Object.values(stage.bays).map(b=>b.foot)));
-    assert.ok((theme.overlay.y-theme.overlay.h/2)*stage.h/100>Math.max(...Object.values(stage.bays).map(b=>b.foot)));
+    /* Full-height projections rise above the dais; keep their base below the pods and their top clear of headings. */
+    const o=theme.overlay;assert.ok((o.y+o.h/2)*stage.h/100>Math.max(...Object.values(stage.bays).map(b=>b.foot)));
+    assert.ok(o.y-o.h/2>=27&&o.y+o.h/2<95&&o.x-o.w/2>0&&o.x+o.w/2<100);
   });
   for(const [W,H] of [[1920,1080],[1440,900],[1280,720],[800,600],[600,900]]){
     test(theme.id+': all seven clickable pods stay aligned and inside '+W+'×'+H,()=>{
@@ -114,7 +116,7 @@ test('a GLTF arriving after a hall switch is released, and teardown releases the
   class Renderer {constructor(){this.disposed=0;this.lost=0;}setScissorTest(){}setClearColor(){}dispose(){this.disposed++;}forceContextLoss(){this.lost++;}}
   class Loader {setMeshoptDecoder(){return this;}load(url,ok){loads.push({url,ok});}}
   class Room extends Object3D {dispose(){}}
-  const three={Scene:Object3D,Group:Object3D,PerspectiveCamera:Object3D,HemisphereLight:Object3D,SpotLight:Object3D,DirectionalLight:Object3D,Mesh,PlaneGeometry:Geometry,MeshBasicMaterial:Material,CanvasTexture:Texture,WebGLRenderer:Renderer,PMREMGenerator:class{fromScene(){return resource({texture:resource({isTexture:true})});}dispose(){}},SRGBColorSpace:'srgb',ACESFilmicToneMapping:1,AdditiveBlending:1};
+  const three={Scene:Object3D,Group:Object3D,PerspectiveCamera:Object3D,HemisphereLight:Object3D,SpotLight:Object3D,DirectionalLight:Object3D,Mesh,PlaneGeometry:Geometry,MeshBasicMaterial:Material,ShaderMaterial:Material,CanvasTexture:Texture,WebGLRenderer:Renderer,PMREMGenerator:class{fromScene(){return resource({texture:resource({isTexture:true})});}dispose(){}},SRGBColorSpace:'srgb',ACESFilmicToneMapping:1,AdditiveBlending:1};
   const gradient={addColorStop(){}}, ctx2d=new Proxy({},{get(_t,k){return k.startsWith('create')?()=>gradient:()=>{};}});
   const classes={add(){},remove(){},contains(){return false;}};
   const element=()=>({style:{},classList:classes,isConnected:true,getContext:()=>ctx2d,append(...els){for(const e of els)e.parentElement=this;},remove(){this.parentElement=null;}});
@@ -131,7 +133,7 @@ test('a GLTF arriving after a hall switch is released, and teardown releases the
   };
   const modules=new Map();for(const [name,exports] of Object.entries(libs)){const m=new SyntheticModule(Object.keys(exports),function(){for(const [k,v] of Object.entries(exports))this.setExport(k,v);},{context});await m.link(()=>{});await m.evaluate();modules.set(name,m);}
   const suits=new SourceTextModule(read('dist/assets/suits3d.js'),{context,importModuleDynamically:s=>modules.get(s)});const imports=new Map([['./scene-quality.js',quality]]);
-  for(const name of ['suit-entry.js','suit-eyes.js','hall-calibration-data.js','render-budget.js','suit-rig.js']){const m=new SourceTextModule(read('dist/assets/'+name),{context});await m.link(()=>{});await m.evaluate();imports.set('./'+name,m);}
+  for(const name of ['suit-entry.js','suit-eyes.js','hall-calibration-data.js','render-budget.js','suit-rig.js','suit-signatures.js']){const m=new SourceTextModule(read('dist/assets/'+name),{context});await m.link(()=>{});await m.evaluate();imports.set('./'+name,m);}
   await suits.link(name=>imports.get(name));await suits.evaluate();
   const flush=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r));};
   const sync=intervals.find(i=>i.ms===1500).fn;sync();await flush();assert.equal(loads.length,1);

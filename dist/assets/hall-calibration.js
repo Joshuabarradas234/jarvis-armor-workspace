@@ -13,7 +13,7 @@ if(J&&view==='main'){
   function apply(patch){const s=suits(),h=hall();if(!s?.baseStage||!h||!original)return;s.calibrate?.(patch);
     const modules=calibratedModules(original.modules,s.stage,patch);h.modules=modules;h.theme={...original.theme};
     if(patch.hologram){const[x,y,w,height]=patch.hologram;h.theme.overlay={...original.theme.overlay,x:x*100,y:y*100,w:w*100,h:height*100};}
-    lastHall=h;lastModules=h.modules;h.place();for(const p of h.labels()){const b=document.querySelector(`.bay-label[data-suit="${p.id}"]`);if(b){b.style.left=p.x+'%';b.style.top=p.y+'%';b.style.setProperty('--plaque-w',p.w+'%');}}
+    lastHall=h;lastModules=h.modules;h.place();s.reconcileEntry?.();for(const p of h.labels()){const b=document.querySelector(`.bay-label[data-suit="${p.id}"]`);if(b){b.style.left=p.x+'%';b.style.top=p.y+'%';b.style.setProperty('--plaque-w',p.w+'%');}}
     if(active)drawMarkers();
   }
   function change(fn){history.push(clone(draft));if(history.length>40)history.shift();fn(draft);try{draft=validateHallCalibration(theme,draft);apply(draft);message('Preview only — save to keep these changes.');}catch(e){draft=history.pop();message(e.message);apply(draft);}drawControls();}
@@ -33,7 +33,7 @@ if(J&&view==='main'){
       ${range('fill','Height fill',.65,.99,.01,f.fill)}${range('widthFit','Width fill',.65,.99,.01,f.widthFit)}
       <details ${eyeMode?'open':''}><summary>Eye alignment</summary><p>Drag either eye handle to move the light pair. Depth moves lights onto the lens surface.</p>
       ${range('eyeX','Eye horizontal',-.15,.15,.001,f.eyeOffset[0])}${range('eyeY','Eye vertical',-.15,.15,.001,f.eyeOffset[1])}${range('eyeZ','Eye depth',-.15,.15,.001,f.eyeOffset[2])}${range('eyeScale','Eye size',.5,1.8,.01,f.eyeScale)}</details>
-      ${range('pose','Pose strength',0,1,.05,f.pose)}
+      ${range('pose','Movement strength',0,1,.05,f.pose)}
       <div class="cal-actions"><button data-do="undo" ${history.length?'':'disabled'}>Undo</button><button data-do="reset-suit">Reset suit</button><button data-do="reset-hall">Reset hall</button></div>
       <div class="cal-actions"><button data-do="sound">Preview sound</button><button data-do="save" class="cal-save">Save calibration</button></div><p data-message role="status">${esc(note)}</p><small class="cal-budget"></small>`;
   }
@@ -68,7 +68,7 @@ if(J&&view==='main'){
   function finishDrag(){if(!drag)return;history.push(drag.before);if(history.length>40)history.shift();drag=null;drawControls();drawMarkers();message('Preview only — save to keep these changes.');}
   layer.addEventListener('pointerup',finishDrag);layer.addEventListener('pointercancel',()=>{if(drag){draft=drag.before;drag=null;apply(draft);drawControls();}});
   const key=e=>{if(active&&e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();close();}};addEventListener('keydown',key,true);
-  function sync(){const s=suits(),h=hall();if(!s?.baseStage||!h)return;
+  function sync(){const s=suits(),h=hall();if(!s?.baseStage||!h||s.theme!==h.theme?.id)return;
     if(lastStage!==s.baseStage||lastHall!==h||lastModules!==h.modules){if(active)close(false);lastStage=s.baseStage;theme=s.theme;original={theme:clone(h.theme),modules:clone(h.modules)};apply(saved.themes?.[theme]||{});}
     if(!document.querySelector('[data-cal-open]')){const bar=document.querySelector('.qp-icons');if(bar){trigger=document.createElement('button');trigger.className='qp-ico';trigger.dataset.calOpen='';trigger.type='button';trigger.title='Calibrate halls, suits and holograms';trigger.setAttribute('aria-label',trigger.title);trigger.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18M3 17h18M8 3v8M16 13v8"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg>';trigger.onclick=open;bar.append(trigger);}}
   }
