@@ -120,6 +120,7 @@ export class IdeaAssistant {
     if (a.status !== 'waiting') throw Error('Nothing on this idea is waiting for your approval.');
     if (a.kind === 'suit') {
       const run = await this.runner().start(a.theme, a.floorId, a.task || idea.title, {ideaId: id, title: idea.title});
+      if(run.status==='needs_brief'){this.set(id,{status:'failed',runId:run.id,error:'Open the Tower and complete this task’s brief before work starts.'});return this.get(id);}
       this.set(id, {status: 'working', runId: run.id, phase: `${a.floorName} is working on it`, approvedAt: Date.now()});
       this.bump(id, a.nextStage);
       this.say(`${a.floorName} is on it, ${this.addr()}.`);
@@ -237,8 +238,9 @@ export class IdeaAssistant {
   /* ---------------- tower runs and the night shift ---------------- */
   towerFinished(run) {
     const idea = this.list().find(i => i.assist?.runId === run.id && i.assist.status === 'working'); if (!idea) return;
+    if(run.rehearsal){this.set(idea.id,{status:'failed',phase:null,error:'This was a rehearsal, not a completed result. Connect an AI engine and run the task again.'});return;}
     if (run.status === 'done') this.set(idea.id, {status: 'done', phase: null, result: `${run.floorName} finished "${run.title}".`, resultFile: run.final || null});
-    else this.set(idea.id, {status: 'failed', phase: null, error: run.status === 'budget' ? 'The agents stopped at the floor\'s budget cap.' : run.status === 'stopped' ? 'The run was stopped.' : (run.error || 'The run hit a problem.')});
+    else this.set(idea.id, {status: 'failed', phase: null, error: run.status === 'budget' ? 'The agents stopped at the floor\'s budget cap.' : run.status === 'stopped' ? 'The run was stopped.' : (run.notes || run.note || run.error || 'The run hit a problem.')});
   }
   /** Between 1 and 5 am, once a night: up to three ideas that haven't moved in three days get a drafted plan. */
   async night(lastNight, markNight) {
@@ -246,7 +248,7 @@ export class IdeaAssistant {
     if (!this.config().nightly || h < 1 || h >= 5 || lastNight() === day) return 0;
     markNight(day);
     if (!this.readKey() && !(await this.detect()).ready) return 0;
-    const quiet = this.list().filter(i => i.stage !== 'done' && !BUSY.includes(i.assist?.status) && !WAITING.includes(i.assist?.status)
+    const quiet = this.list().filter(i => !i.origin && i.stage !== 'done' && !BUSY.includes(i.assist?.status) && !WAITING.includes(i.assist?.status)
       && Date.now() - i.updated > 3 * DAY && Date.now() - (i.assist?.updatedAt || 0) > 3 * DAY).sort((a, b) => a.updated - b.updated).slice(0, 3);
     for (const i of quiet) { try { await this.think(i.id, {source: 'night'}); } catch (e) { this.log('ideas', e.message); } }
     return quiet.length;

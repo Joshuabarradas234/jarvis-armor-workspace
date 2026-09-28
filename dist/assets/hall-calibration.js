@@ -70,8 +70,9 @@ if(J&&view==='main'){
   const key=e=>{if(active&&e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();close();}};addEventListener('keydown',key,true);
   function sync(){const s=suits(),h=hall();if(!s?.baseStage||!h||s.theme!==h.theme?.id)return;
     if(lastStage!==s.baseStage||lastHall!==h||lastModules!==h.modules){if(active)close(false);lastStage=s.baseStage;theme=s.theme;original={theme:clone(h.theme),modules:clone(h.modules)};apply(saved.themes?.[theme]||{});}
-    if(!document.querySelector('[data-cal-open]')){const bar=document.querySelector('.qp-icons');if(bar){trigger=document.createElement('button');trigger.className='qp-ico';trigger.dataset.calOpen='';trigger.type='button';trigger.title='Calibrate halls, suits and holograms';trigger.setAttribute('aria-label',trigger.title);trigger.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18M3 17h18M8 3v8M16 13v8"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg>';trigger.onclick=open;bar.append(trigger);}}
+
   }
+  window.__jarvisCalibration={open,close};
   let lastDraw=0;function animate(now){if(active&&now-lastDraw>100){lastDraw=now;drawMarkers();const label=panel.querySelector('.cal-budget'),b=suits()?.budget;if(label&&b)label.textContent=`${b.quality.toUpperCase()} · ${b.fps} FPS · ${b.quiet?'STILL':'ANIMATED'}`;}frame=requestAnimationFrame(animate);}
   J.call('hall-calibration-get').then(value=>{if(value?.version===1)saved=value;loading=false;sync();}).catch(()=>{loading=false;});loading=true;
   timer=setInterval(()=>{if(!loading)sync();},500);frame=requestAnimationFrame(animate);

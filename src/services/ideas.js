@@ -23,6 +23,7 @@ export class IdeaStore{
       notes:String(p.notes??prev.notes??'').slice(0,4000),
       x:Math.max(0,Math.min(100,n(p.x)??prev.x??50)),y:Math.max(0,Math.min(100,n(p.y)??prev.y??50)),
       target:target(p.target===undefined?prev.target:p.target),
+      origin:prev.origin==='local-suggestion'?'local-suggestion':undefined,
       assist:prev.assist||null,   // JARVIS's plan and where it stands; only the main process changes it (setAssist)
       created:prev.created||Date.now(),updated:Date.now()};
     return out;

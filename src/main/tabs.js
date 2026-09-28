@@ -35,17 +35,18 @@ export class TabManager{
   show(shown){this.shown=shown;this.apply();}
   apply(){for(const t of this.tabs){if(t.popped)continue;const on=this.shown&&t.id===this.active&&this.layout.width>0;t.view.setVisible(on);t.view.setBounds(on?this.layout:{x:0,y:0,width:0,height:0});}}
   /** Screens in reading order: left to right, then top to bottom. Numbered from 1 as the user sees them. */
-  displays(){const primary=screen.getPrimaryDisplay().id;return screen.getAllDisplays().slice().sort((a,b)=>a.bounds.x-b.bounds.x||a.bounds.y-b.bounds.y).map((d,i)=>({index:i+1,id:d.id,label:`Screen ${i+1}`,primary:d.id===primary,width:d.size.width,height:d.size.height}));}
+  displays(){const primary=screen.getPrimaryDisplay().id;return screen.getAllDisplays().slice().sort((a,b)=>a.bounds.x-b.bounds.x||a.bounds.y-b.bounds.y).map((d,i)=>({index:i+1,id:d.id,label:`Screen ${i+1}`,primary:d.id===primary,width:d.size.width,height:d.size.height,bounds:{...d.bounds},current:d.id===(this.win()?screen.getDisplayMatching(this.win().getBounds()).id:primary)}));}
   /**
    * Take a tab out of the suit into a window of its own. It fills the chosen screen (or the one
    * under the mouse where the tab was dropped) and can then be dragged anywhere. Closing that
    * window puts the tab back in the suit rather than losing it.
    */
-  popOut(id,{display,x,y}={}){
+  popOut(id,{display,displayId,x,y}={}){
     const tab=this.tabs.find(t=>t.id===id);if(!tab)return false;
     const all=screen.getAllDisplays().slice().sort((a,b)=>a.bounds.x-b.bounds.x||a.bounds.y-b.bounds.y);
     let d=null;
-    if(Number.isInteger(display)&&all[display-1])d=all[display-1];
+    if(displayId!==undefined){d=all.find(d=>d.id===displayId);if(!d)throw Error('That screen was disconnected. Choose a connected screen.');}
+    else if(Number.isInteger(display)){d=all[display-1];if(!d)throw Error('That screen is no longer connected.');}
     else if(Number.isFinite(x)&&Number.isFinite(y))d=screen.getDisplayNearestPoint({x:Math.round(x),y:Math.round(y)});
     d=d||screen.getPrimaryDisplay();
     const wa=d.workArea;

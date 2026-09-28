@@ -25,6 +25,7 @@ import {ControlServer} from '../control/server.js';
 import {CalendarStore} from '../services/calendar.js';
 import {TodoStore} from '../services/todos.js';
 import {IdeaStore} from '../services/ideas.js';
+import {WorkSuggestions} from '../services/work-suggestions.js';
 import {IdeaAssistant} from '../ideas/assistant.js';
 import {weather,askAI} from '../services/integrations.js';
 import {createJarvisCore} from '../brain/index.js';
@@ -45,7 +46,8 @@ let workstations,tabs,layout,telemetry=null,weatherCache=null,weatherChecked=0,o
 const status={errors:[],commandHistory:[]};
 const scripts=app.isPackaged?path.join(process.resourcesPath,'windows'):path.join(baseRoot,'scripts','windows');
 const assets=app.isPackaged?path.join(process.resourcesPath,'assets'):path.join(baseRoot,'assets');
-let userDir, hallCalibration;
+let userDir, hallCalibration, workSuggestions;
+function observeWork(kind,context){try{workSuggestions?.observe(kind,context);}catch(e){log('ideas',e.message);}}
 function log(kind,message){const row={time:new Date().toISOString(),kind,message:String(message).slice(0,800)};status.errors.push(row);status.errors=status.errors.slice(-50);try{const f=path.join(userDir,'jarvis.log');if(fs.existsSync(f)&&fs.statSync(f).size>2e6)fs.renameSync(f,f+'.previous');fs.appendFileSync(f,JSON.stringify(row)+'\n');}catch{}broadcast('status',getStatus());}
 let followUntil=0,panels=null,tower=null,towerRunner=null,towerKey=null,core=null,coreError='',lastUserAction=Date.now(),awakeBlock=null,bootMarked=false;
 function voiceContext(){return {theme:workstations.theme(),themes:workstations.themes,modules,idle:machine?.value?.state==='IDLE',follow:Date.now()<followUntil};}
@@ -494,7 +496,7 @@ function readTowerKey(){
 const towerThrottle=new Map(),towerLatest=new Map();
 /** Results flow back: a finished job moves its linked idea card along. */
 function towerDone(run,{last}={}){
-  if(!run.ideaId||!last)return;
+  if(!run.ideaId||!last||run.rehearsal)return;
   try{const idea=ideas.list().find(i=>i.id===run.ideaId);if(!idea)return;
     const stage=idea.stage==='spark'?'designing':idea.stage;
     ideas.save({...idea,stage,progress:Math.min(100,(idea.progress||0)+20),notes:`${idea.notes?idea.notes+'\n':''}• ${towerName(run.theme)} · ${run.floorName}: “${run.title}” done (${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short'})}).`.slice(-4000)});
@@ -516,12 +518,14 @@ async function towerNightShift(){
 }
 const towerAnnounced=new Set();
 function towerUpdate(run){
-  const final=['done','failed','stopped','budget'].includes(run.status);
+  const final=['done','failed','stopped','budget','needs_changes','needs_brief'].includes(run.status);
   towerLatest.set(run.id,run);
-  const send=()=>{towerThrottle.delete(run.id);const latest=towerLatest.get(run.id)||run;broadcast('tower',{type:'run',run:latest});if(['done','failed','stopped','budget'].includes(latest.status))towerLatest.delete(run.id);};
+  const send=()=>{towerThrottle.delete(run.id);const latest=towerLatest.get(run.id)||run;broadcast('tower',{type:'run',run:latest});if(['done','failed','stopped','budget','needs_changes','needs_brief'].includes(latest.status))towerLatest.delete(run.id);};
   if(final){clearTimeout(towerThrottle.get(run.id));send();if(run.ideaId){try{assistant?.towerFinished(run);}catch(e){log('ideas',e.message);}}
     if(towerAnnounced.has(run.id))return;towerAnnounced.add(run.id);if(towerAnnounced.size>200)towerAnnounced.delete(towerAnnounced.values().next().value);   // approving or commenting afterwards doesn't announce it again
-    if(run.status==='done')say(`${run.floorName} has finished "${run.title}".${run.rehearsal?' That was a rehearsal.':''}`);
+    if(run.status==='needs_changes'){observeWork('rework',{theme:run.theme,id:run.floorId,name:run.floorName});say(`${run.floorName} needs corrections. Nothing was handed on.`);}
+    else if(run.status==='needs_brief')say(`${run.floorName} needs a complete brief before starting.`);
+    else if(run.status==='done')say(`${run.floorName} has finished "${run.title}".${run.rehearsal?' That was a rehearsal.':''}`);
     else if(run.status==='failed')say(`${run.floorName} hit a problem: ${String(run.error||'').slice(0,120)}`);
     else if(run.status==='budget')say(`${run.floorName} stopped at its budget cap, ${addr()}.`);
     return;}
@@ -543,7 +547,7 @@ function towerView(t){
   const mdl=hasFile?{kind:tw.model.kind,url:`jarvis://custom/${tw.model.file.split('/').map(encodeURIComponent).join('/')}?v=${tw.model.v}`,band:tw.model.band||[0.1,0.9],name:tw.model.name||''}
     :bundled?{kind:'glb',url:`jarvis://asset/towers/${t}.glb`,band:tw.model?.band||{ironman:[0.14,0.9],batcave:[0.12,0.86],spiderman:[0.1,0.82]}[t]||[0.12,0.88],hero:0,name:'Your tower',bundled:true}
     :tw.model?.band?{kind:'stand-in',band:tw.model.band}:null;
-  return {theme:t,name:tw.name,owner:tw.owner||'',org:tw.org||'',head:tw.head,model:mdl,settings:tower.settings(),root:tower.root,
+  return {workflows:tower.workflows(t).map(({example,...w})=>w),metrics:tower.metrics(t),theme:t,name:tw.name,owner:tw.owner||'',org:tw.org||'',head:tw.head,model:mdl,settings:tower.settings(),root:tower.root,
     floors:tw.floors.map(f=>({...f,folder:tower.folder(t,f),knowledge:tower.knowledge(t,f),agents:f.agents.map(a=>({...a,rank:rankFor(a.xp)}))})),
     runs:tower.runs.filter(r=>r.theme===t).slice(-40).reverse(),active:towerRunner.active(t).map(r=>r.id),
     spent:Object.fromEntries(tw.floors.map(f=>[f.id,Math.round(towerRunner.spentToday(t,f.id)*100)/100])),ideas:ideas.list().map(i=>({id:i.id,title:i.title,progress:i.progress}))};
@@ -1022,7 +1026,7 @@ async function api(event,method,payload){
     case 'tower-add-floor':{const f=tower.addFloor(workstations.activeTheme);return {...towerView(workstations.activeTheme),added:f.id};}
     case 'tower-remove-floor':{if(towerRunner.active(workstations.activeTheme).some(r=>r.floorId===payload))throw Error('That floor is working. Stop it first.');tower.removeFloor(workstations.activeTheme,String(payload));return towerView(workstations.activeTheme);}
     case 'tower-reset':{tower.resetExamples(workstations.activeTheme);return towerView(workstations.activeTheme);}
-    case 'tower-run':{const run=await towerRunner.start(workstations.activeTheme,String(payload?.floorId||''),String(payload?.task||''),{ideaId:typeof payload?.ideaId==='string'?payload.ideaId:undefined});return run;}
+    case 'tower-run':{const run=await towerRunner.start(workstations.activeTheme,String(payload?.floorId||''),String(payload?.task||''),{brief:payload?.brief,resumeId:typeof payload?.resumeId==='string'?payload.resumeId:'',workflowId:typeof payload?.workflowId==='string'?payload.workflowId:'',ideaId:typeof payload?.ideaId==='string'?payload.ideaId:undefined});return run;}
     case 'tower-desk':return towerRunner.desk(String(payload?.runId||''),String(payload?.who||''));
     case 'tower-approve':{
       const a=towerRunner.approve(String(payload?.runId||''),Number(payload?.i),!!payload?.yes);
@@ -1034,7 +1038,9 @@ async function api(event,method,payload){
     }
     case 'tower-lobby':return towerLobby(String(payload||'').slice(0,4000));
     case 'tower-stop':return towerRunner.stop(String(payload||''));
-    case 'tower-feedback':return towerRunner.feedback(String(payload?.runId||''),!!payload?.good,String(payload?.comment||''));
+    case 'tower-feedback':{const result=towerRunner.feedback(String(payload?.runId||''),!!payload?.good,String(payload?.comment||''));const r=tower.runs.find(r=>r.id===payload?.runId);if(result.changed&&r?.feedback?.good)observeWork('accepted',{theme:r.theme,id:r.floorId,name:r.floorName});return result;}
+    case 'tower-workflow-save':return tower.saveWorkflow(String(payload?.runId||''),payload||{});
+    case 'tower-workflow-remove':{tower.data.workflows=(tower.data.workflows||[]).filter(w=>w.id!==payload||w.theme!==workstations.activeTheme);tower.flush();return true;}
     case 'tower-knowledge-add':{let files=Array.isArray(payload?.paths)?payload.paths.filter(p=>typeof p==='string'&&p):[];if(!files.length){const res=await dialog.showOpenDialog({title:'Add knowledge to this floor',properties:['openFile','multiSelections'],filters:[{name:'Documents',extensions:['md','txt','pdf','docx','csv','json','html','xlsx','pptx']},{name:'All files',extensions:['*']}]});if(res.canceled)return null;files=res.filePaths;}return tower.addKnowledge(workstations.activeTheme,String(payload?.floorId||''),files.slice(0,20));}
     case 'tower-knowledge-remove':return tower.removeKnowledge(workstations.activeTheme,String(payload?.floorId||''),String(payload?.name||''));
     case 'tower-brief-upload':{const res=await dialog.showOpenDialog({title:'Upload a brief for this floor',properties:['openFile'],filters:[{name:'Text',extensions:['md','txt']}]});if(res.canceled)return null;const text=fs.readFileSync(res.filePaths[0],'utf8').slice(0,6000);tower.saveFloor(workstations.activeTheme,{id:String(payload?.floorId||''),purpose:text});return towerView(workstations.activeTheme);}
@@ -1057,6 +1063,8 @@ async function api(event,method,payload){
       const here=displays?.work&&!displays.work.isDestroyed()?screen.getDisplayMatching(displays.work.getBounds()).id:screen.getPrimaryDisplay().id;
       const idx=all.findIndex(d=>d.id!==here);return tabs.popOut(id,{display:idx+1});
     }
+    case 'work-suggestions':return workSuggestions.status();
+    case 'work-suggestions-config':{if(role!=='main')throw Error('Use Think on the main screen.');return workSuggestions.configure(payload?.enabled);}
     case 'ideas-list':return ideas.list();
     case 'ideas-save':return ideas.save(payload);
     case 'ideas-remove':return ideas.remove(String(payload||''));
@@ -1073,7 +1081,7 @@ async function api(event,method,payload){
     }
     case 'ideas-choose-source':{const res=await dialog.showOpenDialog({title:'Choose your JARVIS source folder',properties:['openDirectory']});if(res.canceled||!res.filePaths[0])return null;const p=res.filePaths[0];if(!IdeaAssistant.isRepo(p))throw Error('That folder is not the JARVIS source (a git folder with src/main/main.js).');const cur=settings.get().ideas||{};await applySettings({ideas:{sourceRepo:p,nightly:cur.nightly!==false}});return p;}
     case 'ideas-claude':{if(role!=='main')return false;return ideaClaude(event.sender,payload);}
-    case 'tabs-popout':{const id=String(payload?.id||'');const o={};if(Number.isInteger(payload?.display))o.display=payload.display;if(Number.isFinite(payload?.x)&&Number.isFinite(payload?.y)){o.x=payload.x;o.y=payload.y;}return tabs.popOut(id,o);}
+    case 'tabs-popout':{if(role!=='main')throw Error('Move tabs from the main screen.');const id=String(payload?.id||'');const o={};if(Number.isInteger(payload?.displayId))o.displayId=payload.displayId;if(Number.isInteger(payload?.display))o.display=payload.display;if(Number.isFinite(payload?.x)&&Number.isFinite(payload?.y)){o.x=payload.x;o.y=payload.y;}const moved=tabs.popOut(id,o);if(moved){try{const suit=workstations.suit(machine.value.selected);observeWork('move',{theme:workstations.activeTheme,id:suit.id,name:suit.name,suit:true});}catch{}}return moved;}
     case 'tabs-dock':return tabs.dock(String(payload));
     case 'tabs-displays':return tabs.displays();
     case 'link-open-on':{   // a link tile on the suit page, opened on the screen picked for it
@@ -1205,6 +1213,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     session.defaultSession.setPermissionRequestHandler((wc,perm,callback,details)=>callback(camOK(wc,perm,details)));
     session.defaultSession.setPermissionCheckHandler((wc,perm,_origin,details)=>perm==='media'&&camOK(wc,perm,{mediaTypes:details?.mediaType==='audio'?['audio']:['video']}));
     settings=new SettingsStore(userDir,log);visits.load();try{if(!visits.get('__','startup19').done){visits.set('__','startup19',{done:true});const st=settings.get().startup;if(st&&/startup\/welcome\.mp4$/.test(st.video||'')&&st.seconds===15)settings.update({startup:{...st,seconds:19.2}});}}catch(e){log('settings',e.message);}   /*once only, so choosing 15 s again sticks */calendar=new CalendarStore(userDir);todos=new TodoStore(userDir);ideas=new IdeaStore(userDir);
+    workSuggestions=new WorkSuggestions(userDir,()=>ideas,()=>assistant?.changed());
     workstations=new WorkstationStore({configFile:path.join(root,'config','themes.json'),dir:userDir,log});try{const s3=workstations.suit('im3','ironman');if(s3&&/^\s*(bay\s*0?3|mark\s*(16|xvi)|mk[\s-]*16)\s*$/i.test(s3.name||''))workstations.saveSuit('im3',{name:'Mark XXXIX'},'ironman');}catch(e){log('suits',e.message);}try{const s4=workstations.suit('bc8','batcave');if(s4&&/^\s*(cowl\s*0?4|doomsday(\s*bat)?)\s*$/i.test(s4.name||''))workstations.saveSuit('bc8',{name:'Absolute Batman'},'batcave');}catch(e){log('suits',e.message);}   /* v9.16: the fourth Batcave case is Absolute Batman */   /* v9.14: the third chamber is the Mark XXXIX now */
     modules=workstations.modules();
     missions=new MissionStore({dir:userDir});
@@ -1226,7 +1235,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       if(s.state==='ARMOR_HALL'&&machine?.previous==='HELMET_OPENING'){sayReady();morningBrief();}
       if(s.state==='MODULE'&&s.selected&&machine?.previous!=='MODULE')suitOpened(s.selected);
       if(machine?.value?.selected&&s.state==='RETURNING'){}
-      if(s.state==='MODULE'&&s.selected){const suit=modules.find(m=>m.id===s.selected);setTimeout(async()=>{if(machine.value.state!=='MODULE'||machine.value.selected!==s.selected)return;applyLayout(s.selected,{links:false}).then(r=>{if(r&&(r.placed||r.error))broadcast('layout-result',{id:s.selected,...r});}).catch(e=>log('layout',e.message));const resumed=await restoreSession(s.selected);broadcast('launch-result',{id:s.selected,resumed});if(resumed){try{const v=voiceProfile();if(v?.lines?.resume)say(v.lines.resume);}catch{}return;}if(!suit?.autoLaunch)return;launchSuit(s.selected).then(r=>broadcast('launch-result',{id:s.selected,...r})).catch(e=>log('launch',e.message));},400);}
+      if(s.state==='MODULE'&&s.selected){if(machine.previous!=='MODULE'){try{const chosen=workstations.suit(s.selected);observeWork('suit',{theme:workstations.activeTheme,id:chosen.id,name:chosen.name,suit:true});}catch{}}const suit=modules.find(m=>m.id===s.selected);setTimeout(async()=>{if(machine.value.state!=='MODULE'||machine.value.selected!==s.selected)return;applyLayout(s.selected,{links:false}).then(r=>{if(r&&(r.placed||r.error))broadcast('layout-result',{id:s.selected,...r});}).catch(e=>log('layout',e.message));const resumed=await restoreSession(s.selected);broadcast('launch-result',{id:s.selected,resumed});if(resumed){try{const v=voiceProfile();if(v?.lines?.resume)say(v.lines.resume);}catch{}return;}if(!suit?.autoLaunch)return;launchSuit(s.selected).then(r=>broadcast('launch-result',{id:s.selected,...r})).catch(e=>log('launch',e.message));},400);}
       if(s.state!=='MODULE')tabs?.closeAll();
       if(machine)machine.previous=s.state;
     }});

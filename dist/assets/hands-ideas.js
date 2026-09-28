@@ -403,6 +403,7 @@
   /* The part that turns "the hand is here, pinching or not" into clicks and drags on this screen.
      The laptop screen calls it straight from the camera; the second screen calls it with what the laptop sends over. */
   function actuate(x, y, pinchOn, now, openHand) {
+    if(H.pinching)window.__jarvisScreens?.move(x,y,now);
     if (H.pinching && H.lock) {
       // holding a click: the ring stays where you pinched, so the knuckles shifting as you pinch can't pull it off the suit.
       // Only a big move turns it into a drag (or, for a plain button, cancels the click).
@@ -447,7 +448,7 @@
     const tabEl = H.target && H.target.closest ? H.target.closest('[data-tab]') : null;
     const frame = H.target && H.target.closest ? H.target.closest('.hp') : null;
     const panelId = frame ? frame.dataset.id : H.inWeb && H.inWeb.kind === 'panel' ? H.inWeb.id : null;
-    if (!tabEl && !panelId && !(H.inWeb && H.inWeb.kind === 'tab')) return false;
+    if (!panelId) return false; // suit tabs use deliberate hold, direction and release instead
     H.x = H.downX; H.y = H.downY; release(true);   // let go where it was picked up, so the strip doesn't also drop it
     flash('THROWN ↓');
     if (panelId) call('panel-throw', { id: panelId }).catch(e => toast(e.message || String(e)));
@@ -581,12 +582,14 @@
     H.pinching = true; H.downAt = performance.now(); H.downX = H.x; H.downY = H.y; H.downRawX = rawX ?? H.x; H.downRawY = rawY ?? H.y; H.inWeb = web || null; H.dragged = false;
     if (web) { webCall(web, 'down', H.x, H.y); H.target = null; H.lock = false; return; }
     H.target = H.snapEl || at(H.x, H.y);
+    const grabbed=MAIN&&H.target?.closest?.('.ws-tab[data-tab]');if(grabbed)window.__jarvisScreens?.grab(grabbed.dataset.tab,H.x,H.y,H.downAt);
     // a click target holds the ring still; something you drag lets it follow the hand
     H.lock = !!H.target && !(H.target.closest && H.target.closest(DRAGGY));
     fire(H.target, 'pointerdown', H.x, H.y, 1); fire(H.target, 'mousedown', H.x, H.y, 1);
     if (H.target && /^(INPUT|TEXTAREA|SELECT)$/.test(H.target.tagName)) H.target.focus();
   }
   function release(silent) {
+    if(window.__jarvisScreens?.release(silent))silent=true;
     if (H.inWeb) {
       webCall(H.inWeb, 'up', H.x, H.y);
       H.pinching = false; H.inWeb = null; H.lock = false; ring.classList.remove('pinch'); return;
@@ -651,7 +654,7 @@
     document.body.appendChild(m); setTimeout(() => addEventListener('click', () => m.remove(), { once: true }), 50);
   }
   function guide() {
-    toast('Pinch = click / grab · hold still on something = click · open hand then fist = home · swipe open hand = next hall · pinch a tab + flick down = lower screen, flick up = back · flat palm held = focus · prayer hands = close JARVIS · two-hand pinch = zoom');
+    toast('Pinch = click / grab · hold still on something = click · open hand then fist = home · swipe open hand = next hall · hold a tab title, move towards a screen and release = move tab; flick a floating page down = deck · flat palm held = focus · prayer hands = close JARVIS · two-hand pinch = zoom');
   }
 
   function toast(msg) {

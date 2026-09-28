@@ -15,6 +15,7 @@ import { renderBudget, fitSuit, suitRenderScale, concealedHall } from './render-
 import { authoredPose } from './suit-rig.js';
 import { signatureFrame, addEyeHalos, lightEyes, makeSignature, makeReactorRing } from './suit-signatures.js';
 import { EYE_PATCHES, EYE_COLOURS } from './suit-eyes.js';
+import { makeCaseMist, updateCaseMist } from './case-mist.js';
 const J = window.jarvis;
 const VIEW = new URLSearchParams(location.search).get('view') || 'main';
 const hall = () => document.body.dataset.theme || 'ironman';
@@ -97,13 +98,14 @@ if (J && VIEW === 'main') {
     const shade = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: S.shadeTex, transparent: true, depthWrite: false, opacity: 0.7, toneMapped: false }));
     shade.rotation.x = -Math.PI / 2; shade.position.y = 0.002; shade.renderOrder = 0; scene.add(shade);
     const doors = makeDoors(THREE, glassTexture(), accent); scene.add(doors.root);
+    const mist = makeCaseMist(THREE); doors.root.add(mist.root);
     const pulse = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: glowTexture(accent), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, opacity: 0 }));
     pulse.rotation.x = -Math.PI / 2; pulse.position.y = .004; pulse.renderOrder = 2; scene.add(pulse);
     const pivot = new THREE.Group(); scene.add(pivot);
     const scan = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
     scan.renderOrder = 8; scan.visible = false; scene.add(scan);
     const signature = makeSignature(THREE,hall()); if(signature)scene.add(signature);
-    const bay = { signature, scan, shade, id, scene, camera, pivot, pad, doors, pulse, entry: createEntryMotion(hall(), id), eyes: [], top, ready: false, t: Math.random() * 10, hover: 0, width: 0.5, depth: 0.3, spinA: 0, holding: false, up: null, level: 0.5, lvl: 0.5, reactor: null };
+    const bay = { mist, signature, scan, shade, id, scene, camera, pivot, pad, doors, pulse, entry: createEntryMotion(hall(), id), eyes: [], top, ready: false, t: Math.random() * 10, hover: 0, width: 0.5, depth: 0.3, spinA: 0, holding: false, up: null, level: 0.5, lvl: 0.5, reactor: null };
     new GLTFLoader().setMeshoptDecoder(Meshopt).load(url, g => {
       if (bay.disposed) { disposeObject(g.scene); return; }
       const o = g.scene; o.updateMatrixWorld(true);
@@ -299,6 +301,7 @@ if (J && VIEW === 'main') {
       const gd = 0.55, gh = 2 * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * (dist - gd);
       const doorCentre = cy + (h / 2 - (doorY - y + doorH / 2)) / suitPx * (dist - gd) / dist;
       placeDoors(bay.doors, gs, gh * cam.aspect * gw / w, gh * doorH / h, doorCentre, gd, !!g);
+      updateCaseMist(bay.mist, entry.seconds, {...S.budget,quiet:quiet||!!S.inspectId});
       const pw = Math.min(reach * 1.5, Hw * cam.aspect * 0.95); bay.pad.scale.set(pw, pw * 0.55, 1);
       bay.pulse.scale.set(pw * (1 + entry.scan * .5), pw * (1 + entry.scan * .5) * .65, 1); bay.pulse.material.opacity = S.budget.particles ? entry.pulse * .6 : 0;
       bay.shade.scale.set(Math.max(bay.width, 0.3) * 1.25, Math.max(bay.depth, 0.2) * 1.6, 1);

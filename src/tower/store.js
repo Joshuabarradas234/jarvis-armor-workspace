@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {SEED} from './seed.js';
+import {briefOf, usefulness} from './productivity.js';
 
 const ROLES = ['lead', 'specialist', 'reviewer'];
 const ENGINES = ['auto', 'api', 'claude-code', 'rehearsal'];
@@ -27,6 +28,7 @@ export class TowerStore {
     if (!Array.isArray(this.runs)) this.runs = [];
     // a run that was going when the app closed did not finish
     for (const r of this.runs) if (['queued', 'planning', 'working', 'reviewing'].includes(r.status)) { r.status = 'stopped'; r.note = 'JARVIS was closed while this ran.'; }
+    for(const r of this.runs)if(r.status==='done'&&r.verdict==='CHANGES'){r.status=r.phase='needs_changes';r.progress=Math.min(r.progress||0,96);r.final=null;r.approvals=[];r.note='This older run failed review. Correct it before using its result.';}
     this.flush();
   }
   cleanFloor(f) {
@@ -39,6 +41,7 @@ export class TowerStore {
     f.engine = ENGINES.includes(f.engine) ? f.engine : 'auto';
     f.lessons = str(f.lessons, 6000);
     f.example = str(f.example, 1000);
+    f.taskBrief=briefOf(f.taskBrief);
     f.handoff = typeof f.handoff === 'string' && f.handoff !== f.id ? f.handoff.slice(0, 64) : '';
     const sc = f.schedule || {};
     f.schedule = {on: !!sc.on, time: /^([01]\d|2[0-3]):[0-5]\d$/.test(sc.time || '') ? sc.time : '07:30', days: (Array.isArray(sc.days) ? sc.days : [1, 2, 3, 4, 5]).map(Number).filter(d => d >= 0 && d <= 6), task: str(sc.task, 2000), last: str(sc.last, 20)};
@@ -111,6 +114,19 @@ export class TowerStore {
     this.flush();
   }
   saveTower(theme, p) { const t = this.tower(theme); for (const k of ['name', 'owner', 'org']) if (typeof p[k] === 'string') t[k] = p[k].slice(0, 60); if (p.head && typeof p.head === 'object') t.head = {...t.head, ...Object.fromEntries(['name', 'title', 'prompt'].filter(k => typeof p.head[k] === 'string').map(k => [k, p.head[k].slice(0, k === 'prompt' ? 3000 : 60)]))}; this.flush(); return t; }
+  workflows(theme) { return (this.data.workflows || []).filter(w=>w.theme===theme); }
+  saveWorkflow(runId, patch={}) {
+    const r=this.runs.find(r=>r.id===runId);
+    if(!r || r.rehearsal || r.status!=='done' || r.verdict!=='APPROVED' || r.feedback?.good!==true) throw Error('Accept a reviewed result before saving it as a workflow.');
+    const all=this.data.workflows ||= [], existing=all.find(w=>w.runId===runId);
+    if(!existing && all.length>=30)throw Error('Up to 30 workflows. Remove one first.');
+    const w={id:existing?.id||crypto.randomUUID(),runId,theme:r.theme,floorId:r.floorId,name:str(patch.name||r.title,80),brief:briefOf({...r.brief,preferences:patch.preferences??r.brief?.preferences,checklist:patch.checklist??r.brief?.checklist}),task:r.task,example:fs.readFileSync(r.final,'utf8').slice(0,12000)};
+    if(existing)all[all.indexOf(existing)]=w;else all.push(w);this.flush();return w;
+  }
+  metrics(theme) {
+    const runs=this.runs.filter(r=>r.theme===theme);
+    return {total:usefulness(runs),floors:this.tower(theme).floors.map(f=>({id:f.id,name:f.name,...usefulness(runs.filter(r=>r.floorId===f.id))}))};
+  }
   settings() { return this.data.settings; }
   saveSettings(p) {
     const s = this.data.settings;
