@@ -74,9 +74,9 @@ test('mechanical audio schedules once per entry, cancels on return/mute/hidden a
   const bridge={on(k,f){listeners[k]=f;return()=>removed++;},async call(){return{settings:{master:.5,mechanical:.4}};}};
   const context=createContext({window:{jarvis:bridge},document,location:{search:''},URLSearchParams,AudioContext:Audio,Float32Array,addEventListener(k,f){events[k]=f;},removeEventListener(){removed++;}});
   const module=new SourceTextModule(fs.readFileSync(new URL('../../dist/assets/mechanical-audio.js',import.meta.url),'utf8'),{context});await module.link(()=>{});await module.evaluate();await Promise.resolve();await events.pointerdown();
-  listeners.snapshot({state:'SUIT_SELECTED',selected:'im1'});await new Promise(setImmediate);assert.equal(sources.length,3);assert.ok(Math.abs(gainValues.at(-1)-.2)<1e-10);assert.equal(sources[0].starts[0],5.1);
-  listeners.snapshot({state:'SUIT_SELECTED',selected:'im1'});await new Promise(setImmediate);assert.equal(sources.length,3);
-  listeners.snapshot({state:'RETURNING',selected:'im1'});await new Promise(setImmediate);assert.equal(sources.length,5);assert.equal(sources[0].stops.length,2);
-  listeners.settings({master:0,mechanical:1});assert.equal(sources[3].stops.length,2);listeners.snapshot({state:'SUIT_SELECTED',selected:'im2'});await new Promise(setImmediate);assert.equal(sources.length,5);
-  listeners.settings({master:1,mechanical:1});document.hidden=true;events.visibilitychange();listeners.snapshot({state:'SUIT_SELECTED',selected:'im3'});await new Promise(setImmediate);assert.equal(sources.length,5);events.pagehide();assert.equal(closed,1);assert.equal(removed,6);
+  listeners.snapshot({state:'SUIT_SELECTED',selected:'im1'});await new Promise(setImmediate);assert.equal(sources.length,4);assert.ok(Math.abs(gainValues.at(-1)-.2)<1e-10);assert.equal(sources[0].starts[0],5.1);
+  listeners.snapshot({state:'SUIT_SELECTED',selected:'im1'});await new Promise(setImmediate);assert.equal(sources.length,4);
+  listeners.snapshot({state:'RETURNING',selected:'im1'});await new Promise(setImmediate);assert.equal(sources.length,6);assert.equal(sources[0].stops.length,2);
+  listeners.settings({master:0,mechanical:1});assert.equal(sources[4].stops.length,2);listeners.snapshot({state:'SUIT_SELECTED',selected:'im2'});await new Promise(setImmediate);assert.equal(sources.length,6);
+  listeners.settings({master:1,mechanical:1});document.hidden=true;events.visibilitychange();listeners.snapshot({state:'SUIT_SELECTED',selected:'im3'});await new Promise(setImmediate);assert.equal(sources.length,6);events.pagehide();assert.equal(closed,1);assert.equal(removed,6);
 });

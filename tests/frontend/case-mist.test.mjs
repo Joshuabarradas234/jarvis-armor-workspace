@@ -4,9 +4,9 @@ import {createEntryMotion} from '../../dist/assets/suit-entry.js';
 import {renderBudget} from '../../dist/assets/render-budget.js';
 
 test('pressure release fills the suit from its feet to above its head, then reveals it',()=>{
- for(let i=0;i<8;i++){for(const t of [-1,0,.12,.14,2.25,3,100,NaN,Infinity])assert.equal(mistFrame(t,i),null);assert.ok(mistFrame(.7,i).opacity>.45);}
- for(const i of [0,1,2,3]){const p=mistFrame(.8,i);assert.ok(p.y-p.height/2<-.5);assert.ok(p.y+p.height/2>.5);assert.ok(p.x-p.width/2<-.5);assert.ok(p.x+p.width/2>.5);assert.ok(p.opacity>.8);}
- for(let t=0;t<2.3;t+=.01)for(let i=0;i<8;i++){const p=mistFrame(t,i);if(!p)continue;assert.ok(Object.values(p).every(Number.isFinite));assert.ok(p.opacity>=0&&p.opacity<=.84);}
+ for(let i=0;i<8;i++){for(const t of [-1,0,.12,.14,2.25,3,100,NaN,Infinity])assert.equal(mistFrame(t,i),null);assert.ok(mistFrame(.7,i).opacity>.38);}
+ for(const i of [0,1,2,3]){const p=mistFrame(.8,i);assert.ok(p.y-p.height/2<-.5);assert.ok(p.y+p.height/2>.5);assert.ok(p.x-p.width/2<-.5);assert.ok(p.x+p.width/2>.5);assert.ok(p.opacity>.6);}
+ for(let t=0;t<2.3;t+=.01)for(let i=0;i<8;i++){const p=mistFrame(t,i);if(!p)continue;assert.ok(Object.values(p).every(Number.isFinite));assert.ok(p.opacity>=0&&p.opacity<=.62);}
  for(const i of [0,1,2,3]){let previous=1;for(let t=1;t<2.25;t+=.025){const p=mistFrame(t,i);assert.ok(p.opacity<=previous);previous=p.opacity;}assert.ok(mistFrame(2.1,i).opacity<.04);}
  for(const i of [-1,8,.5,NaN])assert.equal(mistFrame(.8,i),null);
 });

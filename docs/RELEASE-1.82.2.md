@@ -1,0 +1,57 @@
+# JARVIS 1.82.2: Rolling mist and pressure-release sound
+
+## What's new
+
+- Cases release a soft rush of pressurised air as the glass begins to open, tapering away as the pressure falls.
+- Cold mist rolls with moving curls, uneven edges and shaded billows, then clears to reveal the suit by 2.25 seconds.
+- The sound follows Master and Mechanical volume; mist follows graphics quality, battery mode and reduced motion.
+- All earlier halls, suits, holograms and 1.82.0 work-management features are included.
+
+## Fixed
+
+- The cold cloud is less uniform and less opaque, with detail visible through its thinner edges.
+- The new release sound stops on return, mute, hidden-window changes and shutdown; duplicate entry updates do not replay it.
+
+## Install
+
+1. Right-click the JARVIS tray icon → Quit.
+2. Unzip JARVIS-1.82.2-update.zip into %LOCALAPPDATA%\Programs\JARVIS Armor Workspace\resources and choose Replace.
+3. Start JARVIS.
+
+Keep your existing suit models and other installed media. app.asar belongs directly inside resources. Enable animations and disable reduced motion to see the mist. Turn up Master and Mechanical volume to hear the release; saved volume settings are respected.
+
+This cumulative update includes 1.82.1. A new base version sets aside older self-updates. Their exact code remains unreadable and has not been merged; the owner chose to proceed on that basis. The source ZIP is a development backup.
+
+## Undo
+
+Restore the resources backup made before installation, or reinstall the previous update ZIP. Tray → RESTART WITHOUT SELF-UPDATES bypasses self-updates only; it does not undo this base release. The v1.80.1 ZIP remains an older fallback.
+
+## Checks
+
+- All 93 runtime JavaScript files passed node --check.
+- Core: npm install --offline and npm test passed, 121/121; external services were mocked.
+- Frontend: 91/91 passed, including once-per-entry audio, suspended audio, duplicate snapshots, mute/return/hidden-window cancellation, cloud timing and quality limits.
+- Existing audio tests deliberately expect four opening cues rather than three because the pressure-release sound is new. Cloud opacity assertions reflect the less opaque layered effect; full-body geometry, clearing and cancellation checks remain.
+- Browser rendering checks passed for all 21 actual suit models in low/high quality, with upper/body/foot coverage, clearing by 2.3 seconds and return/reduced-motion cancellation. Peak and clearing frames were inspected. The isolated preview initially used a stale Skip action after mock theme switches; the helper now switches directly and waits for the matching background before testing. Production hall-transition code was not changed.
+- The production audio module rendered through real Web Audio: four timed cues, a 1.65-second pressure release, finite samples, no clipping and a silent tail. Speaker/headphone loudness on the owner's computer has not been verified.
+- Windows x64 packaging passed with npx electron-builder --win dir --x64 --config.electronDist=node_modules/electron/dist.
+- app.asar is 29,716,500 bytes (29.72 MB), below 30,000,000. All 150 packaged files were verified; version is 1.82.2, main remains src/main/boot.js, and the build section is unchanged.
+- Protected boot.js, preload.cjs, selfupdate.js and approvals.js are unchanged. The package version bump is deliberate.
+- Control Deck still explicitly binds to 127.0.0.1; production network code is unchanged and no new port was added.
+- The earlier 1.82.1 base update was installed and its hall was observed. Installation of this new package is recorded separately, after these build checks.
+- Not tested here: physical display gestures, voice hardware, live paid accounts, the exact old self-update fixes, or full native-app visual regression. No GitHub release has been published for this package.
+
+### Update ZIP contents
+
+| File | Size (bytes) |
+| --- | ---: |
+| app.asar | 29,716,500 |
+| windows/listen.ps1 | 17,045 |
+| assets/README.md | 1,537 |
+| assets/vehicles/batmobile.glb | 65,804,356 |
+| assets/wallpaper/batcave-empty.json | 1,337 |
+| assets/wallpaper/batcave-studio.jpg | 678,435 |
+| assets/wallpaper/ironman-empty.json | 1,335 |
+| assets/wallpaper/ironman-studio.jpg | 658,638 |
+| assets/wallpaper/spiderman-empty.json | 1,404 |
+| assets/wallpaper/spiderman-studio.jpg | 861,343 |

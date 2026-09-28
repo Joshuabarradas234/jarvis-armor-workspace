@@ -234,3 +234,7 @@ Validation: 93 runtime syntax checks, frontend 91/91, Core 121/121, and browser-
 ## Release 1.82.1: full-body cold mist reveal
 
 Packaged the stronger mist as a complete local drop-in update with the earlier 1.82.0 features. Version/latest.json deliberately raised to 1.82.1; main, build configuration, protected files and networking are unchanged. Checks: 93 runtime syntax checks, frontend 91/91, Core 121/121 and browser checks on all 21 actual suits. Windows x64 packaging and byte verification passed; app.asar is 29715757 bytes. The exact JARVIS self-update code remains unreadable despite permission grants, so it has not been merged. The installed app is unchanged; installation and publication remain deferred. See RELEASE-1.82.1.md for archive contents and limitations.
+
+## Release 1.82.2: rolling mist and pressure-release sound
+
+Refined the full-body cloud with moving turbulence, varied edges, shaded billows and less opaque overlap. Added a short filtered-air release as the seals open; it tapers with falling pressure and follows both volume controls. Return, mute, hidden windows and teardown cancel it. Core 121/121, frontend 91/91, 93 syntax checks, real Web Audio rendering and all 21 real suit preview checks passed. Windows x64 package verified; app.asar 29716500 bytes. No protected file, build configuration or production networking changes. The source-count tests now expect the deliberate extra pressure cue. The approved 1.82.1 update was installed earlier in the session; 1.82.2 installation is recorded separately. See RELEASE-1.82.2.md.

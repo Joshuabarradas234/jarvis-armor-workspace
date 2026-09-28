@@ -31,10 +31,10 @@ async function audioFixture({suspended=false,bootstrap}={}){
  return{events,listeners,sources,contexts,document,resume:()=>resolveResume?.()};
 }
 test('voice/native entry creates audio without a prior mouse or keyboard gesture',async()=>{
- const a=await audioFixture();a.listeners.snapshot({state:'SUIT_SELECTED',selected:'bc1'});await tick();assert.equal(a.sources.length,3);assert.equal(a.contexts[0].state,'running');assert.equal(a.sources[0].starts[0],2.1);a.events.pagehide();
+ const a=await audioFixture();a.listeners.snapshot({state:'SUIT_SELECTED',selected:'bc1'});await tick();assert.equal(a.sources.length,4);assert.equal(a.contexts[0].state,'running');assert.equal(a.sources[0].starts[0],2.1);a.events.pagehide();
 });
 test('first entry waits for suspended audio and duplicate snapshots do not replay it',async()=>{
- const a=await audioFixture({suspended:true});a.listeners.snapshot({state:'SUIT_SELECTED',selected:'bc1'});await tick();assert.equal(a.sources.length,0);a.listeners.snapshot({state:'SUIT_SELECTED',selected:'bc1'});a.resume();await tick();assert.equal(a.sources.length,3);a.events.pagehide();
+ const a=await audioFixture({suspended:true});a.listeners.snapshot({state:'SUIT_SELECTED',selected:'bc1'});await tick();assert.equal(a.sources.length,0);a.listeners.snapshot({state:'SUIT_SELECTED',selected:'bc1'});a.resume();await tick();assert.equal(a.sources.length,4);a.events.pagehide();
 });
 test('a cancelled first entry never plays an old opening sound after audio resumes',async()=>{
  const a=await audioFixture({suspended:true});a.listeners.snapshot({state:'SUIT_SELECTED',selected:'bc1'});await tick();a.listeners.snapshot({state:'SHUTDOWN'});a.resume();await tick();assert.equal(a.sources.length,0);a.events.pagehide();
@@ -43,7 +43,7 @@ test('mute and hidden/page teardown cancel queued sound before it can start',asy
  for(const cancel of ['mute','hidden','pagehide']){const a=await audioFixture({suspended:true});a.listeners.snapshot({state:'SUIT_SELECTED',selected:'bc1'});await tick();if(cancel==='mute')a.listeners.settings({master:0,mechanical:1});else if(cancel==='hidden'){a.document.hidden=true;a.events.visibilitychange();}else a.events.pagehide();a.resume();await tick();assert.equal(a.sources.length,0);if(cancel!=='pagehide')a.events.pagehide();}
 });
 test('entry arriving before bootstrap waits for the saved volume controls',async()=>{
- let resolve;const a=await audioFixture({bootstrap:new Promise(r=>resolve=r)});a.listeners.snapshot({state:'SUIT_SELECTED',selected:'bc1'});await tick();assert.equal(a.contexts.length,0);resolve({settings:{master:.65,mechanical:.45}});await tick();assert.equal(a.sources.length,3);a.events.pagehide();
+ let resolve;const a=await audioFixture({bootstrap:new Promise(r=>resolve=r)});a.listeners.snapshot({state:'SUIT_SELECTED',selected:'bc1'});await tick();assert.equal(a.contexts.length,0);resolve({settings:{master:.65,mechanical:.45}});await tick();assert.equal(a.sources.length,4);a.events.pagehide();
 });
 
 test('the shipped general sound engine starts with muted buses silent',async()=>{

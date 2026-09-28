@@ -1,6 +1,6 @@
 # Full-body cold mist reveal
 
-Packaged as the local 1.82.1 update on top of 1.82.0. It has not been installed or published. See RELEASE-1.82.1.md for the installation file, checks and limitations.
+The full-body mist was packaged and installed as 1.82.1 on 28 September 2026 after the owner chose to proceed. Version 1.82.2 refines its texture and adds a pressure-release sound; see RELEASE-1.82.2.md for the current package.
 
 ## What changes
 
@@ -24,9 +24,9 @@ Packaged as the local 1.82.1 update on top of 1.82.0. It has not been installed 
 
 The supplied screenshot reports the tab-list crash fix as installed, awaiting restart. It reports the wallpaper fix as deferred for rebuilding on the current version; the green Done badge is not evidence that the wallpaper fix is active.
 
-Windows refused reads of the self-update folder even after the read-access request. Consequently the exact self-update code, boot state and successful activation could not be verified. The installed application and self-update manifests have not been changed. The protected source files and build settings are unchanged. The package version is deliberately raised to 1.82.1.
+Windows refused reads of the self-update folder even after the read-access request. Consequently the exact self-update code, boot state and successful activation could not be verified. At the source-review stage the installed application and self-update manifests were unchanged. The owner subsequently authorised installation of the new base build, accepting that older self-updates would be set aside. The protected source files and build settings are unchanged. The package version is deliberately raised to 1.82.1.
 
-The 1.82.1 ZIP is a proper resources update; the earlier changed-files ZIP was only a source patch. Installing a new base build can set aside older self-updates. The exact approved self-update code remains unreadable, so it has not been incorporated and installation is deferred. Do not copy source files into a self-update folder or alter its manifest manually.
+The 1.82.1 ZIP is a proper resources update; the earlier changed-files ZIP was only a source patch. Installing a new base build can set aside older self-updates. The exact approved self-update code remains unreadable, so it has not been incorporated. The owner chose to proceed with 1.82.1 installation; the old fixes must not be described as verified or active. Do not copy source files into a self-update folder or alter its manifest manually.
 
 ## Files changed
 
