@@ -1,0 +1,62 @@
+# JARVIS 1.82.1: Full-body cold mist reveal
+
+Local update package, not installed or published. JARVIS's separate self-update fixes have not been merged because Windows denied access to their code. Installing this base update can set those fixes aside; preserve or review them before replacing the running app.
+
+## What's new
+
+- Opening any suit case releases a much more visible cold cloud that covers the suit, then clears to reveal it.
+- The cloud builds as the glass opens, peaks around 0.6–1 second, and clears by 2.25 seconds during the existing entry animation.
+- Low and battery settings keep full-body mist with four layers; medium uses six, and high/ultra use eight.
+- Includes the earlier 1.82.0 improvements: reviews block unfinished handoffs, clearer briefs, accepted workflows, useful-results measurements, local Think suggestions, the searchable feature guide and screen/tab controls.
+- Includes the approved halls, suit effects, rotating Batmobile hologram and live suit progress.
+
+## Fixed
+
+- The pressure release no longer stays faint and confined to the suit's ankles.
+- Projecting armour, capes and accessories no longer hide the cold cloud.
+- Returning to the hall cancels the effect, and late-loading suits use the current entry time rather than restarting the burst.
+
+## Install
+
+1. Right-click the JARVIS tray icon → Quit.
+2. Unzip JARVIS-1.82.1-update.zip into %LOCALAPPDATA%\Programs\JARVIS Armor Workspace\resources and choose Replace.
+3. Start JARVIS.
+
+Use the update ZIP, not the source ZIP or the old JARVIS-source-1.70.0 folder. app.asar must sit directly inside resources. This is a cumulative update over v1.80.1 through 1.82.0; keep the existing suit models and other installed media. The source ZIP is a development backup.
+
+Before installation, resolve the separate self-update fixes described above. No self-update folder or manifest has been modified. The screenshot reports the tab-list fix installed but awaiting restart; the wallpaper fix is deferred for rebuilding. Those messages do not verify that either fix is running.
+
+For mist, enable animations, turn off reduced motion and use an animated hall. It appears on a fresh suit opening. Suit scale, eyes, poses and sounds are unchanged by this patch.
+
+## Undo
+
+Tray → RESTART WITHOUT SELF-UPDATES bypasses self-updates only. To undo this base release, restore the prior resources backup or reinstall the previous update ZIP; the v1.80.1 ZIP remains an older fallback. Keep your saved app data.
+
+## Checks
+
+- All 93 .js/.mjs/.cjs files in src/ and dist/assets/ passed node --check.
+- Core: npm install --offline and npm test succeeded; 121 passed, 0 failed. Claude and Twilio were mocked; existing local mail test servers were used.
+- Frontend: 91 passed, 0 failed, including mist coverage, timing, quality, reduced motion and cancellation.
+- Browser preview used the real renderer and all 21 local suit models. All 21 passed upper/body/foot coverage checks in low/high modes, clearing at 2.3 seconds, reduced motion and return cancellation. Reveal frames were inspected visually.
+- Tests were deliberately updated from the old ankle-height/1.24-second effect to the requested full-body/2.25-second effect. The visual harness now waits for the hall before selecting the next suit and permits 1% pixel-count tolerance for shader rounding. No safety tests were weakened.
+- Windows x64 packaging passed with the existing Electron runtime: npx electron-builder --win dir --x64 --config.electronDist=node_modules/electron/dist.
+- app.asar: 29,715,757 bytes (29.72 MB), below 30,000,000 bytes. Its version is 1.82.1, and main remains src/main/boot.js. All 150 packaged files were checked against build inputs; baseline archive paths were retained.
+- boot.js, preload.cjs, selfupdate.js and approvals.js are unchanged. The version bump is deliberate; the package build section is unchanged.
+- The existing Control Deck source still binds explicitly to 127.0.0.1. No production listener or networking code changed, and nothing new in this patch opens a port. Runtime binding was previously verified in v1.81.2, not rerun for this package.
+- Not verified: native packaged-app appearance, installation/rollback of 1.82.1, exact self-update code or activation, physical gestures, physical multi-screen movement and live paid AI accounts. The earlier isolated Electron graphics test failed at startup; browser rendering was used for this mist check.
+- The installed 1.82.0 application and its saved data have not been replaced by this packaging step. No GitHub tag or release was published for 1.82.1.
+
+### Update ZIP contents
+
+| File | Size (bytes) |
+| --- | ---: |
+| app.asar | 29,715,757 |
+| windows/listen.ps1 | 17,045 |
+| assets/README.md | 1,537 |
+| assets/vehicles/batmobile.glb | 65,804,356 |
+| assets/wallpaper/batcave-empty.json | 1,337 |
+| assets/wallpaper/batcave-studio.jpg | 678,435 |
+| assets/wallpaper/ironman-empty.json | 1,335 |
+| assets/wallpaper/ironman-studio.jpg | 658,638 |
+| assets/wallpaper/spiderman-empty.json | 1,404 |
+| assets/wallpaper/spiderman-studio.jpg | 861,343 |

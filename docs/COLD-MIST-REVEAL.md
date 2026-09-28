@@ -1,6 +1,6 @@
 # Full-body cold mist reveal
 
-Prepared source change on top of 1.82.0. It has not been installed or published.
+Packaged as the local 1.82.1 update on top of 1.82.0. It has not been installed or published. See RELEASE-1.82.1.md for the installation file, checks and limitations.
 
 ## What changes
 
@@ -18,15 +18,15 @@ Prepared source change on top of 1.82.0. It has not been installed or published.
 - Browser preview used the actual hall renderer, all 21 local suit models and mock workspace data. All 21 passed rendered pixel checks for full-body coverage in low/high modes, clearing, reduced motion and return cancellation. The burst affected 56,090–62,623 pixels in the low-quality 256 × 512 test renders, including upper, middle and lower regions; clearing left no mist pixels.
 - Peak, clearing and clear frames were inspected in the browser. The supplied recording was also opened locally: the existing case-opening effect does not provide a prominent full-body cloud.
 - Updated the tests' former ankle-height/1.24-second expectations deliberately to match the requested full-body reveal. The test harness waits for the hall to finish returning before selecting another suit and allows a 1% pixel-count tolerance for shader rounding.
-- Native packaged-app visual testing and installation of this change are not complete. No new release archive has been built.
+- Native packaged-app visual testing and installation of this change are not complete. The Windows drop-in archive is checked separately during packaging.
 
 ## JARVIS's own updates
 
 The supplied screenshot reports the tab-list crash fix as installed, awaiting restart. It reports the wallpaper fix as deferred for rebuilding on the current version; the green Done badge is not evidence that the wallpaper fix is active.
 
-Windows refused reads of the self-update folder even after the read-access request. Consequently the exact self-update code, boot state and successful activation could not be verified. The installed application and self-update manifests have not been changed. The protected source files, version and build settings are unchanged.
+Windows refused reads of the self-update folder even after the read-access request. Consequently the exact self-update code, boot state and successful activation could not be verified. The installed application and self-update manifests have not been changed. The protected source files and build settings are unchanged. The package version is deliberately raised to 1.82.1.
 
-Review and preserve the approved self-update changes before building/installing the next release. A new base build can supersede those updates. This source patch is not a drop-in resources update and must not be copied into a self-update folder or have its manifest edited manually.
+The 1.82.1 ZIP is a proper resources update; the earlier changed-files ZIP was only a source patch. Installing a new base build can set aside older self-updates. The exact approved self-update code remains unreadable, so it has not been incorporated and installation is deferred. Do not copy source files into a self-update folder or alter its manifest manually.
 
 ## Files changed
 
