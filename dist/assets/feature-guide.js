@@ -12,7 +12,7 @@ export const CAPABILITIES=[
  ['focus','Focus sessions','Use a timed focus session and return to your work with fewer distractions.','settings','Ready locally'],
  ['meetings','Meeting notes','Capture meetings and prepare notes. Review recipients and text before sharing.','meeting','Microphone permission and transcription setup'],
  ['globe','Globe and weather','Explore places and weather in the globe.','globe','Internet for maps and weather'],
- ['hands','Voice and hand controls','Open suits by name, navigate with a pinch, scroll, zoom, and move tabs. Camera tracking stays on this computer.','settings','Microphone/webcam permission; Hands enabled'],
+ ['hands','Voice and hand controls','See the hand signals for clicking, scrolling, focus and moving tabs. Voice controls are in Settings. Camera tracking stays on this computer.','gestures','Microphone/webcam permission; Hands enabled'],
  ['visuals','Halls, glass and holograms','Three halls, suit entry effects, opening glass, cold mist and a rotating Batmobile. Quality and reduced-motion settings govern the effects.','settings','3D assets installed; animations enabled for mist'],
  ['calibration','Advanced visual calibration','Fine-tune pod fit, labels, eye positions and the centre hologram. Preview before saving.','calibration','Open the hall first'],
  ['maintenance','Updates, backups and diagnostics','Check for updates, export settings, inspect health, and restart without self-updates if needed.','settings','Update installation needs a restart']
@@ -20,14 +20,15 @@ export const CAPABILITIES=[
 if(J&&(new URLSearchParams(location.search).get('view')||'main')==='main'){
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  let panel,trigger,previous,shownTabs=false;
- function close(){panel?.remove();panel=null;if(shownTabs)J.call('tabs-show',true).catch(()=>{});shownTabs=false;previous?.focus?.();}
- async function action(id){close();
+ async function close(){panel?.remove();panel=null;const restore=shownTabs;shownTabs=false;if(restore)await J.call('tabs-show',true).catch(()=>{});previous?.focus?.();}
+ async function action(id){await close();
   if(id==='settings')await J.call('action',{action:'settings'});
   else if(id==='tower'||id==='results'){await window.__jarvisTower?.show();if(id==='results'){window.__jarvisTower.tab='results';window.__jarvisTower.renderFloor();}}
   else if(id==='think')window.__jarvisIdeas?.show();
   else if(id==='core')window.__jarvisCore?.show();
   else if(id==='calibration')window.__jarvisCalibration?.open();
   else if(id==='screens')window.__jarvisScreens?.show();
+  else if(id==='gestures')await window.__jarvisGestureGuide?.show();
   else document.querySelector({meeting:'[data-meeting]',globe:'[data-globe]',calendar:'[data-qp="cal"]'}[id])?.click();
  }
  async function show(){if(panel)return;previous=document.activeElement;shownTabs=await J.call('tabs-state').catch(()=>false);if(shownTabs)await J.call('tabs-show',false);panel=document.createElement('section');panel.className='wt-guide';panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-label','What JARVIS can do');

@@ -358,7 +358,7 @@
       }
     }
 
-    // pinch a tab or a floating page, then flick the hand down: it goes to the second screen. Flick up on the second screen: it comes back.
+    // pinch a floating page, then flick the hand down: it goes to the second screen. Flick up on the second screen: it comes back.
     if (pinchOn && H.pinchSince && now - H.pinchSince > 120 && hands.length === 1) {
       const b = H.trail[H.trail.length - 1];
       for (const a of H.trail) {
@@ -389,7 +389,8 @@
 
     H.pinchSince = pinchOn ? (H.pinchSince || now) : 0;
     // which screen is the hand pointing at?
-    const onDeck = V.h > innerHeight && vy > innerHeight;
+    // Keep a grabbed suit tab on this controller until release, even below the main screen.
+    const onDeck = V.h > innerHeight && vy > innerHeight && !window.__jarvisScreens?.isDragging();
     if (onDeck) {
       if (!H.onDeck) { H.onDeck = true; if (H.pinching) release(true); ring.classList.add('away'); if (ringOverTab) { ringOverTab = false; call('hands-ring', { show: false }).catch(() => {}); } }
       const k = DeckGeo.deck.w / innerWidth;
@@ -641,20 +642,20 @@
   }
   syncToggle();
   // the little ⚙ beside HANDS ON: calibrate your reach, hover-to-click, the camera preview
-  const hset = document.createElement('button'); hset.type = 'button'; hset.className = 'theme-chip hx-set'; hset.title = 'Hand settings'; hset.textContent = '⚙';
+  const hset = document.createElement('button'); hset.type = 'button'; hset.className = 'theme-chip hx-set'; hset.title = 'Hand settings'; hset.setAttribute('aria-label', 'Hand settings'); hset.textContent = '⚙';
   hset.addEventListener('click', e => { e.stopPropagation(); handMenu(); });
   function handMenu() {
     document.querySelector('.hx-menu')?.remove();
     const m = document.createElement('div'); m.className = 'hx-menu';
     const r = hset.getBoundingClientRect(); m.style.left = Math.round(r.left) + 'px'; m.style.bottom = Math.round(innerHeight - r.top + 10) + 'px';
-    m.innerHTML = `<button type="button" data-hm="cal">🎯 Calibrate my reach</button><button type="button" data-hm="dwell">${store.get('dwell', true) ? '✓' : '○'} Hover to click (hold still 1.3 s)</button><button type="button" data-hm="pip">${pip.classList.contains('mini') ? '○' : '✓'} Camera preview</button><button type="button" data-hm="guide">✋ What the gestures are</button>`;
+    m.innerHTML = `<button type="button" data-hm="cal">🎯 Calibrate my reach</button><button type="button" data-hm="dwell">${store.get('dwell', true) ? '✓' : '○'} Hover to click (hold still 1.3 s)</button><button type="button" data-hm="pip">${pip.classList.contains('mini') ? '○' : '✓'} Camera preview</button><button type="button" data-hm="guide">✋ Hand gesture guide</button>`;
     m.addEventListener('click', e => { const b = e.target.closest('[data-hm]'); if (!b) return; e.stopPropagation(); const k = b.dataset.hm; m.remove();
       if (k === 'cal') Calib.start(); else if (k === 'dwell') { store.set('dwell', !store.get('dwell', true)); flash(store.get('dwell', true) ? 'HOVER-CLICK ON' : 'HOVER-CLICK OFF'); }
       else if (k === 'pip') { pip.classList.toggle('mini'); store.set('pipMini', pip.classList.contains('mini')); } else if (k === 'guide') guide(); });
     document.body.appendChild(m); setTimeout(() => addEventListener('click', () => m.remove(), { once: true }), 50);
   }
   function guide() {
-    toast('Pinch = click / grab · hold still on something = click · open hand then fist = home · swipe open hand = next hall · hold a tab title, move towards a screen and release = move tab; flick a floating page down = deck · flat palm held = focus · prayer hands = close JARVIS · two-hand pinch = zoom');
+    window.__jarvisGestureGuide?.show().catch(e => toast(e.message || 'Could not open the gesture guide.'));
   }
 
   function toast(msg) {
@@ -1381,7 +1382,7 @@
     const mic = $('[data-mic]');
     if (mic && toggle.parentElement !== mic.parentElement) mic.insertAdjacentElement('afterend', toggle);
     if (toggle.parentElement && hset.previousElementSibling !== toggle) toggle.insertAdjacentElement('afterend', hset);
-    hset.hidden = !H.on;
+    hset.hidden = false; // the guide and calibration remain available before the camera starts
   }
   Focus.init();
   window.__jarvisHolo = Holo;
