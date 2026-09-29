@@ -1077,6 +1077,8 @@ async function api(event,method,payload){
     case 'tower-lobby':return towerLobby(String(payload||'').slice(0,4000));
     case 'tower-stop':return towerRunner.stop(String(payload||''));
     case 'tower-feedback':{const result=towerRunner.feedback(String(payload?.runId||''),!!payload?.good,String(payload?.comment||''));const r=tower.runs.find(r=>r.id===payload?.runId);if(result.changed&&r?.feedback?.good)observeWork('accepted',{theme:r.theme,id:r.floorId,name:r.floorName});return result;}
+    case 'tower-skills':return tower.skillPage(workstations.activeTheme,String(payload?.floorId||''),payload?.query,payload?.page);
+    case 'tower-skill-enable':return tower.enableSkill(workstations.activeTheme,String(payload?.id||''),payload?.enabled);
     case 'tower-workflow-save':return tower.saveWorkflow(String(payload?.runId||''),payload||{});
     case 'tower-workflow-remove':{tower.data.workflows=(tower.data.workflows||[]).filter(w=>w.id!==payload||w.theme!==workstations.activeTheme);tower.flush();return true;}
     case 'tower-knowledge-add':{let files=Array.isArray(payload?.paths)?payload.paths.filter(p=>typeof p==='string'&&p):[];if(!files.length){const res=await dialog.showOpenDialog({title:'Add knowledge to this floor',properties:['openFile','multiSelections'],filters:[{name:'Documents',extensions:['md','txt','pdf','docx','csv','json','html','xlsx','pptx']},{name:'All files',extensions:['*']}]});if(res.canceled)return null;files=res.filePaths;}return tower.addKnowledge(workstations.activeTheme,String(payload?.floorId||''),files.slice(0,20));}

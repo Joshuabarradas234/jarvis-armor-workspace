@@ -20,7 +20,7 @@ test('review sign-off fails closed on missing, conflicting or malformed verdict 
  assert.equal(reviewOf(approved,[{status:'failed'}]).verdict,'CHANGES');assert.equal(reviewOf(approved,[]).verdict,'CHANGES');
 });
 test('missing brief fields stop before any model call',async t=>{const f=fixture(t),r=await finish(f,{});assert.equal(r.status,'needs_brief');assert.equal(r.calls,0);assert.ok(r.questions.length>=4);assert.equal(f.runner.work,undefined);assert.equal(briefGaps(briefOf(brief)).length,0);});
-test('CHANGES returns to workers, then an approved repair completes once without automatic learning',async t=>{
+test('CHANGES returns to workers, then an approved repair completes once without promoting unaccepted lessons',async t=>{
  const f=fixture(t,[approved.replace('APPROVED','CHANGES'),approved]),r=await finish(f);
  assert.equal(r.status,'done');assert.equal(r.progress,100);assert.equal(r.rework,1);assert.equal(f.runner.work,2);assert.equal(r.reviews.length,2);assert.equal(f.runner.done,1);assert.ok(fs.existsSync(r.final));assert.equal(f.floor.lessons,'');
 });

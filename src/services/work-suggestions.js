@@ -25,7 +25,7 @@ export class WorkSuggestions {
       suit:[`Create a start-of-work checklist for ${name}`,'You have opened this suit several times.','Suggest a short launch checklist and identify which links, files and recurring tasks belong here. Ask for the intended outcome first.'],
       move:[`Save a screen layout for ${name}`,'You have moved tabs between screens repeatedly.','Design a reusable screen layout for this suit. Ask which tabs belong on each screen before proposing any configuration change.'],
       rework:[`Improve the brief for ${name}`,'More than one run needed correction.','Inspect the review notes with the owner and propose clearer acceptance checks and a better specialist assignment. Do not change agent rules without approval.'],
-      accepted:[`Keep an approved workflow for ${name}`,'The owner accepted several results here.','Choose an accepted Tower result and save its brief, writing preferences and checklist as a workflow for future jobs.']
+      accepted:[`Keep an approved workflow for ${name}`,'The owner accepted several results here.','Review the automatically saved recipes on this floor’s Skills tab. Accept useful results and switch off skills that should not guide future jobs.']
     }[kind];
     const before=new Set(this.ideas().list().map(i=>i.id));
     this.ideas().save({title,notes:`Suggested from local JARVIS activity: ${why}\n\n${proposal}\n\nNothing has been run or changed. Ask JARVIS for a plan, then approve it to start. App code still needs review before it is applied.`,target:context.suit?{kind:'suit',theme,id,name}:{kind:'app'},x:20+(this.data.today*34),y:32});

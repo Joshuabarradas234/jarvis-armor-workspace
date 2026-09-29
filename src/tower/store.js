@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import {writeJson} from '../brain/util.js';
 import {SEED} from './seed.js';
 import {briefOf, usefulness} from './productivity.js';
+import {captureSkill,matchSkills,skillPage,setSkillEnabled} from './skills.js';
 
 const ROLES = ['lead', 'specialist', 'reviewer'];
 const ENGINES = ['auto', 'api', 'claude-code', 'rehearsal'];
@@ -24,12 +25,15 @@ export class TowerStore {
     for (const [id, t] of Object.entries(SEED)) if (!this.data.towers[id]) this.data.towers[id] = structuredClone(t);
     for (const [id, t] of Object.entries(this.data.towers)) { if (t.owner === undefined) t.owner = SEED[id]?.owner || ''; if (t.org === undefined) t.org = SEED[id]?.org || ''; }
     for (const t of Object.values(this.data.towers)) { for (const f of t.floors || []) this.cleanFloor(f); (t.floors || []).sort((a, b) => b.number - a.number); }
-    this.data.settings = {plannerModel: 'claude-sonnet-5', workerModel: 'claude-sonnet-5', codeModel: 'sonnet', maxSteps: 5, ...this.data.settings};
+    this.data.settings = {plannerModel: 'claude-sonnet-5', workerModel: 'claude-sonnet-5', codeModel: 'sonnet', maxSteps: 5, skillPolicy: 'owner', ...this.data.settings};
     try { this.runs = JSON.parse(fs.readFileSync(this.runsFile, 'utf8')); } catch { this.runs = []; }
     if (!Array.isArray(this.runs)) this.runs = [];
     // a run that was going when the app closed did not finish
     for (const r of this.runs) if (['queued', 'planning', 'working', 'reviewing'].includes(r.status)) { r.status = 'stopped'; r.note = 'JARVIS was closed while this ran.'; }
     for(const r of this.runs)if(r.status==='done'&&r.verdict==='CHANGES'){r.status=r.phase='needs_changes';r.progress=Math.min(r.progress||0,96);r.final=null;r.approvals=[];r.note='This older run failed review. Correct it before using its result.';}
+    if(!['owner','review'].includes(this.data.settings.skillPolicy))this.data.settings.skillPolicy='owner';
+    if(!Array.isArray(this.data.taskSkills))this.data.taskSkills=[];
+    for(const r of this.runs)captureSkill(this.data,r);
     this.flush();
   }
   cleanFloor(f) {
@@ -124,6 +128,18 @@ export class TowerStore {
     const w={id:existing?.id||crypto.randomUUID(),runId,theme:r.theme,floorId:r.floorId,name:str(patch.name||r.title,80),brief:briefOf({...r.brief,preferences:patch.preferences??r.brief?.preferences,checklist:patch.checklist??r.brief?.checklist}),task:r.task,example:fs.readFileSync(r.final,'utf8').slice(0,12000)};
     if(existing)all[all.indexOf(existing)]=w;else all.push(w);this.flush();return w;
   }
+  learn(r) { const s=captureSkill(this.data,r); if(s)this.flush(); return s; }
+  matchSkills(theme,floorId,task,brief) { return matchSkills(this.data,theme,floorId,task,brief); }
+  skillPage(theme,floorId,query,page) { this.floor(theme,floorId); return skillPage(this.data,theme,floorId,query,page); }
+  enableSkill(theme,id,enabled) { const s=setSkillEnabled(this.data,theme,id,enabled);this.flush();return s; }
+  recordSkillUse(r) {
+    if(r.skillUseRecorded)return;r.skillUseRecorded=true;
+    for(const id of r.learnedSkills||[]){const s=this.data.taskSkills.find(s=>s.id===id&&s.theme===r.theme&&s.floorId===r.floorId);if(s)s.uses=(s.uses||0)+1;}
+  }
+  recordSkillOutcome(r,good) {
+    if(r.skillOutcomeRecorded)return;r.skillOutcomeRecorded=true;
+    for(const id of r.learnedSkills||[]){const s=this.data.taskSkills.find(s=>s.id===id&&s.theme===r.theme&&s.floorId===r.floorId);if(s){const k=good?'acceptedUses':'reworkUses';s[k]=(s[k]||0)+1;}}
+  }
   metrics(theme) {
     const runs=this.runs.filter(r=>r.theme===theme);
     return {total:usefulness(runs),floors:this.tower(theme).floors.map(f=>({id:f.id,name:f.name,...usefulness(runs.filter(r=>r.floorId===f.id))}))};
@@ -133,6 +149,7 @@ export class TowerStore {
     const s = this.data.settings;
     for (const k of ['plannerModel', 'workerModel']) if (typeof p[k] === 'string' && /^[\w.-]{3,60}$/.test(p[k])) s[k] = p[k];
     if (['sonnet', 'opus', 'haiku'].includes(p.codeModel)) s.codeModel = p.codeModel;
+    if(p.skillPolicy!==undefined){if(!['owner','review'].includes(p.skillPolicy))throw Error('Choose when learned skills may be used.');s.skillPolicy=p.skillPolicy;}
     if (Number.isFinite(p.maxSteps)) s.maxSteps = Math.max(1, Math.min(8, Math.round(p.maxSteps)));
     this.flush(); return s;
   }
