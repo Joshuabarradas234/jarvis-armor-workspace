@@ -43,3 +43,15 @@ test('a missing or disconnected tab reports failure rather than pretending it mo
   const f=await fixture({popout});f.screens.grab('draft',800,40,1000);await settle();f.screens.move(800,1200,1600);f.screens.release(false);await settle();assert.match(f.hints.at(-1).textContent,/closed|disconnected/);assert.equal(f.screens.isDragging(),false);f.screens.cancel();
  }
 });
+
+test('a suit drop takes priority over screen throwing and suppresses the release click',async()=>{
+ const f=await fixture(),events=[];
+ f.window.__jarvisWorkbench={grab:(...a)=>events.push(['grab',...a]),move:()=>true,release:silent=>{events.push(['release',silent]);return !silent;},cancel:()=>events.push(['cancel'])};
+ f.frame(800,40,true,1000);await settle();f.frame(200,400,true,1700);assert.match(f.hints.at(-1).textContent,/highlighted suit/);f.frame(200,400,false,1800);await settle();
+ assert.equal(f.calls.filter(c=>c.method==='tabs-popout').length,0);assert.equal(f.clicks.length,0);assert.deepEqual([events.at(-1)[0],!!events.at(-1)[1]],['release',false]);
+});
+test('tracking loss cancels a potential suit handoff instead of submitting it',async()=>{
+ const f=await fixture(),released=[];f.window.__jarvisWorkbench={grab(){},move:()=>true,release:silent=>{released.push(silent);return false;},cancel(){}};
+ f.frame(800,40,true,1000);await settle();f.frame(200,400,true,1700);await f.loss(2401);
+ assert.equal(released.includes(false),false);assert.equal(f.calls.filter(c=>c.method==='tabs-popout').length,0);
+});

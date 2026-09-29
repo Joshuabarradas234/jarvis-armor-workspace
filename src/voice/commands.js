@@ -112,6 +112,7 @@ export function parseCommand(text,context){
   if(!heard&&ctx.follow){heard='(follow)';rest=normal;}
   if(!heard)return null;
   if(!rest)return {action:'attention'};   // "Hey Jarvis." -> "Yes, sir?" and he listens without the name for a moment
+  if(['open product studio','show product studio','create a product ad'].includes(rest))return {action:'product-studio'};
   if(WAKE.includes(rest))return {action:'wake'};
   if(STATUS.includes(rest))return {action:'status'};
   if(BRIEFING.includes(rest))return {action:'briefing'};
@@ -219,6 +220,7 @@ export function buildGrammar(context){
   const phrases=[];
   // the hall you are standing in: everything, plus its close sound-alikes
   for(const n of [context.theme.assistant,...(GRAMMAR_ALIASES[active]||[])]){
+    for(const c of ['open product studio','show product studio','create a product ad'])phrases.push(`${n} ${c}`);
     for(const c of CORE)phrases.push(`${n} ${c}`);
     for(const m of context.modules||[])for(const f of spokenForms(m.name))phrases.push(`${n} open ${f}`,`${n} show ${f}`,`${n} open the ${f}`,`${n} show me ${f}`,`${n} show me the ${f}`,`${n} let me see the ${f}`);
     for(const p of switches){phrases.push(`${n} ${p}`);for(const L of LEADINS)phrases.push(`${n} ${L}${p}`);}

@@ -1,6 +1,7 @@
 export const DURATIONS = Object.freeze({ WAKE: 1000, BOOT: 1700, HUD: 1700, HELMET_INTERIOR: 1300, HELMET_OPENING: 3300, SUIT_SELECTED: 3000, RETURNING: 2200, SHUTDOWN: 2000 });
 /** Stretch or shrink the five startup stages so the whole intro lasts `seconds` (media-synchronised startup). */
 export function introDurations(seconds){const total=Math.max(6,Math.min(90,Number(seconds)||9));const base=['WAKE','BOOT','HUD','HELMET_INTERIOR','HELMET_OPENING'];const sum=base.reduce((n,k)=>n+DURATIONS[k],0);const out={...DURATIONS};for(const k of base)out[k]=Math.round(DURATIONS[k]*total*1000/sum);return out;}
+export function workDurations(s){const d=s.startup.enabled&&(s.startup.video||s.startup.sound)?introDurations(s.startup.seconds):{...DURATIONS};if(s.quickWork){d.SUIT_SELECTED=220;d.RETURNING=180;}return d;}
 export const STATES = Object.freeze(['IDLE','WAKE','BOOT','HUD','HELMET_INTERIOR','HELMET_OPENING','ARMOR_HALL','SUIT_HOVER','SUIT_SELECTED','MODULE','RETURNING','SHUTDOWN']);
 const NEXT = { WAKE:'BOOT', BOOT:'HUD', HUD:'HELMET_INTERIOR', HELMET_INTERIOR:'HELMET_OPENING', HELMET_OPENING:'ARMOR_HALL', SUIT_SELECTED:'MODULE', RETURNING:'ARMOR_HALL', SHUTDOWN:'IDLE' };
 export class WorkspaceMachine {

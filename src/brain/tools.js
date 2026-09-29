@@ -53,6 +53,15 @@ export function makeTools(core) {
   const T = [];
   const add = (name, level, description, input_schema, run, extra = {}) => T.push({name, level, description, input_schema, run, ...extra});
 
+  add('travel_plan','user','Prepare travel mode. Ask for missing month, year, return date and destination; never guess. Full YYYY-MM-DD dates are required. Search locations first with travel_locations. Return the proposed dates/time zone, then request approval with this tool.',S({city:str('Chosen destination'),zone:str('Chosen IANA time zone'),start:str('Full arrival date YYYY-MM-DD'),end:str('Full last date YYYY-MM-DD'),latitude:{type:'number'},longitude:{type:'number'},flights:str('Optional flight numbers separated by commas')},['city','zone','start','end','latitude','longitude']),p=>core.api('travel-plan',p));
+  add('travel_locations','read','Find matching destination cities and their time zones. Let the owner choose when ambiguous.',S({name:str('City')},['name']),({name})=>core.travel.locations(name));
+  add('travel_apply','ask','Apply an already reviewed travel plan.',S({city:str('City'),zone:str('Time zone'),start:str('Arrival YYYY-MM-DD'),end:str('Return YYYY-MM-DD'),latitude:{type:'number'},longitude:{type:'number'},flights:str('Flights')},['city','zone','start','end','latitude','longitude']),p=>core.travel.apply(p),{kind:'settings',title:i=>'Travel mode: '+i.city,detail:i=>core.travel.detail(i),check:i=>core.travel.detail(i)});
+  add('travel_stop','ask','End travel mode and use the computer’s local time for future wake-up calls.',S(),()=>core.travel.stop(),{kind:'settings',title:()=> 'End travel mode'});
+  add('meeting_send','ask','Send a reviewed meeting draft. Use the meeting review screen to prepare it.',S({id:str('Draft id'),to:str('Recipient'),subject:str('Subject'),text:str('Email text')},['id','to','subject','text']),p=>deps.meetingFollowups.send(p),{kind:'email',title:i=>'Meeting email to '+i.to});
+
+  add('proposal_draft','user','Turn the owner’s bullet points into a branded proposal or quote draft for review. Never send it. Missing prices stay unconfirmed. Branding is configured in Work desk.',S({title:str('Project title'),client:str('Client'),bullets:str('Owner-provided brief'),kind:str('proposal or quote'),items:str('Optional owner-provided lines: Description | Quantity | Unit price'),currency:str('Three-letter currency code'),tax:str('Only owner-provided tax and payment facts')},['bullets']),p=>core.workDesk.create(p),{title:()=> 'Prepare a proposal draft'});
+  add('files_search','read','Search PDF, DOCX, TXT, Markdown and CSV in the selected Documents folder. Returns exact passages with filename and page/paragraph. Cite these sources; do not infer unseen terms. Linked files, scanned PDFs without text and unreadable documents are reported.',S({query:str('Document name and specific question or keywords')},['query']),p=>core.workDesk.library.search(p.query));
+
   /* ---------------- read ---------------- */
   add('overview', 'read', 'Where everything stands right now: time, calendar today, to-dos, agents, approvals waiting, next call or alarm, email today, spend.', S(), () => core.overview());
   add('calendar_list', 'read', 'Calendar events for the next few days.', S({days: int('How many days ahead (default 7).')}), ({days = 7}) => {
@@ -77,7 +86,7 @@ export function makeTools(core) {
   add('report_read', 'read', 'Read one report.', S({id: str('Report id.')}, ['id']), ({id}) => store.report(id)?.text || 'No such report.');
   add('activity', 'read', 'What JARVIS did on its own recently.', S({hours: int('How far back (default 24).')}), ({hours = 24}) => store.recent(Math.min(24 * 7, hours)).slice(-80).map(a => `${new Date(a.t).toLocaleString('en-GB', {weekday: 'short', hour: '2-digit', minute: '2-digit'})} ${a.kind}: ${a.text}`).join('\n') || 'Nothing.');
   add('app_health', 'read', "JARVIS's own health: recent errors, voice commands it did not understand, updates, version.", S(), () => core.health());
-  add('weather', 'read', 'The weather at home now.', S(), async () => (await deps.weather()) || 'Weather is unavailable.');
+  add('weather', 'read', 'The weather at the travel destination when travel mode is active, otherwise home.', S(), async () => (await (core.travel.active()?core.travel.weather():deps.weather())) || 'Weather is unavailable.');
   add('fetch_page', 'read', 'Read a public web page (text only).', S({url: str('https://…')}, ['url']), async ({url}) => {
     if (!/^https?:\/\//i.test(url)) throw Error('Only web links.');
     const r = await publicFetch(url);
@@ -98,7 +107,7 @@ export function makeTools(core) {
   add('idea_add', 'auto', 'Add an idea to the Ideas room.', S({title: str('Idea'), notes: str('Notes')}, ['title']), ({title, notes = ''}) => { deps.ideas.save({title: clip(title, 120), notes: clip(notes, 3000), stage: 'spark', progress: 0, x: 30 + Math.random() * 40, y: 30 + Math.random() * 40}); return 'Saved.'; });
   add('note_to_self', 'user', "Write something down in JARVIS's own notes, to remember later.", S({text: str('The note')}, ['text']), ({text}) => { store.addNote(text); return 'Noted.'; }, {title: i => `Add to my notes: ${clip(i.text, 110)}`, detail: i => i.text});
   add('alarm_set', 'auto', 'Set a one-off wake-up call or reminder: JARVIS calls (or WhatsApps) the owner at that time.', S({when: str('Say am or pm whenever it could be either: "6:30am", "tomorrow at 7pm", "in 20 minutes"'), kind: str('call (default) or whatsapp'), note: str('What it is for'), report: bool('Include the overnight report (default true for morning calls)')}, ['when']),
-    ({when, kind = 'call', note = '', report}) => { const w = parseWhen(/wake/i.test(note) && !/\b(am|pm)\b|\d(am|pm)/i.test(when) ? `${when} wake` : when); if (!w) throw Error('I could not read that time.'); const a = core.setAlarm({at: w.at, kind, note, report}); return `Set for ${new Date(a.at).toLocaleString('en-GB', {weekday: 'long', hour: '2-digit', minute: '2-digit'})} (${a.kind}).`; });
+    ({when, kind = 'call', note = '', report}) => { const w = core.travel.parseWhen(/wake/i.test(note) && !/\b(am|pm)\b|\d(am|pm)/i.test(when) ? `${when} wake` : when); if (!w) throw Error('I could not read that time.'); const a = core.setAlarm({at: w.at, zone:w.zone, kind, note, report}); return `Set for ${core.travel.describe(a.at, a.zone)} (${a.kind}).`; });
   add('alarm_cancel', 'auto', 'Cancel a one-off alarm.', S({id: str('Alarm id')}, ['id']), ({id}) => { core.cancelAlarm(id); return 'Cancelled.'; });
   add('alarm_list', 'read', 'Wake-up calls and scheduled calls coming up.', S(), () => core.upcoming());
   add('message_me', 'auto', 'Send the owner a WhatsApp message (or text). Outside quiet hours it goes now; during quiet hours it waits for the morning unless he asked for it.', S({text: str('The message')}, ['text']),
@@ -127,6 +136,8 @@ export function makeTools(core) {
     ({fact}) => { orders.addLine('facts', `${fact} (added ${new Date().toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'})})`, 'new fact'); return 'Recorded.'; }, {kind: 'orders', title: i => `Record a business fact: ${clip(i.fact, 110)}`});
 
   /* ---------------- ask: always approval ---------------- */
+  add('meeting_work_start','ask','Start a reviewed meeting work plan. The digest must come from the saved meeting review.',S({id:str('Meeting ID'),digest:str('Reviewed plan digest')},['id','digest']),p=>core.meetingWork.approve(p));
+  add('product_render', 'ask', 'Generate the exact reviewed Product Studio photo brief. Requires its saved project ID and review digest. Never invent these.', S({id:str('Saved product project ID'),digest:str('Reviewed brief digest')},['id','digest']), i=>core.studio.submit(i), {title:()=> 'Generate a reviewed product clip'});
   add('email_send', 'ask', 'Send an email to someone. Always waits for the owner\'s approval.', S({to: str('Email address'), subject: str('Subject'), text: str('Body')}, ['to', 'subject', 'text']),
     ({to, subject, text}) => core.mail.sendNew({to, subject, text}).then(() => `Sent to ${to}.`), {kind: 'email', title: i => `Send email to ${i.to}: “${clip(i.subject, 70)}”`, detail: i => `To: ${i.to}\nSubject: ${i.subject}\n\n${i.text}`,
       check: i => { if (!validAddress(String(i.to || '').trim())) throw Error(`“${clip(i.to, 60)}” is not a valid email address.`); }});

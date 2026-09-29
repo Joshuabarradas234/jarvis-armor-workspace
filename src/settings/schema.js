@@ -1,6 +1,6 @@
 export const defaults = {
   setupComplete:false, startWithWindows:false, startMinimized:true, autoStart:false,
-  wallpaper:true, voiceEnabled:false, voiceName:'', voicePack:'off', animations:true,
+  quickWork:false, wallpaper:true, voiceEnabled:false, voiceName:'', voicePack:'off', animations:true,
   mainDisplay:null, controlDisplay:null, singleScreen:false, thirdScreen:true, scale:1,
   quality:'auto', fps:30, reduceOnBattery:true,
   master:0.65, voice:0.8, interface:0.35, mechanical:0.45, ambience:0.12, music:0.65,
@@ -12,7 +12,7 @@ export const defaults = {
   ideas:{sourceRepo:'',nightly:true},
   startup:{enabled:true,video:'jarvis://asset/startup/welcome.mp4',sound:'jarvis://asset/startup/welcome.mp3',seconds:15,loopVideo:true}
 };
-const bools = ['setupComplete','startWithWindows','startMinimized','autoStart','wallpaper','voiceEnabled','animations','singleScreen','thirdScreen','reduceOnBattery'];
+const bools = ['quickWork','setupComplete','startWithWindows','startMinimized','autoStart','wallpaper','voiceEnabled','animations','singleScreen','thirdScreen','reduceOnBattery'];
 export function validateSettings(patch, current=defaults) {
   if (!patch || typeof patch!=='object' || Array.isArray(patch)) throw Error('Settings must be an object.');
   const next = structuredClone(current);

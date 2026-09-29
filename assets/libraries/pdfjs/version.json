@@ -1,0 +1,8 @@
+{
+  "name": "pdfjs-dist",
+  "version": "6.3.289",
+  "license": "Apache-2.0",
+  "source": "https://github.com/mozilla/pdf.js",
+  "integrity": "sha512-ZHjSVpDa3D6izMq8/04lvkhkATUmL9px6ChPaXc1k6nU2Mrhlg1/7F0bdUqCwUjw3NsPTfPZsMDUU6ZIcRaeQw==",
+  "build": "legacy (text extraction only)"
+}

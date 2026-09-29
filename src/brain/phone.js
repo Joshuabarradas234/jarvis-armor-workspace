@@ -176,6 +176,7 @@ export class Phone {
       if (r.status !== 'fulfilled') { failed = true; this.log('phone', 'Checking messages: ' + r.reason?.message); continue; }
       for (const m of r.value.messages || []) {
         if (m.direction !== 'inbound') continue;
+        const wa=String(m.from).startsWith('whatsapp:');if(m.from!==(wa?`whatsapp:${me}`:me)||m.to!==(wa?`whatsapp:${c.whatsappFrom}`:c.twilioFrom))continue;
         const t = Date.parse(m.date_sent || m.date_created); if (!(t >= since - 120000)) continue;
         out.push({sid: m.sid, at: t, body: String(m.body || '').trim(), via: String(m.from).startsWith('whatsapp:') ? 'whatsapp' : 'sms', media: Number(m.num_media) || 0});
       }

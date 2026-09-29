@@ -7,13 +7,15 @@ import { spawn } from 'node:child_process';
  *   PROGRESS 40          - percent complete
  *   STATUS running       - idle | planned | running | blocked | done
  *   TASK done 2          - marks task 2 finished (TASK todo 2 unmarks it)
+ *   BUILD PASS / FAIL    - build result; PASS reacts only after exit code zero
  *   LOG anything else    - a line for the log
  * Anything else it prints is logged as-is, so an agent that knows nothing
  * about this still shows its output on the control deck.
  */
 export class AgentRunner {
-  constructor({ missions, onUpdate, log }) {
+  constructor({ missions, onUpdate, onBuild, log }) {
     this.missions = missions;
+    this.onBuild = onBuild || (() => {});
     // a chatty agent (thousands of lines a second) updates the screens at most four times a second
     const pending = new Map();
     this.onUpdate = (theme, id) => { const k = theme + ':' + id; if (pending.has(k)) return; pending.set(k, setTimeout(() => { pending.delete(k); onUpdate(theme, id); }, 250)); };
@@ -72,6 +74,7 @@ export class AgentRunner {
       fin.endedAt = Date.now();
       if (code === 0 && fin.status === 'done' && fin.progress < 100 && !fin.tasks.length) fin.progress = 100;
       this.missions.data[key] = fin; this.missions.persist();
+      if (!child.stoppedByUser && code === 0 && fin.status === 'done' && child.buildPassed) this.onBuild({theme, id});
       this.missions.note(theme, id, child.stoppedByUser ? 'stopped' : code === 0 ? 'finished' : `stopped with code ${code}`);
       this.onUpdate(theme, id);
     });
@@ -81,7 +84,10 @@ export class AgentRunner {
   handle(theme, id, line) {
     if (!line) return;
     let m;
-    if ((m = /^PROGRESS\s+(\d{1,3})$/i.exec(line))) {
+    if ((m = /^BUILD\s+(PASS|FAIL)$/i.exec(line))) {
+      const child = this.running.get(theme + ':' + id); if (child) child.buildPassed = m[1].toUpperCase() === 'PASS';
+      this.missions.note(theme, id, line);
+    } else if ((m = /^PROGRESS\s+(\d{1,3})$/i.exec(line))) {
       this.missions.set(theme, id, { progress: Math.min(100, Number(m[1])) });
     } else if ((m = /^STATUS\s+(\w+)$/i.exec(line))) {
       try { this.missions.set(theme, id, { status: m[1].toLowerCase() }); }

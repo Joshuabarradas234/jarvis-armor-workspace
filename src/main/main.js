@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import https from 'node:https';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {WorkspaceMachine,introDurations,DURATIONS} from '../state/machine.js';
+import {WorkspaceMachine,workDurations} from '../state/machine.js';
 import {SettingsStore} from '../settings/store.js';
 import {validateSettings,sanitizeSettings,defaults} from '../settings/schema.js';
 import {DisplayManager} from '../display/windows.js';
@@ -14,12 +14,19 @@ import {PanelManager} from './panels.js';
 import {TowerStore,rankFor} from '../tower/store.js';
 import {TowerRunner} from '../tower/orchestrator.js';
 import {WorkstationStore} from '../workstations/store.js';
+import {workspaceKey} from './workspace-keys.js';
 import {TabManager} from './tabs.js';
 import {WindowLayout} from '../layout/windows.js';
+import {CallWatcher} from '../meeting/call-watch.js';
+import {meetingWorkPrompt} from '../meeting/work.js';
+import {MeetingFollowups,MEETING_PROMPT,meetingNotes} from '../meeting/followups.js';
+import {writeText} from '../brain/util.js';
+import {extractJson} from '../brain/util.js';
 import {MeetingManager,clock} from '../meeting/manager.js';
 import {sendGmail,validEmail} from '../meeting/mailer.js';
 import {callApi,callClaudeCode,detectClaudeCode} from '../tower/engines.js';
 import {MissionStore} from '../control/missions.js';
+import {Workbench} from '../control/workbench.js';
 import {AgentRunner} from '../control/runner.js';
 import {ControlServer} from '../control/server.js';
 import {CalendarStore} from '../services/calendar.js';
@@ -46,7 +53,7 @@ let workstations,tabs,layout,telemetry=null,weatherCache=null,weatherChecked=0,o
 const status={errors:[],commandHistory:[]};
 const scripts=app.isPackaged?path.join(process.resourcesPath,'windows'):path.join(baseRoot,'scripts','windows');
 const assets=app.isPackaged?path.join(process.resourcesPath,'assets'):path.join(baseRoot,'assets');
-let userDir, hallCalibration, workSuggestions;
+let userDir, hallCalibration, workSuggestions, workbench, meetingFollowups, callWatcher;
 function observeWork(kind,context){try{workSuggestions?.observe(kind,context);}catch(e){log('ideas',e.message);}}
 function log(kind,message){const row={time:new Date().toISOString(),kind,message:String(message).slice(0,800)};status.errors.push(row);status.errors=status.errors.slice(-50);try{const f=path.join(userDir,'jarvis.log');if(fs.existsSync(f)&&fs.statSync(f).size>2e6)fs.renameSync(f,f+'.previous');fs.appendFileSync(f,JSON.stringify(row)+'\n');}catch{}broadcast('status',getStatus());}
 let followUntil=0,panels=null,tower=null,towerRunner=null,towerKey=null,core=null,coreError='',lastUserAction=Date.now(),awakeBlock=null,bootMarked=false;
@@ -131,6 +138,7 @@ function createWindow({role,...options}){
   w.on('closed',()=>trusted.delete(contentsId));
   if(role==='main'||role==='console')w.on('close',e=>{if(!quitting){e.preventDefault();machine?.dispatch('standdown');}});
   w.webContents.on('before-input-event',(event,input)=>{
+    if(role==='main'){const command=workspaceKey(input);if(command&&(['menu'].includes(command)||machine?.value.state==='MODULE'&&tabs?.shown&&!tabs?.occluded)){event.preventDefault();workspaceShortcut(command);return;}}
     if(input.type!=='keyDown')return;
     if(input.key==='F12'&&input.control&&input.shift){w.webContents.openDevTools({mode:'detach'});event.preventDefault();}
   });
@@ -374,57 +382,53 @@ function meetingInfo(){
     past:meetings.pastFor(t).map(h=>({id:h.id,suitName:h.suitName,startedAt:h.startedAt,endedAt:h.endedAt,emailed:h.emailed,emailError:h.emailError}))};
 }
 /** Start recording for a suit in this hall (the one named, else the suit you are in, else ask). */
-function startMeeting(id){
+function startMeeting(id,{autoEnd=true}={}){
   if(meetings.m)throw Error(meetings.m.ending?'The last meeting is still being written up. Give it a moment.':`Already recording the ${meetings.m.suitName} meeting, ${addr()}.`);
   const theme=workstations.activeTheme;const suitId=id||(machine?.value?.state==='MODULE'?machine.value.selected:null);
   if(!suitId){broadcast('meeting',{type:'ask',info:meetingInfo()});say(`Which suit is the meeting for, ${addr()}?`);return false;}
   const suit=workstations.suit(String(suitId),theme);
   const mt=meetings.start({theme,hallName:workstations.theme(theme).name,suitId:suit.id,suitName:suit.name,suitFolder:suit.folder});
+  if(autoEnd)callWatcher?.start();
   broadcast('meeting',{type:'start',meeting:mt,info:meetingInfo()});
   clearTimeout(meetingWatch);
   meetingWatch=setTimeout(()=>{if(meetings.m?.id===mt.id&&!meetings.m.sources.length){meetings.discard();broadcast('meeting',{type:'failed',error:'The recording did not start.',info:meetingInfo()});say(`I couldn't start the recording, ${addr()}.`);}},12000);
   say(`Recording the ${suit.name} meeting, ${addr()}. Do let everyone know it's being recorded.`);
   return true;
 }
-/** End: the window hands over its last audio, the speech engine catches up, Claude summarises, Gmail sends. */
+/** End: flush audio, write decisions and actions, then save the follow-up for review. */
 async function endMeeting(){
-  if(!meetings?.active)return false;
-  const id=meetings.m.id;
+  if(!meetings?.active||meetingFlush)return false;
+  const id=meetings.m.id;callWatcher?.stop();
   await new Promise(resolve=>{meetingFlush={id,resolve};broadcast('meeting',{type:'stop',id});setTimeout(resolve,8000);});
   meetingFlush=null;
-  say(`Wrapping up the meeting, ${addr()}. I'll send you the notes.`);
+  say(`Wrapping up the meeting, ${addr()}. I'll save the notes and prepare a follow-up for your approval.`);
   const m=await meetings.finish();if(!m)return false;
   const s=settings.get().meeting||{},when=new Date(m.startedAt);
   const date=when.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}),time=when.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
   broadcast('meeting',{type:'status',text:'Writing the summary…'});
-  let summary='';const key=readTowerKey();
+  let summary='',notes=null,workPlan=[];const key=readTowerKey();
   if(!m.transcript.trim())m.warnings.push('Nothing was transcribed. Check the microphone and that an English Windows speech recognizer is installed.');
   else{
-    const system='You write concise meeting notes. The transcript comes from offline speech recognition and contains recognition mistakes: read through them sensibly, but never invent names, numbers or decisions that are not there. British English, Markdown.';
-    const prompt=`Meeting for the "${m.suitName}" workstation (${m.hallName}), ${date} at ${time}, ${clock(m.duration)} long.\n\nWrite these sections: ## Summary (three to five sentences), ## Decisions, ## Action items (with the owner when it is clear), ## Open questions. Leave out a section if there is nothing for it.\n\nTRANSCRIPT:\n${m.transcript.slice(0,150000)}`;
+    const system='You write concise British English meeting notes from imperfect offline transcription. '+MEETING_PROMPT+' '+meetingWorkPrompt(core?.meetingWork.catalog()||{suits:[],floors:[]});
+    const prompt=`Meeting for the "${m.suitName}" workstation (${m.hallName}), ${date} at ${time}, ${clock(m.duration)} long.\n\nExtract the decisions, action owners and deadlines. ${MEETING_PROMPT}\n\nTRANSCRIPT:\n${m.transcript.slice(0,150000)}`;
     // the tower's API key when there is one, otherwise Claude Code on your own Claude plan
     try{
-      if(key)summary=(await callApi({key,model:tower.settings().plannerModel,maxTokens:1500,system,prompt})).text;
-      else if((await detectClaudeCode()).ready)summary=(await callClaudeCode({settingsDir:userDir,cwd:m.folder,model:'sonnet',maxTurns:2,prompt:`${system}\n\nReply with the notes only, as Markdown. Do not create or change any files.\n\n${prompt}`})).text;
+      if(key){if(core&&core.store.budgetLeft()<.10)throw Error('The daily summary budget is used up.');const result=await callApi({key,model:tower.settings().plannerModel,maxTokens:5000,system,prompt});summary=result.text;core?.store.addSpend(result.cost,'meeting notes');}
+      else if((await detectClaudeCode()).ready)summary=(await callClaudeCode({settingsDir:userDir,cwd:m.folder,model:'sonnet',maxTurns:2,extraArgs:['--tools='],fence:{allow:[],deny:['Read','Write','Edit','Bash','Glob','Grep','NotebookEdit','WebSearch','WebFetch','Agent','Task']},prompt:`${system}\n\nReply with the requested JSON only. Do not create or change any files.\n\n${prompt}`})).text;
       else m.warnings.push('No summary: install Claude Code, or add a Claude API key in the tower (Engines).');
-    }catch(e){m.warnings.push('No summary this time: '+e.message);}
+      if(summary){const data=extractJson(summary);notes=meetingNotes(data,m.transcript);workPlan=data.work;summary=notes.markdown;}
+    }catch(e){summary='';m.warnings.push('No summary this time: '+e.message);}
   }
   const sources=m.sources.includes('system')?'your microphone and the call audio':'your microphone only';
-  const markdown=[`# Meeting notes: ${m.suitName}`,'',`**${m.hallName}** · ${date}, ${time} · ${clock(m.duration)} · recorded ${sources}`,'',
+  let markdown=[`# Meeting notes: ${m.suitName}`,'',`**${m.hallName}** · ${date}, ${time} · ${clock(m.duration)} · recorded ${sources}`,'',
     ...m.warnings.map(w=>'> '+w),m.warnings.length?'':null,summary||null,summary?'':null,'## Full transcript','','_Transcribed offline by Windows speech recognition, so expect some mistakes._','',
     m.transcript||'(Nothing was transcribed.)','',`Recording: ${fs.existsSync(m.recording)?m.recording:'not saved'}`,''].filter(x=>x!==null).join('\n');
-  let emailed=false,emailError=null;const pass=gmailPassword();
-  if(s.to&&s.from&&pass){
-    broadcast('meeting',{type:'status',text:'Emailing '+s.to+'…'});
-    const text=[`Meeting notes for ${m.suitName} (${m.hallName})`,`${date}, ${time} · ${clock(m.duration)}`,'',summary||'(No summary this time.)','',
-      'The full transcript is attached.',fs.existsSync(m.recording)?'The recording is saved on your PC at:\n'+m.recording:'','','JARVIS'].join('\n');
-    try{await sendGmail({user:s.from,password:pass,to:s.to,subject:`Meeting notes: ${m.suitName} · ${when.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} ${time}`,text,
-      attachments:[{name:`${m.suitName.replace(/[^\w .-]/g,'')} meeting ${when.toISOString().slice(0,10)}.txt`,type:'text/plain; charset=UTF-8',content:markdown}]});emailed=true;}
-    catch(e){emailError=e.message;log('meeting',e.message);}
-  }else emailError='Gmail is not set up yet. Open the meeting panel to add it.';
-  const file=meetings.record(m,{markdown,emailed,emailError});
-  broadcast('meeting',{type:'done',file,emailed,emailError,to:s.to,info:meetingInfo()});
-  say(emailed?`The ${m.suitName} meeting notes are in your inbox, ${addr()}.`:`The ${m.suitName} meeting is saved, ${addr()}, but I couldn't email it.`);
+  let followup=null;
+  if(notes)try{followup=meetingFollowups.capture(m,notes,s.to||'');broadcast('todos',todos.list());}catch(e){markdown+='\n> Action items or draft could not be saved: '+e.message+'\n';log('meeting',e.message);}
+  const file=meetings.record(m,{markdown,emailed:false,emailError:null});
+  if(notes&&core)try{const plan=core.meetingWork.capture(m,workPlan);broadcast('core',{type:'meeting-work-ready',id:m.id,count:plan.tasks.length});}catch(e){log('meeting','Follow-through: '+e.message);}
+  broadcast('meeting',{type:'done',file,emailed:false,draft:!!followup,emailError:followup?'Follow-up saved for your review. Nothing has been sent.':'Transcript saved; no follow-up draft could be produced.',to:s.to,info:meetingInfo()});
+  say(`The ${m.suitName} meeting notes are saved, ${addr()}. ${followup?'The action items are in your to-dos. Review the follow-up in Routines before sending.':'Please check the transcript.'}`);
   return true;
 }
 /* ---------- where was I: last visit, tabs, folder and a one-line note per suit ---------- */
@@ -549,7 +553,7 @@ function towerView(t){
     :tw.model?.band?{kind:'stand-in',band:tw.model.band}:null;
   return {workflows:tower.workflows(t).map(({example,...w})=>w),metrics:tower.metrics(t),theme:t,name:tw.name,owner:tw.owner||'',org:tw.org||'',head:tw.head,model:mdl,settings:tower.settings(),root:tower.root,
     floors:tw.floors.map(f=>({...f,folder:tower.folder(t,f),knowledge:tower.knowledge(t,f),agents:f.agents.map(a=>({...a,rank:rankFor(a.xp)}))})),
-    runs:tower.runs.filter(r=>r.theme===t).slice(-40).reverse(),active:towerRunner.active(t).map(r=>r.id),
+    runs:tower.runs.filter(r=>r.theme===t).slice(-80).reverse(),active:towerRunner.active(t).map(r=>r.id),
     spent:Object.fromEntries(tw.floors.map(f=>[f.id,Math.round(towerRunner.spentToday(t,f.id)*100)/100])),ideas:ideas.list().map(i=>({id:i.id,title:i.title,progress:i.progress}))};
 }
 function insideTower(p){const f=path.resolve(String(p||''));return f.startsWith(path.resolve(tower.root)+path.sep)?f:null;}
@@ -566,6 +570,7 @@ function statusReport(){
   return parts.join(' ');
 }
 function dispatch(action,id,opts={}){
+  if(action==='product-studio'){displays?.work?.focus();broadcast('core',{type:'workspace-command',command:'studio'});return true;}
   if(typeof action==='string'&&action.startsWith('core-')){if(!core)return false;core.voice(action,opts).catch(e=>{log('brain',e.message);say(e.message);});if(action==='core-bedtime')setTimeout(()=>{if(machine?.value?.state&&machine.value.state!=='IDLE')dispatch('standdown');},6500);return true;}
   if(TALK.includes(action)){if(action==='status'&&machine?.value?.state==='IDLE')return false;return talk(action,opts);}
   if(action==='settings'){openSettings();return true;}
@@ -633,7 +638,8 @@ async function applySettings(patch){
   if(['mainDisplay','controlDisplay','singleScreen','thirdScreen','wallpaper'].some(k=>k in patch&&before[k]!==result[k]))await displays.rebuild();
   return result;
 }
-function addMedia(file){const id=crypto.randomUUID();mediaFiles.set(id,file);return {id,name:path.basename(file),url:`jarvis://media/${id}/${encodeURIComponent(path.basename(file))}`,type:/\.(mp4|webm|mov|m4v)$/i.test(file)?'video':/\.(png|jpe?g|webp|gif)$/i.test(file)?'image':'audio'};}
+const mediaIds=new Map();
+function addMedia(file){const id=mediaIds.get(file)||crypto.randomUUID();mediaIds.set(file,id);mediaFiles.set(id,file);return {id,name:path.basename(file),url:`jarvis://media/${id}/${encodeURIComponent(path.basename(file))}`,type:/\.(mp4|webm|mov|m4v)$/i.test(file)?'video':/\.(png|jpe?g|webp|gif)$/i.test(file)?'image':'audio'};}
 async function choose({type}){
   const filters=type==='startup-video'?[{name:'Video',extensions:['mp4','webm','m4v','mov']}]:type==='startup-sound'||type==='transition-sound'?[{name:'Audio',extensions:['mp3','wav','ogg','m4a','flac']}]:type==='transition-video'?[{name:'Video',extensions:['mp4','webm','m4v','mov']}]:type==='media'?[{name:'Media',extensions:['mp3','wav','ogg','m4a','flac','mp4','webm','m4v','png','jpg','jpeg','webp','gif']}]:type==='jae'?[{name:'Jae asset',extensions:['glb','png','webp','webm']}]:type==='armor'?[{name:'3D armor',extensions:['glb']}]:undefined;
   const res=await dialog.showOpenDialog({properties:type==='folder'?['openDirectory']:type==='media'?['openFile','multiSelections']:['openFile'],filters});if(res.canceled)return [];
@@ -649,7 +655,12 @@ async function launch(id){
   else {const target=entry.type==='documents'?app.getPath('documents'):entry.target;if(!path.isAbsolute(target))throw Error('Choose an absolute file path.');const error=await shell.openPath(target);if(error)throw Error(error);}
   return true;
 }
-function applyDurations(s){if(machine)machine.durations=s.startup.enabled&&(s.startup.video||s.startup.sound)?introDurations(s.startup.seconds):{...DURATIONS};}
+function applyDurations(s){if(machine)machine.durations=workDurations(s);}
+function workspaceShortcut(command,id=tabs?.active){
+  try{if(['menu','address','new'].includes(command)){displays?.work?.focus();displays?.work?.webContents.focus();broadcast('core',{type:'workspace-command',command,id});return;}
+    if(machine?.value.state!=='MODULE')return;if(command==='close')tabs.close(id);else if(command==='reopen')tabs.reopen();else{const list=tabs.list().filter(t=>!t.popped),i=list.findIndex(t=>t.id===id);if(list.length)tabs.activate(list[(i+(command==='previous'?-1:1)+list.length)%list.length].id);}
+  }catch(e){log('workspace',e.message);broadcast('core',{type:'workspace-error',message:e.message});}
+}
 let pendingDirect=false;
 function directHall(){if(!mainReady){pendingDirect=true;displays?.setActive(true);return;}displays?.setActive(true);machine.dispatch('debug-hall');}
 function refreshModules(){modules=workstations.modules();if(machine)machine.modules=modules;}
@@ -932,6 +943,32 @@ async function api(event,method,payload){
     case 'voice-command':{const text=String(payload).slice(0,500);status.commandHistory.unshift({time:Date.now(),text});status.commandHistory=status.commandHistory.slice(0,50);const command=parseCommand(text,voiceContext());if(command){if(dispatch(command.action,command.id,command))followUntil=Date.now()+12000;}broadcast('status',getStatus());return {handled:!!command};}
     case 'ai-key':{if(typeof payload!=='string'||payload.length>4000)throw Error('Invalid API key.');if(!safeStorage.isEncryptionAvailable()||(process.platform==='linux'&&safeStorage.getSelectedStorageBackend()==='basic_text'))throw Error('Secure credential storage unavailable.');const f=path.join(userDir,'ai-key.enc');if(!payload){if(fs.existsSync(f))fs.unlinkSync(f);}else fs.writeFileSync(f,safeStorage.encryptString(payload));return true;}
     case 'ai-chat':{if(!Array.isArray(payload)||payload.length>40||payload.some(m=>!['user','assistant'].includes(m.role)||typeof m.content!=='string'||m.content.length>10000))throw Error('Invalid conversation.');let key='';try{key=safeStorage.decryptString(fs.readFileSync(path.join(userDir,'ai-key.enc')));}catch{}return askAI(settings.get().ai,key,payload);}
+    case 'desk-folder': {if(role!=='main'||!core)throw Error('Open Work desk on the main screen.');const r=await dialog.showOpenDialog({title:'Choose documents to search',defaultPath:core.workDesk.library.root(),properties:['openDirectory']});if(r.canceled)return null;core.store.save({workDesk:{folder:fs.realpathSync(r.filePaths[0])}});core.workDesk.library.cache.clear();core.workDesk.library.sources.clear();return core.workDesk.options();}
+    case 'desk-logo': {if(role!=='main'||!core)throw Error('Open Work desk on the main screen.');const r=await dialog.showOpenDialog({title:'Choose a business logo',properties:['openFile'],filters:[{name:'Images',extensions:['png','jpg','jpeg']}]});if(r.canceled)return null;const f=r.filePaths[0];if(fs.statSync(f).size>4*1024*1024)throw Error('Logo must be below 4 MB.');let im=nativeImage.createFromPath(f);if(im.isEmpty())throw Error('That image could not be read.');im=im.resize({width:Math.min(600,im.getSize().width)});core.workDesk.data.brand.logo=im.toDataURL();core.workDesk.save();return core.workDesk.options();}
+    case 'workspace-list': {if(role!=='main')throw Error('Open Work on the main display.');return {suits:workstations.themes.flatMap(t=>workstations.modules(t.id).map(s=>({id:s.id,name:s.name,theme:t.id,hall:t.name}))),tabs:tabs.list(),quick:settings.get().quickWork,inside:machine.value.state==='MODULE',closed:tabs.closed.length};}
+    case 'workspace-suit': {if(role!=='main')throw Error('Use the main display.');workstations.suit(payload.id,payload.theme);if(payload.theme!==workstations.activeTheme)setTheme(payload.theme,{fast:true});return dispatch('select',payload.id);}
+    case 'workspace-shortcut': {if(role!=='main'||!['reopen','close','next','previous'].includes(payload?.command))throw Error('Unknown shortcut.');return workspaceShortcut(payload.command,payload.id||tabs.active);}
+    case 'studio-key': {if(role!=='main'||!core)throw Error('Use Product Studio on the main display.');const key=String(payload||'').trim();if(key&&(key.length>400||!/^[A-Za-z0-9_=-]{8,200}:[A-Za-z0-9_=-]{8,300}$/.test(key)))throw Error('Enter API key ID and secret separated by a colon.');core.store.setSecret('higgsfieldKey',key);return !!key;}
+    case 'studio-photo': {if(role!=='main'||!core)throw Error('Use Product Studio on the main display.');const r=await dialog.showOpenDialog({title:'Choose a product photo',properties:['openFile'],filters:[{name:'Product photo',extensions:['png','jpg','jpeg']}]});if(r.canceled)return null;const f=r.filePaths[0];if(fs.statSync(f).size>6*1024*1024)throw Error('Choose a photo below 6 MB.');return core.studio.capture(fs.readFileSync(f));}
+    case 'studio-capture': {if(role!=='main'||!core)throw Error('Use Product Studio on the main display.');return core.studio.capture(payload);}
+    case 'tabs-address': {if(role!=='main'||machine.value.state!=='MODULE')throw Error('Open a suit first.');return tabs.address(payload.id,String(payload.url));}
+    case 'desk-photo': {if(role!=='main'||!core)throw Error('Open Work desk on the main screen.');const r=await dialog.showOpenDialog({title:'File a receipt, whiteboard or business card',properties:['openFile'],filters:[{name:'Photos',extensions:['png','jpg','jpeg']}]});if(r.canceled)return null;const f=r.filePaths[0];if(fs.statSync(f).size>4*1024*1024)throw Error('Photo must be below 4 MB.');return core.photos.import(fs.readFileSync(f),/\.png$/i.test(f)?'image/png':'image/jpeg');}
+    case 'workbench':{
+      if(role!=='main')throw Error('Open the work shelf on the main screen.');
+      if(!towerRunner||!tabs||!missions)throw Error('The workspace is still starting.');
+      workbench ||= new Workbench({dir:userDir,workstations,tower,runner:towerRunner,tabs,missions,core:()=>core});
+      const p=payload||{};
+      if(p.action==='attention')return workbench.attention();
+      if(p.action==='options')return workbench.options();
+      if(p.action==='capture')return tabs.excerpt(String(p.id||''));
+      if(p.action==='draft')return workbench.draft(String(p.id||''));
+      if(p.action==='save')return workbench.put(p.draft||{});
+      if(p.action==='start')return workbench.start(String(p.id||''));
+      if(p.action==='remove')return workbench.remove(String(p.id||''));
+      if(p.action==='seen')return workbench.acknowledge(String(p.id||''));
+      if(p.action==='mission'){const row=boardFor(p.theme).find(m=>m.id===p.id);if(!row)throw Error('That suit no longer exists.');const {agent,env,...safe}=row;return safe;}
+      throw Error('Unknown work shelf action.');
+    }
     case 'workstations':return workstations.describe();
     case 'board':return boardFor(payload?.theme);
     case 'board-save':{if(!payload||typeof payload.id!=='string')throw Error('Choose a bay.');const t=payload.theme||workstations.activeTheme;missions.set(t,payload.id,payload.patch||{});deckUpdate(t,payload.id);return boardFor(t);}   // an open control deck tab refreshes too
@@ -961,6 +998,7 @@ async function api(event,method,payload){
     case 'tabs-navigate':{if(!['back','forward','reload','external'].includes(payload?.command))throw Error('Unknown tab command.');return tabs.navigate(String(payload.id),payload.command);}
     case 'tabs-layout':{if(role!=='main')return false;if(!payload||typeof payload!=='object')throw Error('Invalid layout.');tabs.setLayout(payload);return true;}
     case 'tabs-show':{if(role!=='main')return false;tabs.show(!!payload);return true;}
+    case 'tabs-occluded':if(role!=='main')throw Error('Only the main display controls tab overlays.');tabs.cover(payload===true);return true;
     case 'tabs-state':return !!tabs.shown;
     case 'geo-home':{const w=settings.get().weather||{};return w.enabled&&Number.isFinite(w.latitude)&&Number.isFinite(w.longitude)?{name:w.place||'Home',lat:w.latitude,lon:w.longitude}:{name:'Leeds',lat:53.8008,lon:-1.5491};}
     case 'geo-search':return geoSearch(String(payload?.q||'').slice(0,160));
@@ -1081,7 +1119,7 @@ async function api(event,method,payload){
     }
     case 'ideas-choose-source':{const res=await dialog.showOpenDialog({title:'Choose your JARVIS source folder',properties:['openDirectory']});if(res.canceled||!res.filePaths[0])return null;const p=res.filePaths[0];if(!IdeaAssistant.isRepo(p))throw Error('That folder is not the JARVIS source (a git folder with src/main/main.js).');const cur=settings.get().ideas||{};await applySettings({ideas:{sourceRepo:p,nightly:cur.nightly!==false}});return p;}
     case 'ideas-claude':{if(role!=='main')return false;return ideaClaude(event.sender,payload);}
-    case 'tabs-popout':{if(role!=='main')throw Error('Move tabs from the main screen.');const id=String(payload?.id||'');const o={};if(Number.isInteger(payload?.displayId))o.displayId=payload.displayId;if(Number.isInteger(payload?.display))o.display=payload.display;if(Number.isFinite(payload?.x)&&Number.isFinite(payload?.y)){o.x=payload.x;o.y=payload.y;}const moved=tabs.popOut(id,o);if(moved){try{const suit=workstations.suit(machine.value.selected);observeWork('move',{theme:workstations.activeTheme,id:suit.id,name:suit.name,suit:true});}catch{}}return moved;}
+    case 'tabs-popout':{if(role!=='main')throw Error('Move tabs from the main screen.');const id=String(payload?.id||'');const o={area:typeof payload?.area==='string'?payload.area:'full'};if(Number.isInteger(payload?.displayId))o.displayId=payload.displayId;if(Number.isInteger(payload?.display))o.display=payload.display;if(Number.isFinite(payload?.x)&&Number.isFinite(payload?.y)){o.x=payload.x;o.y=payload.y;}const moved=tabs.popOut(id,o);if(moved){try{const suit=workstations.suit(machine.value.selected);observeWork('move',{theme:workstations.activeTheme,id:suit.id,name:suit.name,suit:true});}catch{}}return moved;}
     case 'tabs-dock':return tabs.dock(String(payload));
     case 'tabs-displays':return tabs.displays();
     case 'link-open-on':{   // a link tile on the suit page, opened on the screen picked for it
@@ -1166,7 +1204,7 @@ async function api(event,method,payload){
     case 'clear-cache':await session.defaultSession.clearCache();return true;
     case 'reset-settings':{const response=await dialog.showMessageBox({type:'question',buttons:['Cancel','Reset settings'],defaultId:0,cancelId:0,message:'Reset JARVIS settings?',detail:'Your local calendar and imported assets are kept.'});if(response.response===1){await applySettings(structuredClone(defaults));openSettings();}return true;}
     case 'meeting-state':return meetingInfo();
-    case 'meeting-start':return startMeeting(typeof payload?.id==='string'?payload.id:null);
+    case 'meeting-start':return startMeeting(typeof payload?.id==='string'?payload.id:null,{autoEnd:payload?.autoEnd!==false});
     case 'meeting-end':{if(!meetings.active)return false;endMeeting().catch(e=>log('meeting',e.message));return true;}
     case 'meeting-source':{if(role!=='main')throw Error('Meetings record from the main window.');const src=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:0,height:0}});return src[0]?.id||null;}
     case 'meeting-capturing':{if(role!=='main')return false;clearTimeout(meetingWatch);const sources=(Array.isArray(payload?.sources)?payload.sources:[]).filter(x=>['mic','system'].includes(x));return meetings.capturing(String(payload?.id||''),sources);}
@@ -1183,7 +1221,7 @@ async function api(event,method,payload){
       if(payload?.forget){try{fs.unlinkSync(gmailFile());}catch{}}
       await applySettings({meeting:{to,from}});return meetingInfo();
     }
-    case 'meeting-test-email':{const s=settings.get().meeting||{},pass=gmailPassword();if(!s.to||!s.from||!pass)throw Error('Add the Gmail address and app password first.');await sendGmail({user:s.from,password:pass,to:s.to,subject:'JARVIS meeting notes: test',text:'This is a test from JARVIS. Meeting notes will arrive like this when you end a meeting.\n\nJARVIS'});return true;}
+    case 'meeting-test-email':{const s=settings.get().meeting||{},pass=gmailPassword();if(!s.to||!s.from||!pass)throw Error('Add the Gmail address and app password first.');await sendGmail({user:s.from,password:pass,to:s.to,subject:'JARVIS meeting notes: test',text:'This is a test from JARVIS. Meeting follow-ups are sent only after you approve them.\n\nJARVIS'});return true;}
     case 'meeting-open':{const h=meetings.find(String(payload?.id||''));if(!h)throw Error('That meeting is no longer in the history.');const target=payload?.what==='folder'?h.folder:h.transcript;if(!fs.existsSync(target))throw Error('That file has been moved or deleted.');const err=await shell.openPath(target);if(err)throw Error(err);return true;}
     case 'quit':app.quit();return true;
     default:throw Error('Unsupported request.');
@@ -1217,7 +1255,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     workstations=new WorkstationStore({configFile:path.join(root,'config','themes.json'),dir:userDir,log});try{const s3=workstations.suit('im3','ironman');if(s3&&/^\s*(bay\s*0?3|mark\s*(16|xvi)|mk[\s-]*16)\s*$/i.test(s3.name||''))workstations.saveSuit('im3',{name:'Mark XXXIX'},'ironman');}catch(e){log('suits',e.message);}try{const s4=workstations.suit('bc8','batcave');if(s4&&/^\s*(cowl\s*0?4|doomsday(\s*bat)?)\s*$/i.test(s4.name||''))workstations.saveSuit('bc8',{name:'Absolute Batman'},'batcave');}catch(e){log('suits',e.message);}   /* v9.16: the fourth Batcave case is Absolute Batman */   /* v9.14: the third chamber is the Mark XXXIX now */
     modules=workstations.modules();
     missions=new MissionStore({dir:userDir});
-    runner=new AgentRunner({missions,onUpdate:deckUpdate,log});
+    runner=new AgentRunner({missions,onUpdate:deckUpdate,onBuild:()=>broadcast('core',{type:'reaction',kind:'build-passed',at:Date.now()}),log});
     deck=new ControlServer({missions,runner,board:boardFor,run:runBay,changed:t=>{try{if(workstations.themes.some(x=>x.id===t))broadcast('board',{theme:t,bays:boardFor(t)});}catch(e){log('control',e.message);}},hallName:id=>{try{return workstations.theme(id).name;}catch{return id;}},log});
     await deck.listen();
     voice=new WindowsVoice({scripts,assets,dir:userDir,grammar:()=>buildGrammar(voiceContext()),names:()=>spokenNames(voiceContext()),onClap:()=>{if(machine?.value?.state==='IDLE'){log('voice','double clap: waking');dispatch('wake');}},onMeter:m=>{broadcast('voice-meter',{level:voice.level,detected:!!m.detected,recognizer:voice.recognizer,audioState:voice.audioState});},onCommand:(text,confidence,rejected,meta={})=>{const heard=text||rejected||'';let command=text?parseCommand(text,voiceContext()):null;let handled=false,why='';if(text)lastUserAction=Date.now();
@@ -1240,7 +1278,9 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       if(machine)machine.previous=s.state;
     }});
     layout=new WindowLayout({scripts,log});
-    meetings=new MeetingManager({dir:userDir,docs:app.getPath('documents'),scripts,log,onUpdate:st=>broadcast('meeting',{type:'state',state:st})});
+    meetings=new MeetingManager({dir:userDir,docs:app.getPath('documents'),scripts,log,onUpdate:st=>{if(!st.active)callWatcher?.stop();broadcast('meeting',{type:'state',state:st});}});
+    meetingFollowups=new MeetingFollowups({dir:userDir,todos,core:()=>core});
+    callWatcher=new CallWatcher({scripts,tabs:()=>tabs,onEnd:()=>endMeeting(),log});
     tower=new TowerStore({dir:userDir,docs:app.getPath('documents')});towerRunner=new TowerRunner({store:tower,getKey:readTowerKey,onUpdate:towerUpdate,onDone:towerDone,log});setInterval(towerNightShift,30000);setTimeout(towerNightShift,20000);
     assistant=new IdeaAssistant({ideas:()=>ideas,tower:()=>tower,runner:()=>towerRunner,workstations:()=>workstations,board:t=>boardFor(t),readKey:readTowerKey,settings:()=>settings.get(),
       dir:userDir,appRoot:root,desktop:app.getPath('desktop'),log,broadcast,say:t=>say(t),addr:()=>addr(),notify:(title,body)=>{try{if(Notification.isSupported()&&!focusActive()&&!meetings?.active)new Notification({title,body}).show();}catch{}}});
@@ -1250,13 +1290,16 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       pcAwake:()=>machine?.value?.state!=='IDLE',isIdle:()=>machine?.value?.state==='IDLE'&&Date.now()-lastUserAction>5*60000,
       getKey:readTowerKey,crypt:{available:()=>safeStorage.isEncryptionAvailable()&&!(process.platform==='linux'&&safeStorage.getSelectedStorageBackend()==='basic_text'),encrypt:t=>safeStorage.encryptString(t),decrypt:b=>safeStorage.decryptString(b)},
       fetch:(u,o)=>net.fetch(u,o),settings:{get:()=>settings.get(),apply:p=>applySettings(p),validate:p=>validateSettings(p,settings.get())},
-      todos,calendar,ideas,tower,towerRunner,towerLobby:(text,hall)=>towerLobby(text,hall&&workstations.themes.some(t=>t.id===hall)?hall:workstations.activeTheme),
+      todos,calendar,ideas,tower,towerRunner,meetingFollowups,scripts,assets,workstations,photoIntake:true,routinesEnabled:true,
+      mediaUrl:file=>addMedia(file).url,
+      normalisePhoto:bytes=>{let im=nativeImage.createFromBuffer(bytes);if(im.isEmpty())throw Error('The photo could not be decoded.');const size=im.getSize();if(size.width*size.height>32e6)throw Error('Photo dimensions are too large.');im=im.resize(size.width>=size.height?{width:Math.min(1400,size.width)}:{height:Math.min(1400,size.height)});return im.toJPEG(85);},
+      printDocument:async(file,out)=>{const w=new BrowserWindow({show:false,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,partition:'proposal-print-'+Date.now()}});w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());try{await w.loadFile(file);writeText(out,await w.webContents.printToPDF({printBackground:true,preferCSSPageSize:true}));}finally{w.destroy();}},openFile:async file=>{const error=await shell.openPath(file);if(error)throw Error(error);return true;},sendMeeting:async p=>{if(core?.mail.ready())return core.mail.sendNew(p);const cfg=settings.get().meeting||{},password=gmailPassword();if(!cfg.from||!password)throw Error('Connect email in JARVIS Core or Meeting settings first.');await sendGmail({user:cfg.from,password,to:p.to,subject:p.subject,text:p.text});},towerLobby:(text,hall)=>towerLobby(text,hall&&workstations.themes.some(t=>t.id===hall)?hall:workstations.activeTheme),
       briefing:()=>briefingData('briefing'),weather:briefWeather,health:()=>checkHealth(),openUrl:(url,title)=>broadcast('hologram',{kind:'link',url,title}),
       keepAwake:on=>{try{if(on&&awakeBlock===null)awakeBlock=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awakeBlock!==null){powerSaveBlocker.stop(awakeBlock);awakeBlock=null;}}catch(e){log('brain',e.message);}},
       relaunch:()=>{app.relaunch();app.quit();},logFile:path.join(userDir,'jarvis.log')});core.start();}catch(e){core=null;coreError=String(e?.message||e);log('brain','JARVIS Core did not start: '+(e?.stack||e?.message));if(BOOT?.version&&!e?.code)BOOT.markBad?.(`JARVIS Core did not start: ${coreError.slice(0,200)}`);}   /* a code fault rolls the update back; a disk or permission problem (e.code) would fail on any version */
     panels=new PanelManager({window:()=>displays?.work,onChange:list=>broadcast('panels',list),log});
     deckPanels=new PanelManager({window:()=>displays?.console,onChange:list=>broadcast('deck',{type:'panels',list}),log});
-    tabs=new TabManager({window:()=>displays?.work,onChange:list=>{broadcast('tabs',list);scheduleSessionSave(list);},log});
+    tabs=new TabManager({onShortcut:workspaceShortcut,window:()=>displays?.work,onChange:list=>{broadcast('tabs',list);scheduleSessionSave(list);},log});
     applyDurations(settings.get());scheduleHealth();
     displays=new DisplayManager({settings:()=>settings.get(),create:createWindow,load:loadWindow,scripts,log,onConsoleGone:deckGone,onChange:()=>{broadcast('status',getStatus());broadcast('settings',settings.get());broadcast('deck',{type:'info',...deckInfo()});}});
     ipcMain.handle('jarvis:call',async(event,method,payload)=>{try{return await api(event,method,payload);}catch(e){log('request',`${method}: ${e.message}`);throw e;}});

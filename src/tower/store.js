@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import {writeJson} from '../brain/util.js';
 import {SEED} from './seed.js';
 import {briefOf, usefulness} from './productivity.js';
 
@@ -59,9 +60,9 @@ export class TowerStore {
   }
   flush() {
     fs.mkdirSync(path.dirname(this.file), {recursive: true});
-    fs.writeFileSync(this.file + '.tmp', JSON.stringify(this.data, null, 2)); fs.renameSync(this.file + '.tmp', this.file);
+    writeJson(this.file, this.data, 2);
     this.runs = this.runs.slice(-80);
-    fs.writeFileSync(this.runsFile + '.tmp', JSON.stringify(this.runs, null, 1)); fs.renameSync(this.runsFile + '.tmp', this.runsFile);
+    writeJson(this.runsFile, this.runs, 1);
   }
   tower(theme) { const t = this.data.towers[theme]; if (!t) throw Error('No tower for this hall.'); return t; }
   floor(theme, id) { const f = this.tower(theme).floors.find(x => x.id === id); if (!f) throw Error('That floor no longer exists.'); return f; }

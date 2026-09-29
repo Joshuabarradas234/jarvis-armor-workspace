@@ -1,0 +1,82 @@
+# JARVIS 1.84.0: smoother work and meeting follow-through
+
+## What's new
+
+- Open Work or press Ctrl+K to find your suits, open tabs, Product Studio, Meeting work and everyday tools in one searchable menu.
+- Use familiar browser shortcuts: Ctrl+L for an address, Ctrl+T for a new tab, Ctrl+W to close, Ctrl+Shift+T to reopen, and Ctrl+Tab or Ctrl+Shift+Tab to move between tabs.
+- Turn on shorter suit transitions in Work when you want to move quickly between jobs; the full cinematic transitions remain available.
+- Product Studio lets you import a product picture or deliberately capture one camera still, save a scene brief, and request a five or ten second silent video.
+- Each clip needs approval before the picture goes to Higgsfield. A live price estimate is checked against your chosen limit and the remaining Core daily allowance.
+- Submitted clips keep their progress when you close the panel. Finished MP4s and their briefs save under Documents → JARVIS → Product Studio.
+- After you stop a recorded meeting, JARVIS uses the transcript and your actual suit descriptions and floor expertise to suggest related work, with a supporting quote for each item.
+- Meeting ideas go to Think, potential proposals go to Work desk as unsent drafts, and clear tasks can be handed to the Tower with a complete brief and source context.
+- Meeting work lets you correct the suit, floor and task details, answer missing questions, dismiss a task, or review starting the ready tasks together.
+- Optional automatic meeting starts queue complete internal tasks as soon as a floor and allowance are available; uncertain matches wait for you.
+- Meeting tasks use text-only Claude API agents, preserve Tower review gates, reserve an estimated allowance and cannot automatically send, publish, edit the app or continue to another floor.
+- Unresolved meeting tasks appear on the attention shelf, alongside finished agent work and approvals.
+- This cumulative update also includes the previously prepared 1.83.0 Work desk, meeting follow-ups, travel, routines, backups, gesture help, suit effects and screen-placement improvements.
+
+## Fixed
+
+- Web pages can no longer cover a modal review screen when a tab finishes loading or its bounds change.
+- Selecting a tab from Work reveals its page even if the suit was showing its launchpad.
+- Closing a tab can be undone within the same suit; moving to another suit clears that temporary history to keep workspaces separate.
+- A late camera-permission response cannot leave the camera running after its capture screen closes.
+- Changed product photos, scene briefs and meeting task plans invalidate old generation or handoff approvals.
+- Interrupted submissions and uncertain task handoffs are marked for checking instead of automatically creating duplicate paid jobs.
+
+## Setup
+
+Open **Work → Product Studio**. Camera capture and scene drafts work locally. Paid video generation needs separate Higgsfield developer API credentials in the form `key_id:key_secret`; a Codex plugin or website subscription is not a substitute. Credentials use Windows encrypted storage and never appear in the preview. The model is Kling 2.5 Turbo Pro image-to-video. Clips are silent and use the reference picture's orientation. Inspect generated product details and labels before sharing.
+
+Open **Work → Meeting work → Starting work** to choose automatic internal drafts or review-first. The default is **review first**, with a US$1 estimated agent allowance per new meeting. Automatic mode requires a Claude API key in Tower Engines and a complete, confidently matched brief. Summary generation uses the existing separate meeting-notes allowance. Reservations are conservative and provider prices may differ from estimates. Incomplete or blocked tasks stay visible for review; JARVIS does not treat guesses as agreed commitments. Configure suit descriptions and floor purposes to improve matching.
+
+Start JARVIS Meeting mode before the call and tell participants it is recording. Stopping transcription prepares the notes and follow-through; calls that were never recorded in JARVIS cannot be analysed. Email follow-ups remain in Routines for review and explicit sending approval. No email is automatically sent by this release.
+
+Work restores saved page addresses when changing suits; it does not preserve unsaved web forms across a suit change. Save that work before switching. Moving an existing tab to a separate screen retains its live page. Background generation checks and queued tasks run while JARVIS is open; sleeping or quitting delays them.
+
+Settings backups now include Product Studio and meeting-work indexes. Back up original pictures, generated clips and exported work separately; the settings archive does not contain those large files. Product Studio currently holds up to 100 projects, and meeting work up to 100 meetings.
+
+## Install
+
+1. Right-click the JARVIS tray icon → Quit.
+2. Back up the current resources folder, then unzip **JARVIS-1.84.0-update.zip** into `%LOCALAPPDATA%\Programs\JARVIS Armor Workspace\resources` and choose Replace.
+3. Start JARVIS. Open Work to find Product Studio and Meeting work.
+
+## Undo
+
+Restore the resources backup or reinstall the previous update ZIP. Tray → RESTART WITHOUT SELF-UPDATES bypasses later self-updates; it does not undo a replaced base release. The v1.80.1 ZIP remains an older fallback.
+
+## Checks
+
+- All 122 JavaScript, MJS and CJS files in src and dist/assets passed node --check.
+- Core dependencies installed with npm install --offline; all 121 core checks passed. The suite was repeated after polling changes.
+- All 182 frontend and feature tests passed. New checks cover exact approvals, photo hashes, spending reservations, uncertain submissions, resumable polling, media limits, camera cleanup, keyboard shortcuts, closed-tab history, modal coverage, transcript evidence, meeting-task matching, missing information, duplicate handoffs, queued floors, internal-only API work and disabled automatic floor handoffs.
+- Isolated browser checks passed for Work search, faster-work preference, photo import, scene editing, saving and requesting approval, web-address entry, meeting review, answering missing brief fields and requesting the combined task approval. Example data and mocked providers were used; no paid generations or live agent tasks were submitted.
+- Windows x64 packaging passed with npx electron-builder --win dir --x64 --config.electronDist=node_modules/electron/dist.
+- app.asar is 29,960,276 bytes (29.96 MB), below 30,000,000. All 182 packaged files were verified; package.json shows version 1.84.0 and main src/main/boot.js.
+- Protected boot.js, preload.cjs, selfupdate.js and approvals.js are unchanged. Version 1.84.0 is deliberate; main and the package build section are unchanged.
+- The existing Control Deck server remains unchanged from v1.80.1, with a runtime check confirming 127.0.0.1, authorised HTTP 200 and unauthorised HTTP 403. No production listener was added. Temporary local test servers were stopped.
+- Not tested live: Higgsfield credentials, price estimates, paid generation and real provider download hosts; a physical camera; Windows voice recognition; a full Teams/Zoom meeting; actual Claude agent dispatch; physical multi-monitor movement; or the installed desktop application. Provider failures remain visible in the saved project or meeting task.
+- The earlier isolated Electron PDF-printing limitation remains: its renderer failed to start. Current HTML export fallback and document-text extraction passed; native PDF printing in the installed app still needs checking.
+- Installing this release is a separate step. Publishing or downloading the ZIP does not replace your running desktop application.
+
+### Update ZIP contents
+
+| File | Size (bytes) |
+| --- | ---: |
+| app.asar | 29,960,276 |
+| windows/listen.ps1 | 17,045 |
+| windows/meeting-state.ps1 | 1,420 |
+| assets/README.md | 1,863 |
+| assets/libraries/pdfjs/LICENSE | 10,174 |
+| assets/libraries/pdfjs/pdf.min.mjs | 518,555 |
+| assets/libraries/pdfjs/pdf.worker.min.mjs | 1,317,034 |
+| assets/libraries/pdfjs/version.json | 285 |
+| assets/vehicles/batmobile.glb | 65,804,356 |
+| assets/wallpaper/batcave-empty.json | 1,337 |
+| assets/wallpaper/batcave-studio.jpg | 678,435 |
+| assets/wallpaper/ironman-empty.json | 1,335 |
+| assets/wallpaper/ironman-studio.jpg | 658,638 |
+| assets/wallpaper/spiderman-empty.json | 1,404 |
+| assets/wallpaper/spiderman-studio.jpg | 861,343 |

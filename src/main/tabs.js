@@ -1,12 +1,24 @@
 import {WebContentsView,BrowserWindow,screen,shell} from 'electron';
+import {workspaceKey} from './workspace-keys.js';
+import {visiblePageExcerpt} from './page-excerpt.js';
+import {snapRect} from '../../dist/assets/window-snap.js';
 const MAX_TABS=12;
 const allowed=url=>{try{const u=new URL(url);return ['https:','http:'].includes(u.protocol)&&!u.username&&!u.password;}catch{return false;}};
 /** Sandboxed browser tabs rendered inside the main workspace window (below the JARVIS tab strip). */
 export class TabManager{
-  constructor({window,onChange,log}){this.window=window;this.onChange=onChange;this.log=log;this.tabs=[];this.active=null;this.layout={x:0,y:0,width:0,height:0};this.shown=true;}
+  constructor({window,onChange,log,onShortcut=()=>{}}){this.onShortcut=onShortcut;this.closed=[];this.window=window;this.onChange=onChange;this.log=log;this.tabs=[];this.active=null;this.layout={x:0,y:0,width:0,height:0};this.shown=true;this.occluded=false;}
   /** A tab whose page was destroyed underneath it (its window rebuilt or closed) is dropped instead of throwing on every update. */
   prune(){const live=this.tabs.filter(t=>{const wc=t.view?.webContents;return !!wc&&!wc.isDestroyed();});if(live.length===this.tabs.length)return;this.tabs=live;if(!live.some(t=>t.id===this.active))this.active=live.find(t=>!t.popped)?.id||null;}
   list(){this.prune();return this.tabs.map(t=>({id:t.id,title:t.view.webContents.getTitle()||t.url,url:t.view.webContents.getURL()||t.url,active:t.id===this.active,loading:t.view.webContents.isLoading(),popped:!!t.popped}));}
+  async excerpt(id){
+    this.prune();const tab=this.tabs.find(t=>t.id===id);if(!tab)throw Error('That tab has closed. Choose another tab.');
+    const wc=tab.view.webContents,url=wc.getURL();if(!allowed(url))throw Error('Choose a web page first.');
+    let timer;try{
+      const result=await Promise.race([wc.executeJavaScript('('+visiblePageExcerpt.toString()+')()',false),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('The page did not respond. Try again after it finishes loading.')),5000);})]);
+      if(wc.isDestroyed()||!this.tabs.includes(tab)||wc.getURL()!==url||result.url!==url)throw Error('The page changed during capture. Select it again.');
+      return {url,title:String(result.title||url).slice(0,160),text:String(result.text||'').slice(0,12000)};
+    }finally{clearTimeout(timer);}
+  }
   win(){const w=this.window();return w&&!w.isDestroyed()?w:null;}
   open(url,activate=true){
     if(!allowed(url))throw Error('Only HTTP and HTTPS pages can open in a tab.');
@@ -15,6 +27,7 @@ export class TabManager{
     const view=new WebContentsView({webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,partition:'persist:jarvis-tabs'}});
     const id=crypto.randomUUID();const tab={id,url,view};this.tabs.push(tab);
     const wc=view.webContents;
+    wc.on('before-input-event',(e,i)=>{const command=workspaceKey(i);if(command){e.preventDefault();this.onShortcut(command,id);}});
     wc.setWindowOpenHandler(({url:target})=>{if(allowed(target)){try{this.open(target,true);}catch(e){this.log('tabs',e.message);}}else this.log('tabs','Blocked popup: '+target);return {action:'deny'};});
     wc.on('will-navigate',(e,target)=>{if(!allowed(target))e.preventDefault();});
     wc.on('will-redirect',(e,target)=>{if(!allowed(target))e.preventDefault();});
@@ -27,13 +40,16 @@ export class TabManager{
     if(activate||!this.active)this.activate(id);else this.apply();
     this.onChange(this.list());return id;
   }
-  activate(id){this.prune();const tt=this.tabs.find(t=>t.id===id);if(!tt)return false;if(tt.popped&&!tt.popped.isDestroyed()){if(tt.popped.isMinimized())tt.popped.restore();tt.popped.focus();return true;}this.active=id;this.apply();this.onChange(this.list());return true;}
-  close(id){const i=this.tabs.findIndex(t=>t.id===id);if(i<0)return false;const [tab]=this.tabs.splice(i,1);if(tab.popped&&!tab.popped.isDestroyed()){const pw=tab.popped;tab.popped=null;tab.closing=true;try{pw.contentView.removeChildView(tab.view);}catch{}pw.destroy();}const win=this.win();try{win?.contentView.removeChildView(tab.view);}catch{}try{tab.view.webContents.close();}catch{}if(this.active===id)this.active=this.tabs[Math.min(i,this.tabs.length-1)]?.id||null;this.apply();this.onChange(this.list());return true;}
-  closeAll(){for(const t of [...this.tabs])this.close(t.id);}
+  activate(id){this.prune();const tt=this.tabs.find(t=>t.id===id);if(!tt)return false;if(tt.popped&&!tt.popped.isDestroyed()){if(tt.popped.isMinimized())tt.popped.restore();tt.popped.focus();return true;}this.active=id;this.apply();this.onChange(this.list().map(t=>({...t,reveal:t.id===id})));return true;}
+  close(id,{remember=true}={}){const i=this.tabs.findIndex(t=>t.id===id);if(i<0)return false;const [tab]=this.tabs.splice(i,1);if(remember){const url=tab.view.webContents.isDestroyed()?tab.url:tab.view.webContents.getURL()||tab.url;if(allowed(url))this.closed=[...this.closed,url].slice(-10);}if(tab.popped&&!tab.popped.isDestroyed()){const pw=tab.popped;tab.popped=null;tab.closing=true;try{pw.contentView.removeChildView(tab.view);}catch{}pw.destroy();}const win=this.win();try{win?.contentView.removeChildView(tab.view);}catch{}try{tab.view.webContents.close();}catch{}if(this.active===id)this.active=this.tabs[Math.min(i,this.tabs.length-1)]?.id||null;this.apply();this.onChange(this.list());return true;}
+  closeAll(){for(const t of [...this.tabs])this.close(t.id,{remember:false});this.closed=[];}
+  reopen(){const url=this.closed.at(-1);if(!url)return false;const id=this.open(url);this.closed.pop();return id;}
+  address(id,url){if(!allowed(url))throw Error('Enter an HTTP or HTTPS address without passwords.');this.prune();const t=this.tabs.find(t=>t.id===id);if(!t)throw Error('That tab has closed.');t.view.webContents.loadURL(url).catch(e=>this.log('tabs',e.message));return true;}
   navigate(id,command){this.prune();const tab=this.tabs.find(t=>t.id===id);if(!tab)return false;const wc=tab.view.webContents;if(command==='back'&&wc.navigationHistory.canGoBack())wc.navigationHistory.goBack();else if(command==='forward'&&wc.navigationHistory.canGoForward())wc.navigationHistory.goForward();else if(command==='reload')wc.reload();else if(command==='external')shell.openExternal(wc.getURL()).catch(e=>this.log('tabs',e.message));return true;}
   setLayout(rect){const r={x:Math.max(0,Math.round(rect.x||0)),y:Math.max(0,Math.round(rect.y||0)),width:Math.max(0,Math.round(rect.width||0)),height:Math.max(0,Math.round(rect.height||0))};this.layout=r;this.apply();}
+  cover(value){this.occluded=!!value;this.apply();}
   show(shown){this.shown=shown;this.apply();}
-  apply(){for(const t of this.tabs){if(t.popped)continue;const on=this.shown&&t.id===this.active&&this.layout.width>0;t.view.setVisible(on);t.view.setBounds(on?this.layout:{x:0,y:0,width:0,height:0});}}
+  apply(){for(const t of this.tabs){if(t.popped)continue;const on=this.shown&&!this.occluded&&t.id===this.active&&this.layout.width>0;t.view.setVisible(on);t.view.setBounds(on?this.layout:{x:0,y:0,width:0,height:0});}}
   /** Screens in reading order: left to right, then top to bottom. Numbered from 1 as the user sees them. */
   displays(){const primary=screen.getPrimaryDisplay().id;return screen.getAllDisplays().slice().sort((a,b)=>a.bounds.x-b.bounds.x||a.bounds.y-b.bounds.y).map((d,i)=>({index:i+1,id:d.id,label:`Screen ${i+1}`,primary:d.id===primary,width:d.size.width,height:d.size.height,bounds:{...d.bounds},current:d.id===(this.win()?screen.getDisplayMatching(this.win().getBounds()).id:primary)}));}
   /**
@@ -41,16 +57,16 @@ export class TabManager{
    * under the mouse where the tab was dropped) and can then be dragged anywhere. Closing that
    * window puts the tab back in the suit rather than losing it.
    */
-  popOut(id,{display,displayId,x,y}={}){
-    const tab=this.tabs.find(t=>t.id===id);if(!tab)return false;
+  popOut(id,{display,displayId,x,y,area='full'}={}){
+    this.prune();const tab=this.tabs.find(t=>t.id===id);if(!tab)return false;
     const all=screen.getAllDisplays().slice().sort((a,b)=>a.bounds.x-b.bounds.x||a.bounds.y-b.bounds.y);
     let d=null;
     if(displayId!==undefined){d=all.find(d=>d.id===displayId);if(!d)throw Error('That screen was disconnected. Choose a connected screen.');}
     else if(Number.isInteger(display)){d=all[display-1];if(!d)throw Error('That screen is no longer connected.');}
     else if(Number.isFinite(x)&&Number.isFinite(y))d=screen.getDisplayNearestPoint({x:Math.round(x),y:Math.round(y)});
     d=d||screen.getPrimaryDisplay();
-    const wa=d.workArea;
-    if(tab.popped&&!tab.popped.isDestroyed()){const w=tab.popped;if(w.isMaximized())w.unmaximize();w.setBounds(wa);w.maximize();w.focus();this.onChange(this.list());return true;}
+    const wa=snapRect(area,d.workArea);if(!wa)throw Error('Choose a valid window layout.');
+    if(tab.popped&&!tab.popped.isDestroyed()){const w=tab.popped;if(w.isMaximized())w.unmaximize();w.setBounds(wa);if(area==='full')w.maximize();w.focus();this.onChange(this.list());return true;}
     const main=this.win();try{main?.contentView.removeChildView(tab.view);}catch{}
     const w=new BrowserWindow({x:wa.x,y:wa.y,width:wa.width,height:wa.height,show:false,autoHideMenuBar:true,backgroundColor:'#0b1219',title:tab.view.webContents.getTitle()||tab.url});
     tab.popped=w;
@@ -59,7 +75,7 @@ export class TabManager{
     w.on('resize',fit);w.on('maximize',fit);w.on('unmaximize',fit);w.on('enter-full-screen',fit);w.on('leave-full-screen',fit);
     tab.view.webContents.on('page-title-updated',(_e,t)=>{if(!w.isDestroyed())w.setTitle(t);});
     w.on('close',()=>{if(tab.closing)return;try{w.contentView.removeChildView(tab.view);}catch{}tab.popped=null;const m=this.win();if(m&&this.tabs.includes(tab)){try{m.contentView.addChildView(tab.view);}catch{}this.active=tab.id;this.apply();}this.onChange(this.list());});
-    w.once('ready-to-show',()=>{});w.maximize();w.show();fit();
+    w.once('ready-to-show',()=>{});if(area==='full')w.maximize();w.show();fit();
     if(this.active===id){const other=this.tabs.find(t=>t.id!==id&&!t.popped);this.active=other?other.id:id;}
     this.apply();this.onChange(this.list());return true;
   }

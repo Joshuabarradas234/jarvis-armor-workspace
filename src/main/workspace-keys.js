@@ -1,0 +1,7 @@
+/** Match only deliberate browser shortcuts, without stealing typing or AltGr. */
+export function workspaceKey(i){
+  if(i.type!=='keyDown'||i.isComposing||i.alt||i.meta||!i.control)return null;
+  const k=String(i.key).toLowerCase();
+  if(i.shift)return k==='t'?'reopen':k==='tab'?'previous':null;
+  return {k:'menu',l:'address',t:'new',w:'close',tab:'next'}[k]||null;
+}

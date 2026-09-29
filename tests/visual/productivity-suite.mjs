@@ -3,7 +3,7 @@ export async function check({win,js,call,sleep,until,out}){
  await call('action',{action:'debug-hall'});
  await until(()=>js('!!window.__jarvisGuide && !!window.__jarvisScreens && !!window.__jarvisTower'));
  await sleep(1000);assert.equal(await js("!!document.querySelector('[data-cal-open]')"),false);
- await js('window.__jarvisGuide.show()');await until(()=>js("document.querySelectorAll('.wt-catalogue article').length===16"));
+ await js('window.__jarvisGuide.show()');await until(()=>js("document.querySelectorAll('.wt-catalogue article').length===24"));
  fs.writeFileSync(path.join(out,'feature-guide.png'),(await win.webContents.capturePage()).toPNG());
  await js("document.querySelector('.wt-guide input').value='workflows';document.querySelector('.wt-guide input').dispatchEvent(new Event('input'));true");
  assert.equal(await js("document.querySelectorAll('.wt-catalogue article').length"),1);await js('window.__jarvisGuide.close()');

@@ -52,6 +52,13 @@ import {briefFields,resultsHtml} from './work-tools.js';
 
   const T = {
     open: false, el: null, view: null, floorId: null, tab: 'work', runs: new Map(), engines: null, openRun: null, clock: 0,
+    async showRun(theme,runId){
+      const v=await call('tower-get',{theme}),r=v.runs.find(r=>r.id===runId);
+      if(!r)throw Error('That result is no longer available in the recent runs. Open its folder from the Tower.');
+      if(hall()!==theme)await call('action',{action:'theme',id:theme,fast:true});
+      await this.show();this.view=v;for(const row of v.runs)this.runs.set(row.id,row);
+      this.floorId=r.floorId;this.openRun=r.id;this.tab='work';this.renderBuilding();this.renderFloor();
+    },
     async show() {
       if (this.open) return this.refresh(); this.open = true;
       window.__jarvisHolo?.pauseAll(true);
@@ -197,7 +204,7 @@ import {briefFields,resultsHtml} from './work-tools.js';
     renderPane() {
       const pane = this.el && $('.tw-pane', this.el); const f = this.floor(); if (!pane || !f) return;
       if (this.tab === 'work') {
-        const live = this.liveRun(f.id); const show = live || (this.openRun && this.runs.get(this.openRun)?.floorId === f.id ? this.runs.get(this.openRun) : null) || this.runsFor(f.id)[0];
+        const live = this.liveRun(f.id); const show = (this.openRun && this.runs.get(this.openRun)?.floorId === f.id ? this.runs.get(this.openRun) : null) || live || this.runsFor(f.id)[0];
         pane.innerHTML = `${live ? '' : `<div class="tw-ask"><textarea class="tw-task" rows="3" maxlength="4000" placeholder="Give ${esc(f.name)} a task…  (Ctrl+Enter to run)" data-resume="${['needs_brief','needs_changes'].includes(show?.status)?esc(show.id):''}">${['needs_brief','needs_changes'].includes(show?.status)?esc(show.task):''}</textarea>
           ${briefFields(f,this.view.workflows||[],show)}<div class="tw-ask-row">${f.example ? `<button type="button" class="tw-chip" data-tw="example" title="${esc(f.example)}">Try the example: ${esc(f.example.slice(0, 70))}…</button>` : '<span></span>'}
             <select class="tw-idea" title="Move an idea card along when this finishes"><option value="">💡 No linked idea</option>${(this.view.ideas || []).map(i => `<option value="${esc(i.id)}" ${f.ideaId === i.id ? 'selected' : ''}>💡 ${esc(i.title.slice(0, 40))} · ${i.progress}%</option>`).join('')}</select>

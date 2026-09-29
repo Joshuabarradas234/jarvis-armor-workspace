@@ -35,10 +35,14 @@ export const DEFAULTS = {
     categories: ['Needs reply', 'Customers', 'Billing', 'Receipts', 'Newsletters', 'Notifications', 'FYI']},
   quiet: {on: true, from: '22:30', to: '06:30'},
   selfImprove: {enabled: true, maxPerNight: 2, autoRestart: 'idle'},   // autoRestart: idle | ask | never
+  meetingWork: {autoStart:false,perMeeting:1},
+  workDesk: {folder:'',personalities:true,photoDrop:true,photoAnalysis:false,photoLimit:1},
+  voiceNotes: {enabled: false, dailyLimit: 0.50},
+  routines: {weekly: true, backup: true, releases: true, zone: Intl.DateTimeFormat().resolvedOptions().timeZone},
   keepAwake: true,
   pcVoice: true,
 };
-const SECRET_KEYS = ['twilioToken', 'callmebotKey', 'emailPassword'];
+const SECRET_KEYS = ['twilioToken', 'callmebotKey', 'emailPassword', 'openaiKey', 'higgsfieldKey'];
 const merge = (base, over) => {
   const out = Array.isArray(base) ? [...base] : {...base};
   for (const [k, v] of Object.entries(over || {})) out[k] = v && typeof v === 'object' && !Array.isArray(v) && base?.[k] && typeof base[k] === 'object' && !Array.isArray(base[k]) ? merge(base[k], v) : v;
@@ -59,6 +63,7 @@ export class BrainStore {
     this.reports = readJson(this.files.reports, []) || [];
     this.alarms = readJson(this.files.alarms, []) || [];
     this.spend = readJson(this.files.spend, {day: dayKey(), usd: 0, byKind: {}}) || {day: dayKey(), usd: 0, byKind: {}};
+    this.spendHistory = readJson(path.join(dir, 'brain-spend-history.json'), {}) || {};
     this.activity = [];
     try { this.activity = fs.readFileSync(this.files.activity, 'utf8').trim().split('\n').slice(-400).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch {}
     this.secretCache = null;
@@ -92,6 +97,11 @@ export class BrainStore {
     if (!e.categories.includes('Needs reply')) e.categories.unshift('Needs reply');
     o.quiet = {on: o.quiet.on !== false, from: HHMM.test(o.quiet.from) ? o.quiet.from : DEFAULTS.quiet.from, to: HHMM.test(o.quiet.to) ? o.quiet.to : DEFAULTS.quiet.to};
     o.selfImprove = {enabled: o.selfImprove.enabled !== false, maxPerNight: Math.max(0, Math.min(5, Math.round(num(o.selfImprove.maxPerNight, 2)))), autoRestart: ['idle', 'ask', 'never'].includes(o.selfImprove.autoRestart) ? o.selfImprove.autoRestart : 'idle'};
+    o.meetingWork={autoStart:o.meetingWork?.autoStart===true,perMeeting:Math.max(.1,Math.min(10,num(o.meetingWork?.perMeeting,1)))};
+    o.workDesk={folder:typeof o.workDesk?.folder==='string'?o.workDesk.folder.slice(0,2048):'',personalities:o.workDesk?.personalities!==false,photoDrop:o.workDesk?.photoDrop!==false,photoAnalysis:o.workDesk?.photoAnalysis===true,photoLimit:Math.max(0,Math.min(10,num(o.workDesk?.photoLimit,1)))};
+    o.voiceNotes = {enabled: o.voiceNotes?.enabled === true, dailyLimit: Math.max(0, Math.min(10, num(o.voiceNotes?.dailyLimit, .5)))};
+    let zone=String(o.routines?.zone||DEFAULTS.routines.zone);try{new Intl.DateTimeFormat('en-GB',{timeZone:zone}).format();}catch{zone=DEFAULTS.routines.zone;}
+    o.routines={weekly:o.routines?.weekly!==false,backup:o.routines?.backup!==false,releases:o.routines?.releases!==false,zone};
     o.keepAwake = o.keepAwake !== false; o.pcVoice = o.pcVoice !== false;
     return o;
   }
@@ -156,9 +166,9 @@ export class BrainStore {
   report(id) { return this.reports.find(r => r.id === id) || null; }
   markDelivered(id, via, ok, note = '') { const r = this.report(id); if (!r) return; r.delivered.push({via, ok, at: Date.now(), note: clip(note, 200)}); writeJson(this.files.reports, this.reports); }
   /* ---------- alarms (one-off; the everyday ones live in the Standing orders file) ---------- */
-  addAlarm({at, kind = 'call', report = true, note = '', source = 'you'}) {
+  addAlarm({at, zone, kind = 'call', report = true, note = '', source = 'you'}) {
     if (!Number.isFinite(at) || at < Date.now() - 60000) throw Error('That time has already gone.');
-    const a = {id: crypto.randomUUID().slice(0, 8), at, kind: ['call', 'whatsapp'].includes(kind) ? kind : 'call', report: !!report, note: clip(note, 200), source, status: 'armed', created: Date.now(), tries: 0};
+    const a = {id: crypto.randomUUID().slice(0, 8), at, zone: typeof zone==='string'?zone:'', kind: ['call', 'whatsapp'].includes(kind) ? kind : 'call', report: !!report, note: clip(note, 200), source, status: 'armed', created: Date.now(), tries: 0};
     this.alarms.push(a); this.flushAlarms(); return a;
   }
   cancelAlarm(id) { const a = this.alarms.find(x => x.id === id); if (a && a.status === 'armed') { a.status = 'cancelled'; this.flushAlarms(); } return a; }
@@ -169,6 +179,9 @@ export class BrainStore {
     if (!(usd > 0)) return; this.spent();
     this.spend.usd = Math.round((this.spend.usd + usd) * 10000) / 10000; this.spend.byKind[kind] = Math.round(((this.spend.byKind[kind] || 0) + usd) * 10000) / 10000;
     writeJson(this.files.spend, this.spend);
+    this.spendHistory[this.spend.day] = structuredClone(this.spend);
+    for (const day of Object.keys(this.spendHistory).sort().slice(0,-90)) delete this.spendHistory[day];
+    writeJson(path.join(this.dir, 'brain-spend-history.json'), this.spendHistory);
   }
   budgetLeft() { return Math.max(0, this.config.budgetPerDay - this.spent()); }
   /* ---------- JARVIS's own notes (it may tidy these itself) ---------- */

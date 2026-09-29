@@ -61,3 +61,7 @@ Documents: `Documents\JARVIS\` (standing orders, notes, reports), `Documents\JAR
 - Errors thrown to the screens are plain sentences that say what to do next.
 - New IPC: add a `case 'your-method':` to the `api()` switch in `src/main/main.js`; validate every payload field.
 - Anything that sends, spends or changes rules must go through approvals (`core.approvals` / tools with level `ask`).
+
+## Work desk (1.83.0)
+
+`brain/work-desk.js` owns reviewed proposal drafts, branding, cited file answers and accepted Tower trophies. `services/file-library.js` limits local searches and validates source paths; `document-text.js` extracts text in bounded worker threads, with external PDF.js assets. `brain/photo-drop.js` verifies incoming owner media, files originals locally and optionally reads photos with a reserved daily allowance. `brain/personalities.js` selects conversational tone by hall. The Work desk renderer is reachable from Core and the feature guide; its stores are `work-desk.json` and `photo-drop.json`. Generated files live under Documents/JARVIS/Work desk and Photo inbox; keep these folders in your own document backup. Settings backups include the indexes, not these generated files or photos.

@@ -134,6 +134,7 @@ test('a GLTF arriving after a hall switch is released, and teardown releases the
   const modules=new Map();for(const [name,exports] of Object.entries(libs)){const m=new SyntheticModule(Object.keys(exports),function(){for(const [k,v] of Object.entries(exports))this.setExport(k,v);},{context});await m.link(()=>{});await m.evaluate();modules.set(name,m);}
   const suits=new SourceTextModule(read('dist/assets/suits3d.js'),{context,importModuleDynamically:s=>modules.get(s)});const imports=new Map([['./scene-quality.js',quality]]);
   for(const name of ['suit-entry.js','suit-eyes.js','hall-calibration-data.js','render-budget.js','suit-rig.js','suit-signatures.js','case-mist.js']){const m=new SourceTextModule(read('dist/assets/'+name),{context});await m.link(()=>{});await m.evaluate();imports.set('./'+name,m);}
+  const reactions=new SyntheticModule(['suitReaction'],function(){this.setExport('suitReaction',()=>null);},{context});await reactions.link(()=>{});await reactions.evaluate();imports.set('./suit-reactions.js',reactions);
   await suits.link(name=>imports.get(name));await suits.evaluate();
   const flush=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r));};
   const sync=intervals.find(i=>i.ms===1500).fn;sync();await flush();assert.equal(loads.length,1);

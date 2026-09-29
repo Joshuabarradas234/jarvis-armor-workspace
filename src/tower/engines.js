@@ -14,7 +14,7 @@ const API_URL = 'https://api.anthropic.com/v1/messages';
 /** USD per million tokens (input, output), for the budget meter's estimate. */
 const PRICES = {haiku: [1, 5], sonnet: [3, 15], opus: [15, 75], fable: [15, 75]};
 
-export async function callApi({key, model, system, prompt, web = false, maxTokens = 4000, signal}) {
+export async function callApi({key, model, system, prompt, web = false, maxTokens = 4000, signal, retries = 3}) {
   if (!key) throw Error('No Claude API key set. Add one in the tower\'s Engines settings.');
   const body = {model, max_tokens: maxTokens, system, messages: [{role: 'user', content: prompt}]};
   if (web) body.tools = [{type: 'web_search_20250305', name: 'web_search', max_uses: 6}];
@@ -23,7 +23,7 @@ export async function callApi({key, model, system, prompt, web = false, maxToken
     // stoppable by the user AND still timed out: a hung request used to hold the floor forever
     res = await fetch(API_URL, {method: 'POST', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300000)]) : AbortSignal.timeout(300000),
       headers: {'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01'}, body: JSON.stringify(body)});
-    if ((res.status === 429 || res.status === 529 || res.status >= 500) && tries++ < 3) { await new Promise(r => setTimeout(r, 4000 * tries)); continue; }
+    if ((res.status === 429 || res.status === 529 || res.status >= 500) && tries++ < retries) { await new Promise(r => setTimeout(r, 4000 * tries)); continue; }
     break;
   }
   const data = await res.json().catch(() => ({}));

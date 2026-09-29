@@ -1,5 +1,21 @@
 const J=globalThis.window?.jarvis;
 export const CAPABILITIES=[
+ ['meeting-work','Meeting work','Match transcript-backed tasks to suits and Tower floors, save ideas and proposal drafts, and queue reviewed internal agent work.','meeting-work','Recorded meeting; complete briefs; Claude API for agent work; optional automatic start'],
+ ['studio','Product Studio','Photograph a product or import a picture, describe a scene and request a reviewed five or ten second video. Save and preview clips locally.','studio','Separate Higgsfield API credentials and paid credits; every generation needs approval'],
+ ['work','Work menu','Find your suits, tabs and tools with Ctrl+K. Use familiar browser shortcuts and optional shorter suit transitions.','work','Open a suit for tabs; switching suits restores addresses, not unsaved forms'],
+ ['proposals','Proposal drafter','Turn your bullet points into an editable branded proposal or quote, then export a PDF for review. Missing prices and terms stay marked to confirm.','proposals','Your branding and Claude key; nothing is sent automatically'],
+ ['files','Ask your files','Search a chosen Documents folder and answer with checked excerpts, file names and page or paragraph locations.','files','PDF, DOCX, TXT, Markdown or CSV; Claude key for answers'],
+ ['voices','Voice personalities','JARVIS is dry and precise, Alfred formal and caring, Karen upbeat. Your installed voices and volume settings stay in use.','brand','Chat inside a hall; toggle in Work desk'],
+ ['trophies','Trophy wall','Retire owner-accepted Tower projects to dated suit displays and export a local portfolio page.','trophies','A real reviewed result you accepted'],
+ ['photos','Photo drop','Save WhatsApp receipts, whiteboards and business cards locally. Optional paid reading files expenses, contacts and evidenced to-dos.','photos','Connected WhatsApp; enable Claude photo reading if wanted'],
+ ['voice-notes','WhatsApp voice notes','Send an Ogg voice note up to five minutes. JARVIS transcribes it and shows what he heard. Audio cannot approve requests.','routines','OpenAI key, paid transcription allowance and connected WhatsApp'],
+ ['weekly','Sunday review','At 18:00 on Sunday, see accepted work, open tasks, recorded spend, email work and the coming week. Preview it without sending.','routines','JARVIS running; a working message provider'],
+ ['travel','Travel mode','Confirm a destination and full dates. Wake-up calls follow its local time, with destination weather and alerts from matching flight emails.','travel','Approve the time changes; connect email for flight alerts'],
+ ['self-releases','Automatic release packages','Approved self-updates produce a local update ZIP, code backup and plain-English release notes. Find them in Routines.','backups','An approved self-update; local exports are not GitHub publications'],
+ ['reactions','Suit reactions','Hulkbuster turns red for an angry customer email. Mark One glows after a successful build or an approved update is packaged. Reduced motion uses steady lights.','routines','Suit models; connected email for customer reactions'],
+ ['attention','Needs my attention','Review finished work, blocked tasks, approval requests and saved page briefs across all three halls.','attention','Ready locally'],
+ ['pagework','Drop a tab onto a suit','Drag a tab title onto a suit in the destination tray. Review the page text, choose a team and set a budget before starting.','pagework','An open JARVIS tab; connected AI for real work'],
+ ['snap','Snap windows into place','Drag a floating page title to a side or corner; release on the preview for half or quarter screen. Escape cancels. Detached tabs also have a layout picker.','screens','JARVIS floating pages and detached tabs'],
  ['suits','Suit workspaces','Keep project links, apps, files, tasks and notes together. Click a suit, then configure it in Settings.','settings','Ready locally'],
  ['screens','Tabs across screens','Move a JARVIS tab to Screen 2 or 3 without reloading. Right-click its tab for a screen picker, or hold a pinch on its title, move towards a screen and release.','screens','Extra displays; webcam for gestures'],
  ['tower','Agent teams','Give a Tower floor a complete brief. A lead plans, specialists work, and a reviewer requests corrections before any handoff.','tower','Claude API key or Claude Code; otherwise rehearsal'],
@@ -10,12 +26,12 @@ export const CAPABILITIES=[
  ['mail','Email desk','Sort mail, prepare replies and review drafts before sending.','core','Configured mail account; approval required to send'],
  ['calendar','Calendar, tasks and reminders','Save appointments and to-dos, get a daily briefing, and schedule reminders.','calendar','Local tools; voice and phone reminders need setup'],
  ['focus','Focus sessions','Use a timed focus session and return to your work with fewer distractions.','settings','Ready locally'],
- ['meetings','Meeting notes','Capture meetings and prepare notes. Review recipients and text before sharing.','meeting','Microphone permission and transcription setup'],
+ ['meetings','Meeting notes','Record a call, save decisions and action items, add the actions to to-dos, then review its follow-up email. Supported call-ended screens finish recording; otherwise press End.','meeting','Microphone permission and transcription setup'],
  ['globe','Globe and weather','Explore places and weather in the globe.','globe','Internet for maps and weather'],
  ['hands','Voice and hand controls','See the hand signals for clicking, scrolling, focus and moving tabs. Voice controls are in Settings. Camera tracking stays on this computer.','gestures','Microphone/webcam permission; Hands enabled'],
  ['visuals','Halls, glass and holograms','Three halls, suit entry effects, opening glass, cold mist and a rotating Batmobile. Quality and reduced-motion settings govern the effects.','settings','3D assets installed; animations enabled for mist'],
  ['calibration','Advanced visual calibration','Fine-tune pod fit, labels, eye positions and the centre hologram. Preview before saving.','calibration','Open the hall first'],
- ['maintenance','Updates, backups and diagnostics','Check for updates, export settings, inspect health, and restart without self-updates if needed.','settings','Update installation needs a restart']
+ ['maintenance','Updates, backups and diagnostics','Nightly OneDrive settings backups at 02:00, recovery instructions, update checks and diagnostics. Missed backups catch up at launch.','settings','Update installation needs a restart']
 ];
 if(J&&(new URLSearchParams(location.search).get('view')||'main')==='main'){
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -25,8 +41,15 @@ if(J&&(new URLSearchParams(location.search).get('view')||'main')==='main'){
   if(id==='settings')await J.call('action',{action:'settings'});
   else if(id==='tower'||id==='results'){await window.__jarvisTower?.show();if(id==='results'){window.__jarvisTower.tab='results';window.__jarvisTower.renderFloor();}}
   else if(id==='think')window.__jarvisIdeas?.show();
+  else if(['routines','travel','backups'].includes(id))window.__jarvisRoutines?.show(id==='routines'?'home':id);
+  else if(['proposals','files','brand','trophies','photos'].includes(id))await window.__jarvisWorkDesk?.show(id);
+  else if(id==='meeting-work')window.__jarvisMeetingWork?.show();
+  else if(id==='studio')window.__jarvisProductStudio?.show();
+  else if(id==='work')window.__jarvisWorkMenu?.show();
   else if(id==='core')window.__jarvisCore?.show();
   else if(id==='calibration')window.__jarvisCalibration?.open();
+  else if(id==='attention')await window.__jarvisWorkbench?.show();
+  else if(id==='pagework')await window.__jarvisWorkbench?.choose();
   else if(id==='screens')window.__jarvisScreens?.show();
   else if(id==='gestures')await window.__jarvisGestureGuide?.show();
   else document.querySelector({meeting:'[data-meeting]',globe:'[data-globe]',calendar:'[data-qp="cal"]'}[id])?.click();

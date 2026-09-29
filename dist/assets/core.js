@@ -169,7 +169,7 @@
           [`${money(s.spend.today)} of ${money(s.spend.budget)} today`, true],
         ];
         const nWait = s.approvals.length;
-        const tabs = [['needs', 'Needs you', nWait], ['reports', 'Reports'], ['activity', 'What I did'], ['schedule', 'Schedule'], ['updates', 'My updates', s.updates.updates.filter(u => u.status === 'drafting').length ? '…' : 0], ['talk', 'Talk to me']];
+        const tabs = [['needs', 'Needs you', nWait], ['reports', 'Reports'], ['activity', 'What I did'], ['schedule', 'Schedule'], ['updates', 'My updates', s.updates.updates.filter(u => u.status === 'drafting').length ? '…' : 0], ['talk', 'Talk to me'], ['routines', 'Routines'], ['workdesk', 'Work desk']];
         this.el.innerHTML = `<div class="jc-top"><div><p>JARVIS CORE · WORKING WHILE YOU'RE AWAY</p><h2>${esc(s.config.owner.address === 'sir' ? 'At your service, sir.' : 'At your service.')}<small>${esc(s.version)}</small></h2>
           <div class="jc-chips">${chips.map(([t, ok]) => `<span class="jc-chip ${ok ? 'ok' : 'bad'}">${esc(t)}</span>`).join('')}${(!s.key || !s.phone.any) ? '<button data-act="settings">Set up…</button>' : ''}</div>
           ${sb.sandbox && sb.lapsed ? `<div class="jc-warn">⚠ Twilio's WhatsApp sandbox forgets you three days after you join, so I can't WhatsApp you. From your phone, ${esc(sb.renew || 'send the join code to +1 415 523 8886.')}</div>` : ''}</div>
@@ -234,6 +234,8 @@
       },
       async click(e) {
         const t = e.target.closest('[data-act],[data-tab]'); if (!t) return;
+        if(t.dataset.tab==='workdesk'){await this.close();return window.__jarvisWorkDesk.show();}
+        if(t.dataset.tab==='routines'){this.close();return window.__jarvisRoutines.show();}
         if (t.dataset.tab) { this.tab = t.dataset.tab; this.render(); return; }
         const act = t.dataset.act, id = Number(t.dataset.id);
         if (act === 'close') return this.close();
@@ -371,6 +373,8 @@
 <li><b>The sandbox forgets you three days after you join.</b> JARVIS spots your <code>join …</code> message and, before it lapses, sends you a link that renews it in one tap. If it does lapse, he says so on the morning call and by CallMeBot or text, and shows it here. A WhatsApp sender of your own (Twilio Console → Messaging → Senders → WhatsApp senders) never lapses; enter its number above instead of the sandbox's.</li>
 <li>Optional free backup: message <code>I allow callmebot to send me messages</code> to the CallMeBot number (see <code>callmebot.com</code>) and paste the key you get back.</li>
 <li>Press <b>Save</b>, then <b>Send a test WhatsApp</b> and <b>Test call</b>.</li></ol></details></section>
+<section><h3>Voice notes (OpenAI)</h3><div class="grid">${secret('openaiKey', s.secrets.openaiKey, 'OpenAI API key', 'sk-…')}${txt('voiceNotes.dailyLimit',c.voiceNotes.dailyLimit,'Daily transcription allowance (US$)','type="number" min="0" max="10" step="0.01"')}</div>${chk('voiceNotes.enabled',c.voiceNotes.enabled,'Send my WhatsApp voice notes to OpenAI for transcription')}<p class="muted">Ogg Opus voice notes up to five minutes. Each request reserves US$0.03 before upload, including uncertain failures; the provider may charge less. This also counts against the Core budget. Audio cannot approve requests. Audio is processed in memory, not saved by JARVIS.</p></section>
+<section><h3>Routines</h3><div class="row">${chk('routines.weekly',c.routines.weekly,'Sunday review at 18:00')}${chk('routines.backup',c.routines.backup,'OneDrive settings backup at 02:00')}${chk('routines.releases',c.routines.releases,'Export each approved self-update')}</div>${txt('routines.zone',c.routines.zone,'Time zone for the weekly review and backup')}<p class="muted">Use an IANA time zone such as Europe/London. Open JARVIS Core → Routines for previews, saved backups, meeting drafts and travel. Backups catch up when JARVIS opens. Reconnect keys and passwords after restoring on another PC.</p></section>
 <section><h3>Email (Gmail)</h3><div class="grid">${txt('email.address', em.address, 'Gmail address', 'placeholder="you@gmail.com"')}${secret('emailPassword', s.secrets.emailPassword, 'Gmail app password', '16 letters')}
   ${txt('email.labelPrefix', em.labelPrefix, 'Label folder in Gmail')}</div>
 <div class="row">${chk('email.enabled', em.enabled, 'Read and sort my email')}${chk('email.draftReplies', em.draftReplies, 'Draft replies (saved in Gmail Drafts; never sent without my YES)')}<button type="button" data-test="email">Test connection</button><span class="msg" data-msg="email"></span></div>

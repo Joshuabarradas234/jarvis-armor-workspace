@@ -11,6 +11,14 @@ import path from 'node:path';
 import {BrainStore, MODELS} from './store.js';
 import {Approvals} from './approvals.js';
 import {StandingOrders} from './orders.js';
+import {VoiceNotes} from './voice-notes.js';
+import {Travel} from './travel.js';
+import {WorkDesk} from './work-desk.js';
+import {MeetingWork} from '../meeting/work.js';
+import {ProductStudio} from './product-studio.js';
+import {PhotoDrop} from './photo-drop.js';
+import {assistantPersonality} from './personalities.js';
+import {Routines} from './routines.js';
 import {Phone, SANDBOX_DAYS} from './phone.js';
 import {CallDesk} from './calls.js';
 import {MailDesk} from './maildesk.js';
@@ -40,6 +48,9 @@ export function createJarvisCore(deps) {
   const updater = new SelfUpdater({userDir: deps.userDir, boot: deps.boot, approvals, log: deps.log});
   const core = {deps, store, approvals, orders, phone, mail, numbers, updater};
 
+  core.voiceNotes = new VoiceNotes({store, phone, fetchImpl: deps.fetch});
+  core.travel = new Travel(core); core.routines = new Routines(core); core.workDesk = new WorkDesk(core); core.photos = new PhotoDrop(core); core.studio = new ProductStudio(core); core.meetingWork = new MeetingWork(core);
+
   /* ================================================================ status for the screens */
   let pushTimer = null;
   function push() { clearTimeout(pushTimer); pushTimer = setTimeout(() => { try { deps.broadcast('core', {type: 'status', status: status()}); } catch (e) { log(e.message); } }, 250); }
@@ -56,16 +67,18 @@ export function createJarvisCore(deps) {
       upcoming: upcoming(), updates: updater.status(), spend: {today: store.spent(), budget: c.budgetPerDay},
       bedtime: store.state.bedtime || 0, awake: store.state.awakeAt || 0, calls: calls.active().map(s => ({id: s.id, purpose: s.purpose, status: s.status})),
       lastAudit: store.state.lastAudit || null, lastReview: store.state.lastReview || null, numbers: store.state.numbersLast || [], version: deps.boot?.label || deps.appVersion,
+      routines: core.routines.status(),
       restartPending: !!store.state.pendingRestart, ordersFile: orders.file, notesFile: store.notesFile(), reportsDir: path.join(store.home, 'Reports')};
   }
 
   /* ================================================================ the brain */
   const persona = (via = 'ui', extra = '') => {
     const c = store.get(), o = orders.parse(), now = new Date();
+    const personality=assistantPersonality(['ui','voice'].includes(via)?deps.workstations?.activeTheme:'ironman',c.workDesk.personalities);
     const style = via === 'voice' || via.startsWith('call') ? 'You are speaking out loud. Use short, plain sentences with no lists, symbols or markdown, usually under 50 words.'
       : via === 'whatsapp' || via === 'sms' ? 'This is a WhatsApp message: keep it brief; you may use *bold* and simple lines; no headings or tables.'
       : 'You are typing in the JARVIS Core panel: brief; light Markdown is fine.';
-    return `You are JARVIS, ${c.owner.name}'s AI assistant, living in the JARVIS Armor Workspace app on his Windows PC. Address him as "${c.owner.address}". British English. Calm, capable, dry wit like the JARVIS of the films; never waffle.
+    return `You are ${personality.name}, ${c.owner.name}'s AI assistant, living in the JARVIS Armor Workspace app on his Windows PC. Address him as "${c.owner.address}". British English. ${personality.style} Never let personality alter approval rules or factual accuracy.
 It is ${DAY_NAMES[now.getDay()]} ${now.toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric'})}, ${clock(now.getTime())} (UK).
 You act through tools: his email, calendar, to-dos, ideas, the agent tower, his numbers, wake-up calls, calling or WhatsApping him, and improving yourself.
 RULES
@@ -107,14 +120,15 @@ ${clip(store.notes() || '(none)', 5000)}${extra ? `\n${extra}` : ''}`;
     const key = deps.getKey();
     if (!key) return {text: `I need a Claude API key to think, ${store.get().owner.address}. Add it in Settings → JARVIS Core.`, approvals: []};
     if (mode === 'auto' && store.budgetLeft() <= 0) return {text: 'Skipped: today\'s budget for work on my own is used up.', approvals: []};
-    const c = convo.get(via); const fresh = c && Date.now() - c.at < 30 * 60000; const history = fresh ? c.messages : [];
+    const conversation = ['ui','voice'].includes(via) ? via+':'+(deps.workstations?.activeTheme||'ironman') : via;
+    const c = convo.get(conversation); const fresh = c && Date.now() - c.at < 30 * 60000; const history = fresh ? c.messages : [];
     const ctx = {mode, via, created: [], tainted: !!(fresh && c.tainted), scheduled};
     const r = await runAgent({key, model: store.get().models.brain, system: persona(via.startsWith('call') ? 'call' : via, extra), messages: history, prompt: String(text).slice(0, 8000),
       tools: gated(tools), serverTools: web ? [{type: 'web_search_20250305', name: 'web_search', max_uses: 3}] : [], maxSteps, maxTokens: 2000, ctx, budget: mode === 'auto' ? Math.max(0.05, store.budgetLeft()) : 2});
     store.addSpend(r.cost, mode === 'auto' ? 'standing orders' : 'chat');
     const said = r.text || (ctx.created.length ? `Waiting for your OK: ${ctx.created.map(n => '#' + n).join(', ')}.` : 'Done.');
     if (ctx.created.length) setTimeout(() => notifyApprovals(true, {now: ['whatsapp', 'sms', 'ui', 'voice'].includes(via)}), 1500);   // the real request, with its code, from JARVIS himself
-    convo.set(via, {messages: [...history, {role: 'user', content: String(text).slice(0, 8000)}, {role: 'assistant', content: said}].slice(-16), at: Date.now(), tainted: ctx.tainted, asked: /\?\s*$/.test(said)});
+    convo.set(conversation, {messages: [...history, {role: 'user', content: String(text).slice(0, 8000)}, {role: 'assistant', content: said}].slice(-16), at: Date.now(), tainted: ctx.tainted, asked: /\?\s*$/.test(said)});
     return {text: said, approvals: ctx.created, cost: r.cost, calls: r.calls};
   }
 
@@ -130,6 +144,7 @@ ${clip(store.notes() || '(none)', 5000)}${extra ? `\n${extra}` : ''}`;
         feature(p.task || u?.request || u?.title || 'the same change', {why: p.why || u?.why || '', via: 'rebuild', asked: true, title: p.title || u?.title});
         return `${e.message} I'm rebuilding it on top of the current version; you'll get a fresh request for it.`;
       }
+      if(store.get().routines.releases)try{const release=core.routines.export(r.version);store.act('self-release',`Update ZIP and release notes saved: ${release.file}`);}catch(e){store.act('self-release',`Installed, but release export needs attention: ${e.message}`);deps.notify('JARVIS release export',e.message);}
       store.setState({pendingRestart: {version: r.version, title: r.title, at: Date.now(), via: a.via}});
       store.act('self-update', `Installed ${r.version}: ${r.title}. Restarting when you are not using me.`);
       setTimeout(() => maybeRestart(), 1500);
@@ -232,8 +247,8 @@ ${clip(store.notes() || '(none)', 5000)}${extra ? `\n${extra}` : ''}`;
     const c = store.get();
     if (!phone.ready().calls) { log('Calls are not set up; sending the report to WhatsApp instead.'); return message(rep.text, {urgent: true, reportId: rep.id}); }
     const who = c.owner.address;
-    const open = opening || (attempt > 1 ? `${Who()}, it's JARVIS again. ` : `Good ${partOfDay()}, ${who}. `) + (purpose === 'wake' ? `It's ${spokenClock(Date.now())}. Time to get up. Here's the overnight report.`
-      : `You asked me to call at ${spokenClock(scheduledFor)} with the ${rep.kind === 'day' ? 'summary of the day' : 'overnight report'}.`);
+    const open = opening || (attempt > 1 ? `${Who()}, it's JARVIS again. ` : `Good ${partOfDay()}, ${who}. `) + (purpose === 'wake' ? `It's ${core.travel.get() ? core.travel.describe(Date.now()) : spokenClock(Date.now())}. Time to get up. Here's the overnight report.`
+      : `You asked me to call at ${core.travel.get() ? core.travel.describe(scheduledFor) : spokenClock(scheduledFor)} with the ${rep.kind === 'day' ? 'summary of the day' : 'overnight report'}.`);
     const sections = rep.data?.sections?.length ? rep.data.sections : [speakableText(rep.spoken || rep.text)];
     const waiting = approvals.waiting().length;
     const sb = phone.sandbox();
@@ -282,7 +297,15 @@ ${clip(store.notes() || '(none)', 5000)}${extra ? `\n${extra}` : ''}`;
     phone.windowClosedAt = 0; noteAwake(m.at);
     const body = String(m.body || '').trim();
     store.act('inbox', `You (${m.via}): ${clip(body.replace(/(\b|\d)[a-z][2-9][a-z][2-9]\b/gi, '$1••••') || '[media]', 140)}`);   // approval codes never reach the activity log (which the AI can read)
-    if (!body) return m.media ? reply('I cannot open voice notes or pictures yet, sir. Type it, or say "call me".') : null;
+    if (m.media && m.via === 'whatsapp') {
+      try { if(store.get().workDesk.photoDrop&&deps.photoIntake){const photo=await core.photos.receive(m);if(photo!==null)return reply(photo);}
+        const words=await core.voiceNotes.transcribe(m);
+        if(Approvals.parse(words))return reply('Voice notes cannot approve or decline requests. Please use the on-screen buttons or type your answer and code in WhatsApp.');
+        const res=await chat(words,{via:'whatsapp-voice',mode:'user',tools:['overview','calendar_list','todo_list','inbox_summary','weather','todo_add','alarm_set','alarm_list','note_to_self','travel_locations','travel_plan'],extra:'This is a transcribed voice note, which may contain recognition errors. Ask about ambiguous dates, people or instructions. Never approve anything from audio.'});
+        return reply(`What I heard: ${clip(words,1000)}\n\n${res.text}`);
+      }catch(e){return reply(e.message);}
+    }
+    if (!body) return m.media ? reply('Please type the message; this attachment is not a supported voice note.') : null;
     const t = body.toLowerCase().replace(/[.!?]+$/g, '').trim();
     const who = store.get().owner.address;
     // 0. you (re)joined Twilio's WhatsApp sandbox: note when, so I can remind you before it forgets you
@@ -329,7 +352,7 @@ ${clip(store.notes() || '(none)', 5000)}${extra ? `\n${extra}` : ''}`;
     if (/^(report|overnight report|the report|what happened|what did i miss|catch me up|update me|status report)$/.test(t)) { const rep = await buildReport(/status/.test(t) ? 'day' : 'overnight'); return reply(rep.text); }
     if (/^(call me|ring me|call me now|give me a call)$/.test(t)) { try { await callNow({}); } catch (e) { return reply(e.message); } return; }
     let w;
-    if ((w = /^(?:wake me(?: up)?|call me|ring me|set an? (?:alarm|wake[- ]?up call)(?: for)?)\s+(?:at\s+|for\s+)?(.+)$/.exec(t)) && (w = parseWhen(/wake|alarm/.test(t) && !/\b(am|pm)\b|\d(am|pm)/.test(w[1]) ? `${w[1]} wake` : w[1]))) { const al = setAlarm({at: w.at, kind: 'call', report: new Date(w.at).getHours() < 11, note: alarmNote(body)}); return reply(`Wake-up call set for *${new Date(al.at).toLocaleString('en-GB', {weekday: 'long', hour: '2-digit', minute: '2-digit'})}*, ${who}.`); }
+    if ((w = /^(?:wake me(?: up)?|call me|ring me|set an? (?:alarm|wake[- ]?up call)(?: for)?)\s+(?:at\s+|for\s+)?(.+)$/.exec(t)) && (w = core.travel.parseWhen(/wake|alarm/.test(t) && !/\b(am|pm)\b|\d(am|pm)/.test(w[1]) ? `${w[1]} wake` : w[1]))) { const al = setAlarm({at: w.at, zone:w.zone, kind: 'call', report: core.travel.hour(w.at, w.zone) < 11, note: alarmNote(body)}); return reply(`Wake-up call set for *${core.travel.describe(al.at, al.zone)}*, ${who}.`); }
     if (/^(approvals|pending|what needs me|anything waiting|requests)$/.test(t)) { const wl = approvals.waiting(); return reply(wl.length ? digest(wl, {heading: `*Waiting for you, ${who}*`}) : `Nothing is waiting for you, ${who}.`); }
     if (/^(undo|undo (the )?last update|roll ?back)$/.test(t)) { try { const u = updater.undo(); setTimeout(() => restart('undo'), 3000); return reply(`Going back from ${u.from}${u.title ? ` (“${u.title}”)` : ''}. Restarting now.`); } catch (e) { return reply(e.message); } }
     if (/^(quiet|shh+|do not disturb|dnd|silence)$/.test(t)) { store.setState({quietUntil: nextMorning()}); return reply(`Understood. Nothing more from me until the morning, unless it's urgent.`); }
@@ -457,9 +480,8 @@ ${JSON.stringify(facts, null, 1)}`});
   /* ================================================================ the schedule */
   function nextRun(j, from = new Date()) {
     if (!j.time) return 0;
-    const [h, m] = j.time.split(':').map(Number);
-    for (let i = 0; i < 8; i++) { const d = new Date(from); d.setDate(d.getDate() + i); d.setHours(h, m, 0, 0); if (d > from && j.days.includes(d.getDay())) return d.getTime(); }
-    return 0;
+    return core.travel.next(j, +from);
+
   }
   function upcoming() {
     const o = orders.parse(); const out = [];
@@ -467,9 +489,9 @@ ${JSON.stringify(facts, null, 1)}`});
     for (const a of store.alarms) if (a.status === 'armed') out.push({at: a.at, kind: a.kind === 'whatsapp' ? 'message' : 'call', what: a.note && !['snooze', 'retry'].includes(a.note) ? clip(a.note, 80) : a.note === 'snooze' ? 'calling back (snoozed)' : a.note === 'retry' ? 'trying again' : 'wake-up call', source: 'alarm', id: a.id});
     return out.sort((a, b) => a.at - b.at).slice(0, 12);
   }
-  function setAlarm({at, kind = 'call', note = '', report}) {
-    const a = store.addAlarm({at, kind, report: report ?? new Date(at).getHours() < 11, note});
-    store.act('alarm', `${kind === 'call' ? 'Wake-up call' : 'Reminder'} set for ${new Date(at).toLocaleString('en-GB', {weekday: 'short', hour: '2-digit', minute: '2-digit'})}${note ? `: ${clip(note, 60)}` : ''}.`);
+  function setAlarm({at, zone, kind = 'call', note = '', report}) {
+    const a = store.addAlarm({at, zone, kind, report: report ?? core.travel.hour(at, zone) < 11, note});
+    store.act('alarm', `${kind === 'call' ? 'Wake-up call' : 'Reminder'} set for ${core.travel.describe(at, zone)}${note ? `: ${clip(note, 60)}` : ''}.`);
     push(); return a;
   }
   function cancelAlarm(id) { const a = store.cancelAlarm(id); push(); return a; }
@@ -510,14 +532,14 @@ ${JSON.stringify(facts, null, 1)}`});
       if (al.report && (!rep || Date.now() - rep.at > 45 * 60000)) rep = await buildReport('overnight');
       if (al.kind === 'whatsapp' || late > CATCHUP.call) { await message(rep ? rep.text : `⏰ ${al.note || 'Your reminder'}`, {urgent: true, reportId: rep?.id}); }
       else if (rep) await ringReport(rep, {purpose: al.purpose || 'wake', attempt: al.attempt || 1, retries: al.retries, gap: al.gap, alarmId: al.id, scheduledFor: al.at});
-      else await calls.ring({purpose: 'chat', text: `${Who()}, it's JARVIS. It's ${spokenClock(Date.now())}. ${al.note && !['retry', 'snooze'].includes(al.note) ? `You asked me to call: ${al.note}.` : 'Time to get up.'}`, attempt: al.attempt || 1, retries: al.retries ?? store.get().phone.retries, gap: al.gap ?? store.get().phone.retryMinutes});
+      else await calls.ring({purpose: 'chat', text: `${Who()}, it's JARVIS. It's ${core.travel.get() ? core.travel.describe(Date.now()) : spokenClock(Date.now())}. ${al.note && !['retry', 'snooze'].includes(al.note) ? `You asked me to call: ${al.note}.` : 'Time to get up.'}`, attempt: al.attempt || 1, retries: al.retries ?? store.get().phone.retries, gap: al.gap ?? store.get().phone.retryMinutes});
       al.status = 'done';
     } catch (e) { al.status = 'failed'; al.error = e.message; log(`Alarm: ${e.message}`); message(`⏰ I could not call you: ${e.message}`, {urgent: true}).catch(() => {}); }
     store.flushAlarms(); push();
   }
   async function checkMail(trigger = 'schedule') {
     if (!mail.ready()) return {sorted: [], drafted: 0, needReply: 0, errors: ['Email is not set up.']};
-    try { const r = await mail.check({trigger}); store.setState({emailChecked: Date.now(), emailError: r.errors[0] || ''}); if (r.drafted) setTimeout(() => notifyApprovals(), 65000); const angry = r.sorted.filter(m => m.mood === 'angry' && m.urgent); if (angry.length && !inQuiet()) message(`⚠️ ${angry.map(m => `*${m.from}* is not happy: ${m.summary}`).join('\n')}`, {urgent: false}).catch(() => {}); push(); return r; }
+    try { const r = await mail.check({trigger}); if(r.sorted.some(m=>m.mood==='angry'&&m.category==='Customers'))deps.broadcast('core',{type:'reaction',kind:'customer-angry',at:Date.now()}); core.travel.onMail(r.sorted).catch(e=>log('Flight email watch: '+e.message)); store.setState({emailChecked: Date.now(), emailError: r.errors[0] || ''}); if (r.drafted) setTimeout(() => notifyApprovals(), 65000); const angry = r.sorted.filter(m => m.mood === 'angry' && m.urgent); if (angry.length && !inQuiet()) message(`⚠️ ${angry.map(m => `*${m.from}* is not happy: ${m.summary}`).join('\n')}`, {urgent: false}).catch(() => {}); push(); return r; }
     catch (e) { store.setState({emailChecked: Date.now(), emailError: e.message}); log(`Email: ${e.message}`, 'email'); push(); throw e; }
   }
   core.checkMail = checkMail;
@@ -625,6 +647,7 @@ ${JSON.stringify(facts, null, 1)}`});
   /* ================================================================ the clock */
   let ticking = false, lastPoll = 0, lastGc = 0, awakeHeld = null, jobsInFlight = 0;
   async function tick() {
+    core.studio.tick().catch(e=>log('Product Studio: '+e.message)); core.meetingWork.tick().catch(e=>log('Meeting work: '+e.message));
     if (!store.get().enabled && awakeHeld) { awakeHeld = false; deps.keepAwake(false); }   // switched off: let the PC sleep again
     if (ticking || !store.get().enabled) return; ticking = true;
     try {
@@ -633,10 +656,10 @@ ${JSON.stringify(facts, null, 1)}`});
         if (j.time) {
           const at = minutesOf(j.time), kindKey = j.actions.deliver === 'call' ? 'call' : j.actions.audit ? 'audit' : j.actions.improve ? 'improve' : j.actions.deliver === 'message' ? 'message' : j.actions.email ? 'email' : j.actions.numbers ? 'numbers' : 'task';
           // today's run, or (just after midnight) yesterday's, if it is still inside its catch-up window
-          const y = new Date(now); y.setDate(y.getDate() - 1);
-          const cand = [{d: now, late: mins - at}, {d: y, late: mins + 1440 - at}].find(c => c.late >= 0 && c.late <= CATCHUP[kindKey] && j.days.includes(c.d.getDay()));
+          const travelClock=core.travel.clockFor(j,+now), localMinutes=minutesOf(travelClock.time), today=new Date(travelClock.date+'T12:00:00Z'), yesterday=new Date(+today-864e5);
+          const cand=[{d:today,late:localMinutes-at},{d:yesterday,late:localMinutes+1440-at}].find(c=>c.late>=0&&c.late<=CATCHUP[kindKey]&&j.days.includes(c.d.getUTCDay()));
           if (!cand) continue;
-          const k = jobKey(j, dayKey(cand.d));
+          const k = jobKey(j, cand.d.toISOString().slice(0,10));
           if (ran(k)) continue;
           markRan(k); jobsInFlight++;
           runJob(j, {late: cand.late}).then(() => markRan(k, true), e => { markRan(k, true); log(`${j.label} “${clip(j.text, 40)}”: ${e.message}`, 'schedule'); store.act('schedule', `Could not do ${j.label}: ${e.message}`); }).finally(() => { jobsInFlight--; });
@@ -649,6 +672,7 @@ ${JSON.stringify(facts, null, 1)}`});
         }
       }
       for (const al of store.alarms.filter(a => a.status === 'armed' && a.at <= Date.now())) runAlarm(al);
+      core.routines.tick().catch(e=>log('Routines: '+e.message)); core.travel.tick().catch(e=>log('Travel: '+e.message));
       if (store.state.pendingRestart) maybeRestart();
       const quick = approvals.waiting().some(a => a.notifiedAt && Date.now() - a.notifiedAt < 2 * 3600e3) || Date.now() - (store.state.lastInboundAt || 0) < 10 * 60000;
       if (Date.now() - lastPoll > (quick ? 9000 : 28000)) { lastPoll = Date.now(); pollInbound(); }
@@ -701,7 +725,7 @@ ${JSON.stringify(facts, null, 1)}`});
       case 'core-install': { if (store.state.pendingRestart) { say('Restarting to finish the update.'); setTimeout(() => restart('asked'), 2500); } else say(`There's no update waiting to be switched on, ${who}.`); return true; }
       case 'core-call': try { await callNow({}); say(`Calling your phone, ${who}.`); } catch (e) { say(e.message); } return true;
       case 'core-email': { if (!mail.ready()) { say(`Email isn't connected yet, ${who}. It's in Settings, JARVIS Core.`); return true; } say('Checking your email.'); checkMail('asked').then(r => say(r.sorted.length ? `${r.sorted.length} new. ${r.needReply ? `${r.needReply} need a reply${r.drafted ? `; I've drafted ${r.drafted}` : ''}.` : 'Nothing needs a reply.'}` : 'Nothing new.')).catch(e => say(e.message)); return true; }
-      case 'core-alarm': { const w = parseWhen(cmd.when || ''); if (!w) { say(`What time, ${who}?`); return true; } const al = setAlarm({at: w.at, kind: 'call', note: alarmNote(cmd.text)}); say(`Wake-up call set for ${spokenClock(al.at)}${new Date(al.at).getDate() !== new Date().getDate() ? ' tomorrow' : ''}, ${who}.${phone.ready().calls ? '' : ' Calls are not set up yet, so I will message you instead.'}`); return true; }
+      case 'core-alarm': { const w = core.travel.parseWhen(cmd.when || ''); if (!w) { say(`What time, ${who}?`); return true; } const al = setAlarm({at: w.at, zone:w.zone, kind: 'call', note: alarmNote(cmd.text)}); say(`Wake-up call set for ${core.travel.get() ? core.travel.describe(al.at, al.zone) : spokenClock(al.at) + (new Date(al.at).getDate() !== new Date().getDate() ? ' tomorrow' : '')}, ${who}.${phone.ready().calls ? '' : ' Calls are not set up yet, so I will message you instead.'}`); return true; }
       case 'core-feature': feature(cmd.text || '', {via: 'voice', asked: true}); say(`I'll build that in a copy of myself and ask you before installing it, ${who}.`); return true;
       case 'core-message': { const r = await message(cmd.text || '', {urgent: true}); say(r.ok ? 'Sent to your phone.' : `I couldn't: ${r.error}`); return true; }
       case 'core-chat': {
@@ -727,6 +751,40 @@ ${JSON.stringify(facts, null, 1)}`});
   async function api(method, p = {}) {
     switch (method) {
       case 'status': return status();
+      case 'meeting-work': return core.meetingWork.list();
+      case 'meeting-work-edit': return core.meetingWork.edit(p);
+      case 'meeting-work-request': return core.meetingWork.request(String(p.id));
+      case 'meeting-work-skip': return core.meetingWork.skip(p);
+      case 'studio-list': return core.studio.list();
+      case 'studio-edit': return core.studio.edit(p);
+      case 'studio-request': return core.studio.request(String(p.id));
+      case 'studio-poll': return core.studio.poll(String(p.id));
+      case 'studio-cancel': return core.studio.cancel(String(p.id));
+      case 'studio-export': return core.studio.export(String(p.id));
+      case 'studio-open': return core.studio.open(String(p.id));
+      case 'work-desk': return core.workDesk.options();
+      case 'desk-brand': return core.workDesk.brand(p);
+      case 'desk-proposal': return core.workDesk.create(p);
+      case 'desk-edit': return core.workDesk.edit(p);
+      case 'desk-export': return core.workDesk.export(String(p.id));
+      case 'desk-answer': return core.workDesk.answer(p.question);
+      case 'desk-open': return core.workDesk.open(String(p.kind),String(p.id||''));
+      case 'desk-retire': return core.workDesk.retire(p);
+      case 'desk-restore': return core.workDesk.restore(String(p.id));
+      case 'desk-portfolio': return core.workDesk.portfolio();
+      case 'photo-read': return core.photos.analyse(String(p.id));
+      case 'photo-review': return core.photos.review(p);
+      case 'photo-open': return core.photos.open(String(p.id));
+      case 'routines': return {...core.routines.status(), meetings:deps.meetingFollowups?.list()||[],meetingsError:deps.meetingFollowups?.loadError||''};
+      case 'backup-now': return core.routines.backup();
+      case 'weekly-preview': return core.routines.weekly(false);
+      case 'release-export': return core.routines.export(String(p.version||updater.state().current||''));
+      case 'travel-locations': return core.travel.locations(p.name);
+      case 'travel-weather': return core.travel.weather();
+      case 'travel-plan': {p=core.travel.proposal(p);const detail=core.travel.detail(p);const a=approvals.create({kind:'settings',title:'Travel mode: '+String(p.city).slice(0,100),detail,payload:{tool:'travel_apply',input:p},source:'travel review'});push();return {approval:a.id};}
+      case 'travel-stop': {const a=approvals.create({kind:'settings',title:'End travel mode',detail:'Return future wake-up calls to this computer’s local time. Adjusted one-off wake-up calls return to their original times; any now in the past are cancelled.',payload:{tool:'travel_stop',input:{}}});push();return {approval:a.id};}
+      case 'meeting-review': return deps.meetingFollowups.request(String(p.id),p);
+      case 'routine-open': {const list=[store.state.lastBackup?.file,...(store.state.selfReleases||[]).flatMap(r=>[r.file,r.notes,r.source])].filter(Boolean);if(!list.includes(p.file))throw Error('That file is not a saved backup or release.');return deps.openFile?.(p.file);}
       case 'save': { store.save(p || {}); push(); return status(); }
       case 'secret': store.setSecret(String(p.name), String(p.value ?? '')); push(); return store.secretFlags();
       case 'test': return test(String(p.kind));
@@ -746,7 +804,7 @@ ${JSON.stringify(facts, null, 1)}`});
         throw Error('Unknown job.');
       }
       case 'feature': { if (String(p.text || '').trim().length < 8) throw Error('Describe the feature in a sentence or two.'); feature(String(p.text), {via: 'ui', asked: true}); return true; }
-      case 'alarm-add': { const w = parseWhen(String(p.when || '')); if (!w) throw Error('I could not read that time (try 06:30 or "tomorrow at 7").'); return setAlarm({at: w.at, kind: p.kind === 'whatsapp' ? 'whatsapp' : 'call', note: String(p.note || ''), report: p.report !== false}); }
+      case 'alarm-add': { const w = core.travel.parseWhen(String(p.when || '')); if (!w) throw Error('I could not read that time (try 06:30 or "tomorrow at 7").'); return setAlarm({at: w.at, zone:w.zone, kind: p.kind === 'whatsapp' ? 'whatsapp' : 'call', note: String(p.note || ''), report: p.report !== false}); }
       case 'alarm-cancel': return cancelAlarm(String(p.id));
       case 'undo': { const u = updater.undo(); setTimeout(() => restart('undo'), 1500); return u; }
       case 'reset-updates': { updater.reset(); setTimeout(() => restart('undo'), 1500); return true; }

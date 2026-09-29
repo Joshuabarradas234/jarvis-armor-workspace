@@ -18,7 +18,7 @@ export function suitRenderScale(budget,width,height,detail=false){
   const wanted=detail?Math.max(budget.dpr,{low:2,medium:2,high:2.4,ultra:3.2}[budget.quality]):budget.dpr;
   return Math.min(wanted,Math.sqrt(pixels/Math.max(1,width*height)));
 }
-export function concealedHall(doc){return doc.hidden||!!doc.querySelector('.jc.in,.tw.in,.ix-room.in,.gx.in,.module-host:not(.hidden) .workstation');}
+export function concealedHall(doc){return doc.hidden||!!doc.querySelector('.jc.in,.tw.in,.ix-room.in,.gx.in,.wb-panel,.module-host:not(.hidden) .workstation');}
 export function watchRenderBudget(bridge=window.jarvis){
   let settings={},status={},alive=true;const off=[];
   if(bridge){off.push(bridge.on('settings',v=>{settings=v;}),bridge.on('status',v=>{status=v;}));bridge.call('bootstrap').then(b=>{if(alive){settings=b.settings||{};status=b.status||{};}}).catch(()=>{});}

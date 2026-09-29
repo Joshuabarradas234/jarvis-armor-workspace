@@ -163,15 +163,15 @@
         body = `<div class="mt-rec-head"><i></i>Recording · <span data-mt-clock>${clock(Date.now() - m.startedAt)}</span></div>
           <p class="mt-sub">${esc(m.suitName)} · ${esc(m.hallName)}<br>${src}<br>${eng}</p>
           <div class="mt-live">${m.lines.length ? m.lines.map(l => `<div><b>${esc(l.at)}</b>${esc(l.text)}</div>`).join('') : '<span>The transcript appears here as people talk.</span>'}</div>
-          <button type="button" class="mt-stop" data-mt="end">■ End meeting and email the notes</button>
-          <p class="mt-note">Notes go to ${esc(i.to || 'nobody yet')}${i.gmailReady ? '' : ' <span class="mt-warn">(Gmail not set up: they will be saved, not emailed)</span>'}.</p>`;
+          <button type="button" class="mt-stop" data-mt="end">■ End meeting and prepare follow-up</button>
+          <p class="mt-note">Notes are saved locally. Actions go to your to-dos; the email waits for your approval.</p>`;
       } else if (i.ending) {
         body = `<div class="mt-rec-head">Writing up the meeting…</div><p class="mt-sub">${esc(this.status || 'Finishing the transcript…')}</p>`;
       } else {
         const pick = this.pick && i.suits.some(s => s.id === this.pick) ? this.pick : i.open || i.suits[0]?.id;
-        body = `<p class="mt-sub">Record a call for one of this hall's suits: Zoom, Teams, Meet, WhatsApp or anything else on this PC. When you end it, the transcript and a summary are emailed to you.</p>
+        body = `<p class="mt-sub">Record a call for one of this hall's suits: Zoom, Teams, Meet, WhatsApp or anything else on this PC. When it ends, JARVIS saves decisions and action items, updates your to-dos and drafts a follow-up for your OK.</p>
           <label>Which suit is it for?</label><select data-mt-suit>${i.suits.map(s => `<option value="${esc(s.id)}" ${s.id === pick ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
-          <button type="button" class="mt-go" data-mt="start">● Start recording</button>
+          <label><input data-mt-auto type="checkbox" checked style="width:auto"> Finish on supported Teams/Zoom call-ended screens</label><p class="mt-note">Start recording yourself. JARVIS can recognise English call-ended screens in the desktop apps and its own browser tabs. If no end is detected, press End. Silence never ends a recording.</p><button type="button" class="mt-go" data-mt="start">● Start recording</button>
           ${this.status ? `<p class="mt-note">${this.status}</p>` : ''}
           <p class="mt-note">Headphones give the cleanest transcript. Let everyone on the call know it's being recorded.</p>`;
       }
@@ -183,7 +183,7 @@
         <div class="mt-row"><button type="button" data-mt="save">Save</button><button type="button" data-mt="test" ${i.gmailReady ? '' : 'disabled'}>Send a test email</button><button type="button" data-mt="how">How do I get an app password?</button></div>
         <p class="mt-note">The app password is stored encrypted with Windows protection and only used to send these emails. Your normal Gmail password is never needed.</p></details>`;
       const past = i.past?.length ? `<details><summary>Recent meetings in this hall</summary><ul class="mt-past">${i.past.map(p => `<li><span>${esc(p.suitName)} · ${esc(when(p.startedAt))}<br>${p.emailed ? '<span class="mt-ok">emailed</span>' : `<span class="mt-warn">${esc(p.emailError || 'not emailed')}</span>`}</span><button type="button" data-mt="open" data-id="${esc(p.id)}">Notes</button><button type="button" data-mt="folder" data-id="${esc(p.id)}">Folder</button></li>`).join('')}</ul></details>` : '';
-      this.panel.innerHTML = `<h3>Meeting mode</h3>${body}${email}${past}`;
+      this.panel.innerHTML = `<h3>Meeting mode</h3>${body}<div class="mt-row"><button type="button" data-mt="review">Review meeting follow-ups</button></div>${email}${past}`;
       this.panel.hidden = false; this.place();
     },
     drawBar() {
@@ -206,7 +206,8 @@
       const b = e.target.closest('[data-mt]'); if (!b) return;
       const act = b.dataset.mt, p = this.panel;
       try {
-        if (act === 'start') { this.pick = p.querySelector('[data-mt-suit]')?.value; this.status = ''; b.disabled = true; await call('meeting-start', {id: this.pick}); }
+        if (act === 'start') { this.pick = p.querySelector('[data-mt-suit]')?.value; this.status = ''; b.disabled = true; await call('meeting-start', {id: this.pick,autoEnd:p.querySelector('[data-mt-auto]')?.checked!==false}); }
+        else if(act==='review'){this.toggle(false);window.__jarvisRoutines.show('meetings');}
         else if (act === 'end') { b.disabled = true; await this.end(); }
         else if (act === 'save') {
           this.info = await call('meeting-settings', {to: p.querySelector('[data-mt-to]').value, from: p.querySelector('[data-mt-from]').value, password: p.querySelector('[data-mt-pass]').value}); this.draft = null;

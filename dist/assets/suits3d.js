@@ -14,6 +14,7 @@ import { calibratedStage } from './hall-calibration-data.js';
 import { renderBudget, fitSuit, suitRenderScale, concealedHall } from './render-budget.js';
 import { authoredPose } from './suit-rig.js';
 import { signatureFrame, addEyeHalos, lightEyes, makeSignature, makeReactorRing } from './suit-signatures.js';
+import { suitReaction } from './suit-reactions.js';
 import { EYE_PATCHES, EYE_COLOURS } from './suit-eyes.js';
 import { makeCaseMist, updateCaseMist } from './case-mist.js';
 const J = window.jarvis;
@@ -287,7 +288,8 @@ if (J && VIEW === 'main') {
       const spill = (o.spill || 0) + gs * 0.7 + (Math.abs(bay.spinA) > 0.05 ? 0.08 : 0), gw = w; if (spill) { x -= w * spill; w *= 1 + 2 * spill; }
       { const lift = st * 0.16 * h; if (lift) { y -= lift; h += lift; footPx += lift; } }   // room above the case for the suit stepping out
       bay.pivot.position.set(0, entry.lift * movement, entry.forward * movement); bay.pivot.scale.setScalar(1);
-      for (const eye of bay.eyes) { const on=S.inspectId===bay.id?1:entry.eyes; lightEyes(eye,on,signature,S.budget.detail);eye.position.copy(eye.userData.rest).add(new THREE.Vector3(...(o.eyeOffset||[0,0,0])));eye.scale.setScalar(o.eyeScale||1); }
+      const reaction=suitReaction(bay.id,quiet);
+      for (const eye of bay.eyes) { const on=reaction?reaction.strength:S.inspectId===bay.id?1:entry.eyes; lightEyes(eye,on,signature,S.budget.detail);for(const part of [eye,...(eye.userData.halos||[]),eye.userData.flare].filter(Boolean)){if(!part.userData.reactionBase)part.userData.reactionBase=part.material.color.clone();part.material.color.copy(part.userData.reactionBase);if(reaction)part.material.color.set(reaction.colour);}eye.position.copy(eye.userData.rest).add(new THREE.Vector3(...(o.eyeOffset||[0,0,0])));eye.scale.setScalar(o.eyeScale||1); }
       // a scan line runs up the suit as it powers on
       const sk = entry.scan; bay.scan.visible = S.budget.particles && sk > 0 && sk < 1;
       if (bay.scan.visible) { bay.scan.position.set(0, sk * 1.02, bay.depth * 0.5 + 0.5 * st + 0.04); bay.scan.scale.set(Math.max(bay.width, 0.4) * 1.3, 0.012, 1); bay.scan.material.opacity = 0.9 * Math.sin(sk * Math.PI); }
@@ -308,7 +310,7 @@ if (J && VIEW === 'main') {
       bay.pad.material.opacity = (0.55 + 0.2 * Math.sin(bay.t * 1.6)) * (bay.reactor ? 1 : 0.55 + 0.6 * bay.lvl) + bay.hover * 0.25 + st * 0.3;   // no reactor: the case floor shows how busy the suit is
       // the arc reactor: bright and pulsing while the suit is busy, dim when it has not been used for days
       bay.lvl += (bay.level - bay.lvl) * Math.min(1, dt * 1.5);
-      if (bay.reactor) { const busy = bay.busy ? 0.18 * (0.5 + 0.5 * Math.sin(bay.t * 3.2)) : 0.05 * Math.sin(bay.t * 1.3); const L = clamp(bay.lvl + busy + entry.eyes * signature.reactor + bay.hover * 0.15, 0.08, 1.8);
+      if (bay.reactor) { const busy = bay.busy ? 0.18 * (0.5 + 0.5 * Math.sin(bay.t * 3.2)) : 0.05 * Math.sin(bay.t * 1.3); const L = clamp(bay.lvl + busy + (reaction?.strength||0) + entry.eyes * signature.reactor + bay.hover * 0.15, 0.08, 1.8);
         bay.reactor.material.opacity = clamp(0.15 + L * 0.85, 0, 1); const sz = 0.035 + L * 0.055 + entry.eyes * signature.reactor * .032; bay.reactor.scale.set(sz, sz, 1); }
       if(bay.reactorRing){bay.reactorRing.visible=signature.ring>.001&&entry.engaged;bay.reactorRing.material.opacity=signature.ring*.85;bay.reactorRing.scale.setScalar(.07+signature.ringProgress*.24);}
       r.setViewport(x, Hh - y - h, w, h); r.setScissor(x, Hh - y - h, w, h);

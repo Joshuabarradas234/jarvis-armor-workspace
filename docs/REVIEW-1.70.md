@@ -242,3 +242,11 @@ Refined the full-body cloud with moving turbulence, varied edges, shaded billows
 ## Release 1.82.3: hand gesture guide and screen moves
 
 Added a persistent gesture reference reachable before starting the camera, with timings, scopes and a three-step tab move guide. Fixed lower-screen routing cancelling a grabbed suit tab, Escape causing a later click, stale display lookup cancelling a newer grab and silent failed moves. The destination hint is at the top of JARVIS. Core 121/121, frontend 96/96 and 94 runtime syntax checks passed. Browser guide navigation and page hide/restore were checked with mock displays and no camera. Physical webcam and multi-monitor use remain unverified. Windows x64 build verified; app.asar 29725721 bytes. Protected files, build settings and network code are unchanged. The pending 1.82.2 mist and sound are included; this package is not yet installed. See RELEASE-1.82.3.md.
+
+## Release 1.83.0: Work desk and everyday routines
+
+Added reviewed proposals/quotes, sourced document answers, hall personalities, owner-accepted trophy displays and opt-in photo filing, alongside the attention shelf, tab briefs, screen snapping, meeting follow-ups, travel and scheduled routines. Core 121/121 and frontend 154/154 passed, with all 113 runtime scripts syntax checked. Real PDF extraction, a packaged document worker and isolated browser flows were checked. PDF printing remains unverified after an isolated Electron renderer failure; current HTML exports are preserved on failure. Live providers, physical devices and the full installed-app regression remain unverified. Protected files and build settings are unchanged. See RELEASE-1.83.0.md for the final archive size, contents and checks.
+
+## Release 1.84.0: smoother work and meeting follow-through
+
+Added the Work menu, browser shortcuts, Product Studio and transcript-backed meeting tasks, proposals and ideas. Internal agent work can be approved together or enabled for automatic starts. Source quotes, complete briefs, estimated allowances, text-only agent access and duplicate guards protect the handoff. Core 121/121, frontend 182/182 and 122 syntax checks passed. See RELEASE-1.84.0.md for setup, limitations, complete checks and archive contents.

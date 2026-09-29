@@ -97,3 +97,8 @@ world-atlas 2.0.2 — ISC License, Copyright 2013-2019 Michael Bostock; the coun
 Populated places list — Natural Earth (public domain), naturalearthdata.com.
 Globe imagery — NASA Visible Earth "Blue Marble" and "Black Marble" (public domain), as packaged in the three-globe examples (MIT, Vasco Asturiano).
 Street maps shown live: © OpenStreetMap contributors (ODbL), map tiles © CARTO. Satellite close-ups shown live: Sentinel-2 cloudless — s2maps.eu by EOX IT Services GmbH (contains modified Copernicus Sentinel data), CC BY-NC-SA 4.0. Place search: Nominatim / OpenStreetMap. Weather: Open-Meteo.
+
+PDF.js 6.3.289 — Mozilla and contributors
+https://github.com/mozilla/pdf.js
+Licensed under Apache License 2.0. See assets/libraries/pdfjs/LICENSE.
+Distributed as the pdfjs-dist legacy browser and worker modules without modification.
