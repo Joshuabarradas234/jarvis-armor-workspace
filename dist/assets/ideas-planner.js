@@ -141,7 +141,7 @@ if (J && (new URLSearchParams(location.search).get('view') || 'main') === 'main'
     }
     const pct = all.length ? Math.round(done / all.length * 100) : 0;
     main.innerHTML = `${p.goal ? `<p><b>Goal:</b> ${esc(p.goal)}</p>` : ''}${p.finished ? `<p class="ixp-note"><b>Finished means:</b> ${esc(p.finished)}</p>` : ''}
-      <div class="ixp-row"><span>${done} of ${all.length} steps done</span><span class="ixp-grow"></span>${p.total?.time ? `<span class="ixp-chip">about ${esc(p.total.time)}</span>` : ''}${p.total?.cost ? `<span class="ixp-chip">${esc(p.total.cost)}</span>` : ''}</div>
+      <p style="margin:8px 0 0">${done} of ${all.length} steps done</p>${p.total?.time || p.total?.cost ? `<p class="ixp-note">Rough total: ${[p.total.time, p.total.cost].filter(Boolean).map(esc).join(' · ')}</p>` : ''}
       <div class="ixp-bar"><i style="width:${pct}%"></i></div>
       ${p.questions?.length ? `<div class="ixp-q"><p class="ixp-k">Decide first</p><ul>${p.questions.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
       ${p.thisWeek?.length ? `<div class="ixp-q"><p class="ixp-k">This week</p><ul>${p.thisWeek.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}

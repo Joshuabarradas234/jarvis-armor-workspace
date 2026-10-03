@@ -32,13 +32,13 @@ export function cleanPlan(j, old) {
   const phases = list(j?.phases).slice(0, 6).map((p, pi) => ({id: `p${pi + 1}`, name: line(p?.name, 80) || `Phase ${pi + 1}`, why: line(p?.why, 300),
     steps: list(p?.steps).slice(0, 8).map((s, si) => {
       const title = line(s?.title, 140), prev = before.get(title.toLowerCase());
-      return {id: `p${pi + 1}s${si + 1}`, title, detail: block(s?.detail, 700), who: WHO.includes(s?.who) ? s.who : 'you', time: line(s?.time, 40), cost: line(s?.cost, 40),
+      return {id: `p${pi + 1}s${si + 1}`, title, detail: block(s?.detail, 700), who: WHO.includes(s?.who) ? s.who : 'you', time: line(s?.time, 80), cost: line(s?.cost, 80),
         done: !!prev?.done, doneAt: prev?.doneAt || 0, howTo: prev?.howTo || '', todo: !!prev?.todo};
     }).filter(s => s.title)})).filter(p => p.steps.length);
   return {goal: line(j?.goal, 300), finished: line(j?.finished, 400), phases,
     risks: list(j?.risks).slice(0, 6).map(r => ({risk: line(r?.risk, 200), fix: line(r?.fix, 300)})).filter(r => r.risk),
     needs: list(j?.needs).map(x => line(x, 120)).filter(Boolean).slice(0, 10),
-    total: {time: line(j?.total?.time, 60), cost: line(j?.total?.cost, 60)},
+    total: {time: line(j?.total?.time, 140), cost: line(j?.total?.cost, 140)},
     thisWeek: list(j?.thisWeek).map(x => line(x, 200)).filter(Boolean).slice(0, 5),
     questions: list(j?.questions).map(x => line(x, 200)).filter(Boolean).slice(0, 4)};
 }
