@@ -4,6 +4,7 @@
  * Each floor is a team: a lead who plans, specialists who do the work, a reviewer who signs it off.
  */
 import {briefFields,resultsHtml} from './work-tools.js';
+import {skillsHtml} from './task-skills.js';
 (() => {
   'use strict';
   const J = window.jarvis; if (!J) return;
@@ -197,7 +198,7 @@ import {briefFields,resultsHtml} from './work-tools.js';
           <div class="tw-chips">${next ? `<span>↑ Hands up to ${esc(next.name)}</span>` : ''}${f.schedule.on ? `<span>🌙 Night shift ${esc(f.schedule.time)} · ${f.schedule.days.map(d => DAYS[d]).join(' ')}</span>` : ''}${f.ideaId ? `<span>💡 Linked to an idea</span>` : ''}</div></div>
         <div class="tw-fh-r"><div class="tw-budget" title="Estimated spend today, and the cap per run"><p>BUDGET TODAY <b>${money(spent)}</b> / ${money(f.budget.perDay)}</p><div class="tw-bar"><i style="width:${pct}%"></i></div><small>Per run cap ${money(f.budget.perRun)}</small></div>
           <button type="button" data-tw="folder" title="${esc(f.folder)}">📁 Floor folder</button></div></header>
-        <nav class="tw-tabs">${[['work', 'Work'], ['team', 'Team'], ['brief', 'Brief & training'], ['history', 'History'], ['results', 'Results & workflows']].map(([k, n]) => `<button type="button" data-tab="${k}" class="${this.tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>
+        <nav class="tw-tabs">${[['work', 'Work'], ['team', 'Team'], ['brief', 'Brief & training'], ['history', 'History'], ['skills', 'Skills'], ['results', 'Results & workflows']].map(([k, n]) => `<button type="button" data-tab="${k}" class="${this.tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>
         <div class="tw-pane"></div>`;
       this.renderPane();
     },
@@ -210,6 +211,9 @@ import {briefFields,resultsHtml} from './work-tools.js';
             <select class="tw-idea" title="Move an idea card along when this finishes"><option value="">💡 No linked idea</option>${(this.view.ideas || []).map(i => `<option value="${esc(i.id)}" ${f.ideaId === i.id ? 'selected' : ''}>💡 ${esc(i.title.slice(0, 40))} · ${i.progress}%</option>`).join('')}</select>
             <button type="button" class="tw-go" data-tw="run">▶ Run floor</button></div></div>`}
           <div class="tw-run">${show ? this.runHtml(show) : '<p class="tw-empty">Nothing run yet on this floor. Give it a task above, or try the example.</p>'}</div>`;
+      } else if(this.tab==='skills') {
+        pane.textContent='Loading saved skills…';const request=this.skillRequest=(this.skillRequest||0)+1;
+        call('tower-skills',{floorId:f.id,query:this.skillQuery||'',page:this.skillPage||0}).then(v=>{if(request===this.skillRequest&&pane.isConnected&&this.tab==='skills'&&this.floorId===f.id){this.skillPage=v.page;pane.innerHTML=skillsHtml(v);}}).catch(e=>{if(request===this.skillRequest&&pane.isConnected&&this.tab==='skills'&&this.floorId===f.id)pane.textContent=e.message;});
       } else if (this.tab === 'results') {pane.innerHTML=resultsHtml(this.view,f.id);
       } else if (this.tab === 'team') {
         pane.innerHTML = `<div class="tw-team">${f.agents.map((a, i) => `<article class="tw-agent" data-i="${i}" style="--ah:${hue(a.name)}">
@@ -270,6 +274,8 @@ ${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.ques
         ${r.handedTo ? `<p class="tw-link">↑ Handed up to <a href="#" data-goto="${esc(r.handedTo.runId)}">${esc(r.handedTo.floorName)}</a> — the assembly line carries on there.</p>` : ''}
         ${(r.approvals || []).length ? `<div class="tw-appr"><h5>NEEDS YOUR APPROVAL</h5>${r.approvals.map(a => `<div class="tw-ap st-${a.status}"><span>${a.type === 'email' ? '✉' : a.type === 'post' ? '📣' : '£'}</span><div><b>${a.type === 'email' ? 'Email to ' + esc(a.to) : a.type === 'post' ? 'Post on ' + esc(a.to) : 'Spend: ' + esc(a.to)}</b><small>${esc(a.title)}</small></div>
           ${a.status === 'waiting' ? `<button type="button" class="tw-go" data-tw="approve" data-run="${esc(r.id)}" data-i="${a.i}">${a.type === 'email' ? 'Approve · open draft' : a.type === 'post' ? 'Approve · copy & open' : 'Approve'}</button><button type="button" data-tw="decline" data-run="${esc(r.id)}" data-i="${a.i}">Decline</button>` : `<em>${a.status === 'approved' ? '✓ Approved' : 'Declined'}</em>`}</div>`).join('')}</div>` : ''}
+        ${r.learnedSkills?.length?`<p>Using ${r.learnedSkills.length} learned skill(s) from this floor. <button data-tw="show-skills">View skills</button></p>`:''}
+        ${r.learningError?`<p>${esc(r.learningError)}</p>`:!r.rehearsal&&r.status==='done'?'<p>A reusable skill is saved automatically. <button data-tw="show-skills">View skills</button></p>':''}
         ${r.final ? `<div class="tw-final">${r.feedback?.good&&!r.rehearsal?`<button data-tw="workflow" data-run="${esc(r.id)}">Save accepted workflow</button>`:''}<button type="button" class="tw-go" data-tw="read" data-path="${esc(r.final)}">📄 Read the final piece</button><button type="button" data-tw="openfile" data-path="${esc(r.final)}">Open file</button>
           <div class="tw-fb">${r.rehearsal?'Rehearsal — excluded from learning and results.':r.feedback ? `<span>You rated this ${r.feedback.good ? '👍' : '👎'}${r.feedback.comment ? ': “' + esc(r.feedback.comment) + '”' : ''}</span>` : `<input class="tw-fb-c" maxlength="400" placeholder="What should they keep or change next time?"><button type="button" data-tw="good" data-run="${esc(r.id)}" title="Good — keep this standard">Accept result</button><button type="button" data-tw="bad" data-run="${esc(r.id)}" title="Not good — add this as a lesson">Needs rework</button>`}</div></div>` : ''}`;
     },
@@ -284,6 +290,7 @@ ${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.ques
       for (const mt of this.allMounts || []) if (mt.theme === run.theme) mt.update(mt.floors, new Map([...this.runs].filter(([, r]) => r.theme === run.theme)));
       if (!this.open || !this.view || run.theme !== this.view.theme) return;
       this.renderBuilding();
+      if(run.floorId===this.floorId&&this.tab==='skills'&&['done','needs_changes'].includes(run.status))this.renderPane();
       if (run.floorId === this.floorId && this.tab === 'work') {
         const typing = !!document.activeElement?.closest?.('.tw-ask,.tw-fb');
         if (!typing) this.renderPane(); else { const box = $('.tw-run', this.el); if (box) box.innerHTML = this.runHtml(run); }
@@ -387,6 +394,11 @@ ${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.ques
         if (k === 'example') { const ta = $('.tw-task', this.el); ta.value = f.example; ta.focus(); return; }
         if (k === 'run') return this.run();
         if(k==='revise'){const r=this.runs.get(b.dataset.run);const ta=$('.tw-task',this.el);if(ta){ta.value=r.task;ta.dataset.resume=r.id;}for(const el of this.el.querySelectorAll('[data-brief]'))el.value=r.brief?.[el.dataset.brief]??'';ta?.focus();return;}
+        if(k==='skill-policy'){await call('tower-settings',{skillPolicy:this.el.querySelector('[data-skill-policy]').value});toast('Learning setting saved. It applies to the next task.');this.renderPane();return;}
+        if(k==='skill-toggle'){await call('tower-skill-enable',{id:b.dataset.skill,enabled:b.dataset.enabled==='true'});this.renderPane();return;}
+        if(k==='skill-search'){this.skillQuery=this.el.querySelector('[data-skill-query]').value;this.skillPage=0;this.renderPane();return;}
+        if(k==='skill-page'){this.skillPage=Number(b.dataset.page);this.renderPane();return;}
+        if(k==='show-skills'){this.tab='skills';this.renderFloor();return;}
         if(k==='workflow'){await call('tower-workflow-save',{runId:b.dataset.run});toast('Saved from your accepted result. Use Results & workflows to start it again.');await this.refresh();return;}
         if(k==='use-workflow'){const w=this.view.workflows.find(w=>w.id===b.dataset.workflow);if(!w)return;this.floorId=w.floorId;this.tab='work';this.renderFloor();$('.tw-task',this.el).value=w.task;$('.tw-task',this.el).dataset.resume='';for(const el of this.el.querySelectorAll('[data-brief]'))el.value=w.brief?.[el.dataset.brief]??'';this.el.querySelector('[data-workflow]').value=w.id;return;}
         if(k==='remove-workflow'){await call('tower-workflow-remove',b.dataset.workflow);await this.refresh();return;}

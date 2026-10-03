@@ -250,3 +250,7 @@ Added reviewed proposals/quotes, sourced document answers, hall personalities, o
 ## Release 1.84.0: smoother work and meeting follow-through
 
 Added the Work menu, browser shortcuts, Product Studio and transcript-backed meeting tasks, proposals and ideas. Internal agent work can be approved together or enabled for automatic starts. Source quotes, complete briefs, estimated allowances, text-only agent access and duplicate guards protect the handoff. Core 121/121, frontend 182/182 and 122 syntax checks passed. See RELEASE-1.84.0.md for setup, limitations, complete checks and archive contents.
+
+## Release 1.85.0: automatic task skills
+
+Finished reviewed Tower work now saves a durable recipe automatically. Owner acceptance enables reuse by default; an explicit setting allows reuse after agent review. Matching stays within the same hall and floor, with bounded prompts, rejection exclusions, usage provenance and a searchable Skills tab. The library survives run-history trimming and uses the existing settings backup. Core 121/121, frontend 190/190 and 124 syntax checks passed; browser controls tested with example data. Protected files and Control Deck are unchanged. See RELEASE-1.85.0.md and AUTOMATIC-TASK-SKILLS.md.

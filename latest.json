@@ -1,5 +1,5 @@
 {
-  "version": "1.84.0",
+  "version": "1.85.0",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "A searchable Work menu, product photo-to-video studio and meeting follow-through to suits and Tower agents."
+  "notes": "Finished Tower tasks now save reusable skills automatically and match them to future work."
 }
