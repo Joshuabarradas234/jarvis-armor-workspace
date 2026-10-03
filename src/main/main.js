@@ -40,8 +40,12 @@ import {createJarvisCore} from '../brain/index.js';
 import {HallCalibrationStore} from '../services/hall-calibration.js';
 import {SelfUpdater} from '../brain/selfupdate.js';
 import {WakeTimer,WAKE_ARG} from './wake-timer.js';
+import {rangeResponse} from './ranges.js';
 
 protocol.registerSchemesAsPrivileged([{scheme:'jarvis',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true,corsEnabled:true}}]);
+/* The graphics chip's video decoder crawled through the H.264 transition and welcome videos (about 4 frames a second on the owner's
+   Intel Arc PC, while the same files decode at full speed in software). Set JARVIS_HW_VIDEO=1 to try the hardware decoder again. */
+if(process.env.JARVIS_HW_VIDEO!=='1')app.commandLine.appendSwitch('disable-accelerated-video-decode');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 /** Set by boot.js: which approved self-update is running (root), and the installed app underneath it (asarRoot). */
 const BOOT=globalThis.__jarvisBoot||null;
@@ -1264,6 +1268,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       const url=new URL(request.url);let target;
       if(url.host==='media'){target=mediaFiles.get(url.pathname.split('/')[1]);if(!target)return new Response('Missing media',{status:404});}
       else {let bases=url.host==='app'?distRoots:url.host==='asset'?[assets]:url.host==='custom'?[path.join(userDir,'assets')]:null;if(!bases)return new Response('Forbidden',{status:403});const rel=decodeURIComponent(url.pathname).replace(/^\/+/, '');if(/[:*?"<>|\u0000]/.test(rel))return new Response('Forbidden',{status:403});if(url.host==='app'&&/^(vendor|wallpaper)\//i.test(rel))bases=[path.join(baseRoot,'dist')];   /* the big shared libraries only ever come from the installed app */for(const base of bases){const t=path.resolve(base,rel||'index.html');if(!t.startsWith(base+path.sep))return new Response('Forbidden',{status:403});target=t;if(bases.length===1||fs.existsSync(t))break;}}
+      const range=request.headers.get('range');if(range&&target){const r=rangeResponse(target,range,{'Access-Control-Allow-Origin':'*'});if(r)return r;}   /* videos and sounds: a proper 206, or transitions stall */
       return net.fetch(pathToFileURL(target).toString(),{headers:request.headers}).then(res=>{const headers=new Headers(res.headers);headers.set('Access-Control-Allow-Origin','*');return new Response(res.body,{status:res.status,statusText:res.statusText,headers});}).catch(()=>new Response('Not found',{status:404}));
     });
     const camOK=(wc,perm,details)=>{if(perm!=='media')return false;const t=wc&&trusted.get(wc.id);if(!t||t.role!=='main')return false;const types=details?.mediaTypes||[];return !types.includes('audio')||!!meetings?.m;};   /* audio only for a meeting */
