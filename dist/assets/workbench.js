@@ -43,8 +43,9 @@ if (J && (new URLSearchParams(location.search).get('view') || 'main') === 'main'
     if (!modal?.querySelector('[data-wb-items]')) return;
     const host = modal.querySelector('[data-wb-items]'), focus = document.activeElement?.dataset.wbItem;
     const items = (shelf?.items || []).filter(i => filter === 'all' || i.kind === filter);
-    host.innerHTML = items.map(i => `<article class="wb-item ${i.kind}"><span>${esc(i.kind === 'finished' ? 'Ready to review' : i.kind === 'blocked' ? 'Needs help' : i.kind === 'approval' ? 'Your decision' : 'Saved brief')}${i.theme ? ' · '+esc(options?.themes.find(t=>t.id===i.theme)?.name || i.theme) : ''}</span><h3>${esc(i.title)}</h3><p>${esc(i.detail)}</p><button data-wb-item="${esc(i.id)}">${esc(i.action)}</button></article>`).join('') || '<p class="wb-empty">Nothing waiting in this view. New results and requests will appear here.</p>';
+    host.innerHTML = items.map(i => `<article class="wb-item ${i.kind}"><span>${esc(i.kind === 'finished' ? 'Ready to review' : i.kind === 'blocked' ? 'Needs help' : i.kind === 'approval' ? 'Your decision' : 'Saved brief')}${i.theme ? ' · '+esc(options?.themes.find(t=>t.id===i.theme)?.name || i.theme) : ''}</span><h3>${esc(i.title)}</h3><p>${esc(i.detail)}</p><button data-wb-item="${esc(i.id)}">${esc(i.action)}</button>${i.clearable?`<button data-wb-clear="${esc(i.id)}" title="Remove this card until the run changes again">Clear</button>`:''}</article>`).join('') || '<p class="wb-empty">Nothing waiting in this view. New results and requests will appear here.</p>';
     host.querySelectorAll('[data-wb-item]').forEach(b => b.onclick = () => openItem(b.dataset.wbItem).catch(fail));
+    host.querySelectorAll('[data-wb-clear]').forEach(b => b.onclick = async () => { try { await call('seen', {id: b.dataset.wbClear}); await refresh(); } catch (e) { status(e.message); } });
     if (focus) [...host.querySelectorAll('button')].find(b=>b.dataset.wbItem===focus)?.focus();
     status(shelf?.error || 'Reviewing a card does not approve it or mark its work complete.');
   }

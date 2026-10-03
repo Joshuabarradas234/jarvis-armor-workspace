@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {readJsonKeep,writeJsonKeep} from '../brain/util.js';
 const MAX_LINKS=20,MAX_APPS=20;
 function safeName(name,fallback){const n=String(name??'').replace(/[<>\r\n]/g,'').trim().slice(0,40);return n||fallback;}
 export function validateLink(link){
@@ -87,9 +88,11 @@ export class WorkstationStore{
     this.file=path.join(dir,'workstations.json');this.log=log;
     this.themes=JSON.parse(fs.readFileSync(configFile,'utf8'));
     let saved={activeTheme:this.themes[0].id,suits:{}};
-    try{const parsed=JSON.parse(fs.readFileSync(this.file,'utf8'));if(parsed&&typeof parsed==='object')saved={activeTheme:parsed.activeTheme,suits:parsed.suits&&typeof parsed.suits==='object'?parsed.suits:{}};}catch(e){if(e.code!=='ENOENT')log('workstations-recovery',String(e));}
+    // a damaged file is kept aside and the last good copy is used, so one bad save cannot wipe every suit
+    const stored=readJsonKeep(this.file,msg=>log('workstations-recovery',msg));
+    if(stored&&typeof stored==='object')saved={activeTheme:stored.activeTheme,suits:stored.suits&&typeof stored.suits==='object'?stored.suits:{}};
     this.activeTheme=this.themes[0].id;   // always open in the Armor Hall, so JARVIS introduces himself
-    this.media={};try{const m=JSON.parse(fs.readFileSync(this.file,'utf8')).media||{};for(const th of this.themes){const saved=m[th.id]||{};this.media[th.id]={...validateMedia(saved.customised?saved:{...(th.media||{}),...Object.fromEntries(Object.entries(saved).filter(([k,v])=>k==='start'||k==='end'))}),...(saved.customised?{customised:true}:{})};}}catch{for(const th of this.themes)this.media[th.id]=validateMedia(th.media||{});}
+    this.media={};try{const m=stored?.media||{};for(const th of this.themes){const saved=m[th.id]||{};this.media[th.id]={...validateMedia(saved.customised?saved:{...(th.media||{}),...Object.fromEntries(Object.entries(saved).filter(([k,v])=>k==='start'||k==='end'))}),...(saved.customised?{customised:true}:{})};}}catch{for(const th of this.themes)this.media[th.id]=validateMedia(th.media||{});}
     // v9.5: the Web Lab no longer plays the web-shoot (its sound carried a voice); go straight into the transition
     {const w=this.media.spiderman;if(w&&typeof w.preVideo==='string'&&/spiderman-web\.(mp4|webm)$/.test(w.preVideo)){w.preVideo='';w.preSound='';w.preFlashAt=0;}}
     // v4.2: the bundled Iron Man transition is no longer a green-screen clip
@@ -97,7 +100,7 @@ export class WorkstationStore{
     this.suits={};
     for(const theme of this.themes)this.suits[theme.id]=theme.suits.map(s=>normaliseSuit(theme,s,(saved.suits[theme.id]||[]).find(x=>x&&x.id===s.id)));
   }
-  persist(){fs.mkdirSync(path.dirname(this.file),{recursive:true});fs.writeFileSync(this.file+'.tmp',JSON.stringify({activeTheme:this.activeTheme,suits:this.suits,media:this.media},null,2));fs.renameSync(this.file+'.tmp',this.file);}
+  persist(){writeJsonKeep(this.file,{activeTheme:this.activeTheme,suits:this.suits,media:this.media},2);}
   theme(id=this.activeTheme){const t=this.themes.find(x=>x.id===id);if(!t)throw Error('Unknown theme.');return t;}
   setTheme(id){this.theme(id);this.activeTheme=id;this.persist();return this.describe();}
   /** Modules for the active theme, in the shape the state machine and renderers expect. */

@@ -266,7 +266,7 @@ import {skillsHtml} from './task-skills.js';
         <div class="tw-bar"><i style="width:${r.progress || 0}%"></i></div>
         ${r.from ? `<p class="tw-link">↓ Picked up from <a href="#" data-goto="${esc(r.from.runId)}">${esc(r.from.floorName)}</a></p>` : ''}${r.scheduled ? '<p class="tw-link">🌙 Night shift run</p>' : ''}
         ${r.error ? `<p class="tw-err">⚠ ${esc(r.error)}</p>` : ''}${r.note ? `<p class="tw-err">${esc(r.note)}</p>` : ''}
-${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.questions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul></div>`:''}${['needs_brief','needs_changes'].includes(r.status)?`<button data-tw="revise" data-run="${esc(r.id)}">Revise this brief</button>`:''}<div class="tw-steps">
+${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.questions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul></div>`:''}${['needs_brief','needs_changes'].includes(r.status)?`<button data-tw="revise" data-run="${esc(r.id)}">Revise this brief</button>`:''}${['stopped','failed','budget'].includes(r.status)&&!r.meetingWork&&!r.rehearsal?`<div class="tw-cont" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px"><button type="button" class="tw-go" data-tw="continue" data-run="${esc(r.id)}">Continue where it stopped</button>${r.status==='budget'?`<label>Task budget $ <input class="tw-cont-b" type="number" min="0.05" max="100" step="0.05" style="width:80px" value="${Math.min(100,Math.max(0.05,Math.ceil((r.budget?.perRun||0)*30)/20)).toFixed(2)}"></label>`:''}<small>Finished steps are kept. Only the rest is done again.</small></div>`:''}<div class="tw-steps">
           ${row(lead, 'Plans the work and briefs the team', planStatus, '', 'lead')}
           ${r.steps.map(s => row(byId(s.agent) || { name: s.agentName }, s.title, s.status, s.live && s.status === 'working' ? `<code>${esc(s.live)}</code>` : s.error ? `<code class="bad">${esc(s.error)}</code>` : '', s.id)).join('')}
           ${row(rev, 'Checks everything, fixes it, and signs it off', revStatus, r.notes ? `<blockquote>“${esc(r.notes)}”</blockquote>` : '', 'reviewer')}
@@ -404,6 +404,7 @@ ${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.ques
         if(k==='remove-workflow'){await call('tower-workflow-remove',b.dataset.workflow);await this.refresh();return;}
         if (k === 'lobby') return this.lobby();
         if (k === 'stop') { await call('tower-stop', b.dataset.run); return; }
+        if (k === 'continue') { const inp = b.parentElement.querySelector('.tw-cont-b'); b.disabled = true; try { const r = await call('tower-continue', { runId: b.dataset.run, ...(inp ? { budget: Number(inp.value) } : {}) }); this.openRun = r.id; this.onRun(r); this.renderPane(); toast('Carrying on. Finished steps are kept.'); } finally { b.disabled = false; } return; }
         if (k === 'folder') return call('tower-open', f.folder);
         if (k === 'run-folder' || k === 'openfile') return call('tower-open', b.dataset.path);
         if (k === 'read') return this.viewer(b.dataset.path);

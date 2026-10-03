@@ -29,7 +29,9 @@ export class Travel {
   describe(at, zone = this.zone(at)) { return (this.get() ? zone + ' · ' : '') + new Date(at).toLocaleString('en-GB', {timeZone:zone, weekday:'long', hour:'2-digit', minute:'2-digit'}); }
   isWake(job) { return job.actions?.deliver === 'call' && job.actions?.content === 'wake'; }
   parseWhen(text, now = Date.now()) {
-    if (/\bin\s+|\bfrom now\b/i.test(text)) return parseWhen(text, new Date(now));
+    // "in 10 minutes" is the same anywhere; clock times ("7 in the morning") follow the trip's time zone
+    const plain = parseWhen(text, new Date(now));
+    if (!plain || /^in /.test(plain.words)) return plain;
     const p = zonedParts(now, this.zone(now)), fake = new Date(`${p.date}T${p.time}:00`), result = parseWhen(text, fake);
     if (!result) return null;
     const d = new Date(result.at), date = dayKey(d), t = this.get(), zone = t && date >= t.start && date <= t.end ? t.zone : Intl.DateTimeFormat().resolvedOptions().timeZone;

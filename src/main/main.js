@@ -541,7 +541,7 @@ function towerReport(t=workstations.activeTheme){
   return `${towerName(t)}: ${active.map(r=>`${r.floorName} is ${r.progress} percent through "${r.title}"`).join('. ')}.`;
 }
 async function towerLobby(text,t=workstations.activeTheme){
-  const route=await towerRunner.route(t,text);const run=await towerRunner.start(t,route.floorId,text);
+  const route=await towerRunner.route(t,text);const run=await towerRunner.start(t,route.floorId,text,{routeCost:route.cost});
   return {...route,run,floorName:tower.floor(t,route.floorId).name};
 }
 function towerView(t){
@@ -1075,6 +1075,7 @@ async function api(event,method,payload){
       return a;
     }
     case 'tower-lobby':return towerLobby(String(payload||'').slice(0,4000));
+    case 'tower-continue':return towerRunner.continue(String(payload?.runId||''),{budget:payload?.budget});
     case 'tower-stop':return towerRunner.stop(String(payload||''));
     case 'tower-feedback':{const result=towerRunner.feedback(String(payload?.runId||''),!!payload?.good,String(payload?.comment||''));const r=tower.runs.find(r=>r.id===payload?.runId);if(result.changed&&r?.feedback?.good)observeWork('accepted',{theme:r.theme,id:r.floorId,name:r.floorName});return result;}
     case 'tower-skills':return tower.skillPage(workstations.activeTheme,String(payload?.floorId||''),payload?.query,payload?.page);

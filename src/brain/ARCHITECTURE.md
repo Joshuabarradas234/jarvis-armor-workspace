@@ -26,7 +26,8 @@ an optional third screen shows "the vista"). Three halls, each with its own assi
 - `src/services/` — calendar, to-dos, ideas (local JSON), weather and the optional OpenAI-style chat.
 - `src/control/` — the control deck web server and per-bay agents (missions).
 - `src/tower/` — the agent tower: floors of AI agents (`store.js`, `orchestrator.js`, `engines.js`: Claude API and
-  Claude Code).
+  Claude Code). A run that stopped, failed or hit its budget can be continued in its own folder,
+  keeping finished steps. Claude Code agents may write only in their run folder; knowledge files are read-only.
 - `src/brain/` — **JARVIS Core**: the part that works on its own.
   - `index.js` `createJarvisCore(deps)`: the scheduler (every 20 s), reports, phone, approvals, chat, voice actions.
   - `orders.js`: `Documents\JARVIS\Standing orders.md` (schedule, watch list, rules, business facts).

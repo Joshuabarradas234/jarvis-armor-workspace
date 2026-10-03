@@ -1,5 +1,5 @@
 {
-  "version": "1.86.0",
+  "version": "1.87.0",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "Updates you approve in JARVIS can now be proposed on GitHub automatically; you press Merge there to publish them."
+  "notes": "Tower jobs can continue where they stopped, budgets hold across agents working together, and agents can only write in their own job folder."
 }
