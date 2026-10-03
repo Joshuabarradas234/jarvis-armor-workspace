@@ -31,3 +31,9 @@ test('the hall applies a background picture whenever it is still the one the cur
   assert.match(hall,/i\.onload=\(\)=>\{this\.disposed\|\|this\.assetUrl\(this\.theme\?\.wallpaper\)!==r\|\|\(/);
   assert.ok(!hall.includes('this.theme!==t||('));   // hall calibration replaces the theme object within half a second, which used to drop the picture
 });
+
+test('with a welcome recording, JARVIS speaks once when the app opens: nothing over it, and no second greeting in the hall',()=>{
+  const main=fs.readFileSync('src/main/main.js','utf8');
+  assert.match(main,/if\(s\.state==='WAKE'\)\{const st=settings\.get\(\)\.startup\|\|\{\};introVoiced=!!\(st\.enabled&&st\.sound\);if\(introVoiced\)broadcast\('caption',\{text:'System starting up\.'\}\);else say\('System starting up\.'\);\}/);
+  assert.match(main,/if\(s\.state==='ARMOR_HALL'&&machine\?\.previous==='HELMET_OPENING'\)\{if\(introVoiced\)introPlayed=true;else sayReady\(\);introVoiced=false;morningBrief\(\);\}/);
+});

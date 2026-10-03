@@ -1,5 +1,5 @@
 {
   "version": "1.89.1",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "Hall transitions and the welcome play smoothly again, and switching to Spider-Man shows the Web Lab instead of the Batcave."
+  "notes": "JARVIS greets you once when the app opens, hall transitions and the welcome play smoothly, and switching to Spider-Man shows the Web Lab."
 }

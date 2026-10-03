@@ -107,7 +107,7 @@ function packClip(themeId,action){
 function speakable(t){const v={i:1,v:5,x:10,l:50,c:100};return String(t).replace(/\b(Mark|Mk|MK|MARK)\s+([IVXLC]+)\b/g,(m,a,r)=>{if(!/^(?=[IVXLC])(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/.test(r))return m;let n=0;const w=r.toLowerCase();for(let k=0;k<w.length;k++){const x=v[w[k]],y=v[w[k+1]]||0;n+=x<y?-x:x;}return `${a} ${n}`;});}
 function say(text,opts={}){if(!text)return;broadcast('caption',{text});voice?.speak(speakable(text),settings.get(),voiceProfile(),undefined,opts);}
 /** A hall can greet you with its own recording instead of a spoken line. */
-let introPlayed=false;
+let introPlayed=false,introVoiced=false;   // introVoiced: this opening played the welcome recording, which already says JARVIS's greeting
 function sayReady(){
   const theme=workstations.theme();const rel=theme?.voice?.readySound;
   if(rel&&introPlayed){const clip=packClip(theme.id,'ready');if(clip){voice?.speak('',settings.get(),voiceProfile(),clip);return;}say(theme.readyLine);return;}
@@ -1290,11 +1290,11 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       if(command){if(command.theme&&command.theme!==workstations.activeTheme){try{workstations.setTheme(command.theme);refreshModules();broadcast('theme',themePayload());updateTray();scheduleChatter();scheduleHealth();setTimeout(()=>{if(settings.get().voiceEnabled)voice.listen(true);},0);}catch(e){log('voice',e.message);}}handled=!!dispatch(command.action,command.id,command);if(handled){followUntil=Date.now()+12000;if(!TALK.includes(command.action)&&!String(command.action).startsWith('core-'))setTimeout(()=>{try{acknowledge(command.action,command.id);}catch{}},260);}}broadcast('heard',{text:heard,confidence:Math.round((confidence||0)*100),handled,why:handled?'':why,name:voiceContext().theme?.assistant||'Jarvis'});status.commandHistory.unshift({time:Date.now(),text:heard,confidence:Math.round((confidence||0)*100),accepted:!!text,handled});status.commandHistory=status.commandHistory.slice(0,50);tray?.setToolTip(`JARVIS · heard: “${heard}” ${Math.round((confidence||0)*100)}%${handled?' ✓':''}`);broadcast('status',getStatus());},onStatus:text=>{voiceStatus=text;broadcast('status',getStatus());},log});
     machine=new WorkspaceMachine({modules,onChange:s=>{
       displays?.setActive(s.state!=='IDLE');broadcast('snapshot',s);
-      if(s.state==='WAKE')say('System starting up.');
+      if(s.state==='WAKE'){const st=settings.get().startup||{};introVoiced=!!(st.enabled&&st.sound);if(introVoiced)broadcast('caption',{text:'System starting up.'});else say('System starting up.');}   // with a welcome recording, that recording is JARVIS's voice: nothing is spoken over it
       if(s.state==='ARMOR_HALL'&&s.selected===null){if(pendingModule){const id=pendingModule;pendingModule=null;queueMicrotask(()=>dispatch('select',id));}else if(pendingShow){const id=pendingShow;pendingShow=null;setTimeout(()=>dispatch('suit-show',id),600);}}
       if(s.state==='SUIT_SELECTED'&&s.selected&&machine?.previous!=='SUIT_SELECTED')suitUp(s.selected);
       if(s.state==='SHUTDOWN')say('Standing by.');
-      if(s.state==='ARMOR_HALL'&&machine?.previous==='HELMET_OPENING'){sayReady();morningBrief();}
+      if(s.state==='ARMOR_HALL'&&machine?.previous==='HELMET_OPENING'){if(introVoiced)introPlayed=true;else sayReady();introVoiced=false;morningBrief();}   // the welcome recording already greeted you
       if(s.state==='MODULE'&&s.selected&&machine?.previous!=='MODULE')suitOpened(s.selected);
       if(machine?.value?.selected&&s.state==='RETURNING'){}
       if(s.state==='MODULE'&&s.selected){if(machine.previous!=='MODULE'){try{const chosen=workstations.suit(s.selected);observeWork('suit',{theme:workstations.activeTheme,id:chosen.id,name:chosen.name,suit:true});}catch{}}const suit=modules.find(m=>m.id===s.selected);setTimeout(async()=>{if(machine.value.state!=='MODULE'||machine.value.selected!==s.selected)return;applyLayout(s.selected,{links:false}).then(r=>{if(r&&(r.placed||r.error))broadcast('layout-result',{id:s.selected,...r});}).catch(e=>log('layout',e.message));const resumed=await restoreSession(s.selected);broadcast('launch-result',{id:s.selected,resumed});if(resumed){try{const v=voiceProfile();if(v?.lines?.resume)say(v.lines.resume);}catch{}return;}if(!suit?.autoLaunch)return;launchSuit(s.selected).then(r=>broadcast('launch-result',{id:s.selected,...r})).catch(e=>log('launch',e.message));},400);}

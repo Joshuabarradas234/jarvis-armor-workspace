@@ -1,8 +1,9 @@
-## JARVIS 1.89.1: smooth transitions and the right hall
+## JARVIS 1.89.1: smooth start-up, transitions and halls
 
 ## Fixed
 
 - **Transitions and the welcome play smoothly again.** The hall transition videos and the JARVIS welcome when the app opens were crawling at a few frames a second. This PC's graphics chip was decoding them very slowly; JARVIS now decodes video on the processor, which plays them at full speed. The app also now sends video files to the player in the pieces it asks for.
+- **JARVIS greets you once when the app opens.** His welcome recording used to play with the Windows voice saying "System starting up" over it, and then the same greeting played again when the hall appeared. Now the welcome recording is the only voice while the app opens.
 - **Switching to Spider-Man shows the Web Lab, not the Batcave.** When you changed hall, the new background picture could be thrown away if it took longer than half a second to load, leaving the old hall's background behind the new suits. The hall now always shows its own background.
 
 ## Good to know
