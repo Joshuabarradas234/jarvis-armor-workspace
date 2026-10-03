@@ -16,3 +16,24 @@ test('quitting while the wake task is being created waits for it and removes it'
   assert.ok(Date.now()-t0>=1500);assert.deepEqual(sync,[`/Delete /F /TN ${TASK}`]);finish('');await p;assert.equal(w.pending,false);
   const idle=new WakeTimer({dir,platform:'win32',exec:async()=>'',execSync:()=>sync.push('again')});idle.clearNow();assert.equal(sync.length,1);   // nothing made: nothing to remove
 });
+
+test('on two screens the lower one shows the transition silently, so its sound plays once',()=>{
+  const tr=fs.readFileSync('dist/assets/transition-CppjmnER.js','utf8');
+  assert.ok(tr.includes("b=e=>{if(!e||new URLSearchParams(location.search).get(`view`)===`console`)return;"));
+});
+
+test('the PC is woken for calls, messages and the agents\' night shift, not for JARVIS\'s own background jobs',async t=>{
+  const {createJarvisCore}=await import('../../src/brain/index.js');
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'jarvis-1892-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const wakes=[],extra=[];
+  const core=createJarvisCore({userDir:dir,docs:dir,appVersion:'1.89.2',boot:{asarRoot:dir,root:dir,base:'1.89.2'},log(){},notify(){},broadcast(){},getKey:()=>'',pcAwake:()=>true,say(){},crypt:{available:()=>false},isIdle:()=>true,keepAwake(){},settings:{get:()=>({})},
+    wakeAt:async at=>{wakes.push(at);return true;},upcomingExtra:()=>extra});
+  t.after(()=>core.dispose());
+  const soon=Date.now()+40*60000;
+  fs.writeFileSync(core.orders.file,core.orders.read().replace(/## Every day[\s\S]*?\n## /,`## Every day\n- ${new Date(soon).toTimeString().slice(0,5)} — Run the overnight audit.\n\n## `));core.orders.parse(true);
+  await core.tick();await new Promise(r=>setTimeout(r,20));assert.equal(wakes.at(-1),null);   // only a background job: no wake-up
+  extra.push({at:soon+5*60000,kind:'job',what:'the agents start 1 plan step',source:'ideas',id:'plan-night'});
+  await core.tick();await new Promise(r=>setTimeout(r,20));assert.equal(wakes.at(-1),soon+3*60000);
+  core.store.addAlarm({at:soon-10*60000,kind:'whatsapp',note:'Pick up parcel'});
+  await core.tick();await new Promise(r=>setTimeout(r,20));assert.equal(wakes.at(-1),soon-12*60000);
+});

@@ -734,7 +734,8 @@ ${JSON.stringify(facts, null, 1)}`});
     finally { ticking = false; }
   }
   /**
-   * Windows wakes the PC two minutes before the next call, message or report: a scheduled task that JARVIS keeps
+   * Windows wakes the PC two minutes before the next call or message (or plan steps for the agents' night shift); his own
+   * background jobs (audit, self-review) wait until the PC is awake. A scheduled task that JARVIS keeps
    * on the next one (src/main/wake-timer.js). It only changes when the next one does; a failure is retried in half an hour.
    */
   /** Bills and birthdays: the reminders owed today go in one WhatsApp, from 09:00 and outside quiet hours. */
@@ -750,7 +751,7 @@ ${JSON.stringify(facts, null, 1)}`});
   let wakeSet = null, wakeFailed = 0, wokeUntil = 0, timersAt = 0;
   function syncWake() {
     if (!deps.wakeAt) return;
-    const c = store.get(), next = c.enabled && c.wakePc ? upcoming().find(u => u.at > Date.now() + 3 * 60000) : null, at = next ? next.at - 2 * 60000 : 0;
+    const c = store.get(), next = c.enabled && c.wakePc ? upcoming().find(u => u.at > Date.now() + 3 * 60000 && (u.kind === 'call' || u.kind === 'message' || u.source === 'ideas')) : null, at = next ? next.at - 2 * 60000 : 0;
     if (deps.wakeTimers && Date.now() - timersAt > 3600e3) { timersAt = Date.now(); Promise.resolve(deps.wakeTimers()).then(t => store.setState({wakeTimers: t || null}), () => {}); }
     if (at === wakeSet && !(wakeFailed && Date.now() - wakeFailed > 30 * 60000)) return;
     wakeSet = at; wakeFailed = 0;

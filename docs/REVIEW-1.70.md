@@ -314,9 +314,11 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
 - **One greeting at start-up:** welcome.mp3 and voice/ironman-ready.wav carry the same JARVIS line (checked with Windows dictation), and "System starting up." was spoken by Windows TTS over the recording. When a start-up sound is enabled, WAKE now only shows the caption, and the HELMET_OPENING → ARMOR_HALL step skips `sayReady` (the next ready greeting uses the short pack clip, as before). Logged in the test copy: only welcome.mp3 plays and no speech process starts while the app opens.
 - Tests: 247 frontend (5 new in `fixes-1.89.1.test.mjs`) and 121 core, on Windows. Smoke run in the test copy: the opening, three hall switches, the Ideas room and planner, Core tabs and the Tower, with no page errors.
 
-## Release 1.89.2: tidy-ups
+## Release 1.89.2: one sound per transition, quieter nights
 
+- **Two screens:** the transition ran in both the main and console windows, and each played `transitionSound`/`preSound` (checked by hooking media playback in each view in the test copy). The console view now skips the sound (an exact edit in `transition-CppjmnER.js`); it still shows the transition muted.
+- **Wake rule:** `syncWake` wakes only for upcoming calls, messages and the plan night shift (`source: 'ideas'`). The audit and self-review fall back on their catch-up windows (180 minutes), so a sleeping PC is not woken at 02:28 and 02:58 and then kept up all night by keep-awake.
 - `WakeTimer` marks a task creation as pending; `clearNow` on quit waits up to 2 s for it and then deletes the task, so quitting just after start no longer leaves "JARVIS wake-up" behind (seen on the owner's PC after installing 1.89.1).
 - No owner name in the code: defaults in orders.js, store.js and the Tower seed are empty, with neutral fallbacks in the prompts ("the owner's", "(add your name)"); the docs and test fixtures use neutral wording or "Alex". The owner's saved settings already hold the name, so nothing changes for them. Left as is: the GitHub repository address and the app's appId in package.json, which Windows uses to identify the app.
 - Also deleted the ten merged branches on GitHub (only `main` remains).
-- Tests: 249 frontend (2 new in `fixes-1.89.2.test.mjs`) and 121 core, on Windows.
+- Tests: 251 frontend (4 new in `fixes-1.89.2.test.mjs`) and 121 core, on Windows.
