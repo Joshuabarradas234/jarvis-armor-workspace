@@ -20,7 +20,7 @@ export const MODELS = [
 ];
 export const DEFAULTS = {
   enabled: true,
-  owner: {name: 'Joshua', address: 'sir', phone: '', email: ''},   // your mobile is entered in Settings → JARVIS Core and stays on this PC
+  owner: {name: '', address: 'sir', phone: '', email: ''},   // your name and mobile are entered in Settings → JARVIS Core and stay on this PC
   models: {brain: 'claude-sonnet-5', fast: 'claude-haiku-4-5-20251001', code: 'claude-sonnet-5'},
   codeEngine: 'auto',            // auto | api | claude-code
   budgetPerDay: 5,               // US dollars of Claude API use per day, for everything JARVIS does on its own
@@ -75,7 +75,7 @@ export class BrainStore {
   clean(c) {
     const o = merge(DEFAULTS, c);
     o.enabled = o.enabled !== false;
-    o.owner = {name: clip(String(o.owner.name || 'Joshua').trim(), 40) || 'Joshua', address: clip(String(o.owner.address || 'sir').trim(), 20) || 'sir', phone: e164(o.owner.phone) || DEFAULTS.owner.phone, email: clip(String(o.owner.email || '').trim(), 120)};
+    o.owner = {name: clip(String(o.owner.name || '').trim(), 40), address: clip(String(o.owner.address || 'sir').trim(), 20) || 'sir', phone: e164(o.owner.phone) || DEFAULTS.owner.phone, email: clip(String(o.owner.email || '').trim(), 120)};
     for (const k of ['brain', 'fast', 'code']) if (typeof o.models[k] !== 'string' || !/^[\w.-]{3,60}$/.test(o.models[k])) o.models[k] = DEFAULTS.models[k];
     if (!['auto', 'api', 'claude-code'].includes(o.codeEngine)) o.codeEngine = 'auto';
     o.budgetPerDay = Math.max(0.25, Math.min(200, Number(o.budgetPerDay) || DEFAULTS.budgetPerDay));

@@ -31,7 +31,7 @@ export function startClaude() {
         return {i, category: 'Needs reply', needsReply: true, urgent: false, mood: 'happy', billing: false, summary: 'Asks when the course starts.'};
       })));
     }
-    if (/^Reply to this email\./.test(ask)) return text(`Hi there,\n\nThanks for getting in touch. I'll look into it today and come back to you.\n\nJoshua`);
+    if (/^Reply to this email\./.test(ask)) return text(`Hi there,\n\nThanks for getting in touch. I'll look into it today and come back to you.\n\nAlex`);
     if (/You read one number/.test(sys)) return text('1234');
     if (/Say "online"/.test(ask)) return text('online');
     // --- reports

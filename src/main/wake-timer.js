@@ -55,7 +55,8 @@ export class WakeTimer {
     if (!at) return this.clear();
     const file = path.join(this.dir, 'wake-task.xml');
     fs.writeFileSync(file, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(wakeTaskXml(at, this.exe), 'utf16le')]));   // schtasks wants UTF-16 with a byte-order mark
-    try { await this.exec('schtasks.exe', ['/Create', '/F', '/TN', TASK, '/XML', file]); } finally { fs.rmSync(file, {force: true}); }
+    this.pending = true;
+    try { await this.exec('schtasks.exe', ['/Create', '/F', '/TN', TASK, '/XML', file]); } finally { fs.rmSync(file, {force: true}); this.pending = false; }
     this.at = at; return true;
   }
   async clear() {
@@ -64,6 +65,11 @@ export class WakeTimer {
     this.at = null; return true;
   }
   /** When JARVIS quits: remove the task straight away, so a closed JARVIS never wakes the PC. */
-  clearNow() { if (!this.available || this.at === null) return; try { this.execSync('schtasks.exe', ['/Delete', '/F', '/TN', TASK], {windowsHide: true, timeout: 5000, stdio: 'ignore'}); } catch {} this.at = null; }
+  clearNow() {
+    if (!this.available || (this.at === null && !this.pending)) return;
+    if (this.pending) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000);   // quitting while the task is being made: let schtasks finish, then remove it
+    try { this.execSync('schtasks.exe', ['/Delete', '/F', '/TN', TASK], {windowsHide: true, timeout: 5000, stdio: 'ignore'}); } catch {}
+    this.at = null;
+  }
   async timers() { if (!this.available) return null; return parseWakeTimers(await this.exec('powercfg.exe', ['/query', 'SCHEME_CURRENT', 'SUB_SLEEP', 'RTCWAKE'])); }
 }

@@ -26,7 +26,7 @@ export function coderRules() {
 - Plain characters only: no invisible or right-to-left characters in code, and no line longer than 2000 characters.
 - src/main/main.js must keep calling globalThis.__jarvisBoot?.markGood?.() once the main screen is ready.
 - Avoid editing the minified bundle dist/assets/index-*.js. For new screens or buttons, add a new file in dist/assets/ and load it from dist/index.html with <script type="module">, like tower.js and deck.js do; talk to the main process with window.jarvis.call(method, payload), and add the method to the api() switch in src/main/main.js.
-- When you are done, reply with a short summary: what you changed, in which files, and how Joshua will notice it.`;
+- When you are done, reply with a short summary: what you changed, in which files, and how the owner will notice it.`;
 }
 const guide = dir => { try { return fs.readFileSync(path.join(dir, 'src/brain/ARCHITECTURE.md'), 'utf8').slice(0, 24000); } catch { return ''; } };
 

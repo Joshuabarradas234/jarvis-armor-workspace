@@ -34,7 +34,7 @@ const key = fs.readFileSync(path.join(J, 'key.pem')), cert = fs.readFileSync(pat
 const now = new Date();
 const rfc = d => d.toUTCString().replace('GMT', '+0000');
 const mails = [
-  `From: Sarah Jones <sarah@customer.com>\r\nTo: me@gmail.com\r\nSubject: When does the course start?\r\nDate: ${rfc(now)}\r\nMessage-ID: <sarah1@customer.com>\r\n\r\nHi Joshua,\r\nWhen does the email course start?\r\nThanks, Sarah\r\n`,
+  `From: Sarah Jones <sarah@customer.com>\r\nTo: me@gmail.com\r\nSubject: When does the course start?\r\nDate: ${rfc(now)}\r\nMessage-ID: <sarah1@customer.com>\r\n\r\nHi Alex,\r\nWhen does the email course start?\r\nThanks, Sarah\r\n`,
   `From: "Tom Hardy" <tom@x.com>\r\nTo: me@gmail.com\r\nSubject: Broken link - unacceptable\r\nDate: ${rfc(now)}\r\nMessage-ID: <tom1@x.com>\r\n\r\nI paid and the course link is broken. This is unacceptable, I'm very disappointed.\r\n\r\nOn Mon, someone wrote:\r\n> old quoted stuff\r\n`,
   `From: Weekly Digest <news@digest.com>\r\nTo: me@gmail.com\r\nSubject: Weekly digest #12\r\nList-Unsubscribe: <mailto:unsub@digest.com>\r\nDate: ${rfc(now)}\r\nMessage-ID: <n12@digest.com>\r\n\r\nThis week's newsletter.\r\n`,
   `From: Accounts <billing@supplier.com>\r\nTo: me@gmail.com\r\nSubject: Invoice 2231 overdue\r\nDate: ${rfc(now)}\r\nMessage-ID: <inv@supplier.com>\r\n\r\nYour invoice is overdue, please arrange payment.\r\n`,
@@ -86,7 +86,7 @@ let st = core.status();
 ok(st.schedule.jobs.length === 7 && st.schedule.problems.length === 0, `7 schedule lines understood (${st.schedule.jobs.map(j => j.label).join(' | ')})`);
 ok(st.config.owner.phone === '', 'no phone number is built in (it is entered in Settings)');
 ok(!/\+44\d{9,}/.test(fs.readFileSync(path.join(docs, 'JARVIS', 'Standing orders.md'), 'utf8')), 'no phone number in the orders file');
-core.store.save({owner: {name: 'Joshua', address: 'sir', phone: '+447700900123', email: ''}});
+core.store.save({owner: {name: 'Alex', address: 'sir', phone: '+447700900123', email: ''}});
 ok(core.status().config.owner.phone === '+447700900123', 'your number is set from Settings');
 
 console.log('\n2. Phone set-up and messages');

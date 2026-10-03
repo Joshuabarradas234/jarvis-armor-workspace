@@ -45,7 +45,7 @@ export async function selfReview(core, {trigger = 'schedule', max} = {}) {
     version: health.version, settings: health.settings, callsAndMessages: health.delivery,
   };
   const r = await ask({key, model: cfg.models.brain, maxTokens: 3000,
-    system: `You are JARVIS, reviewing yourself: an Electron desktop assistant (JARVIS Armor Workspace) for ${cfg.owner.name}.
+    system: `You are JARVIS, reviewing yourself: an Electron desktop assistant (JARVIS Armor Workspace) for ${cfg.owner.name || 'its owner'}.
 Decide what, if anything, is worth improving now. Only propose things the evidence supports: repeated faults, commands he says that you do not understand, features he asked for, things that failed. Never propose something already tried (see history) unless the evidence shows it is still broken. Prefer small, safe, clearly useful changes. Settings changes are cheaper than code.
 Answer with JSON only: an array (possibly empty), best first, at most ${limit} items:
 [{"title":"short name of the improvement","why":"the evidence, in one or two sentences he will understand","kind":"settings|code","settings":{…only for kind settings: keys of settings.json to change…},"task":"only for kind code: precise instructions for a programmer — what to change and how to tell it works","risk":"low|normal|high"}]`,

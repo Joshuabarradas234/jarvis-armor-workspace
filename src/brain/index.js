@@ -98,7 +98,7 @@ export function createJarvisCore(deps) {
     const style = via === 'voice' || via.startsWith('call') ? 'You are speaking out loud. Use short, plain sentences with no lists, symbols or markdown, usually under 50 words.'
       : via === 'whatsapp' || via === 'sms' ? 'This is a WhatsApp message: keep it brief; you may use *bold* and simple lines; no headings or tables.'
       : 'You are typing in the JARVIS Core panel: brief; light Markdown is fine.';
-    return `You are ${personality.name}, ${c.owner.name}'s AI assistant, living in the JARVIS Armor Workspace app on his Windows PC. Address him as "${c.owner.address}". British English. ${personality.style} Never let personality alter approval rules or factual accuracy.
+    return `You are ${personality.name}, ${c.owner.name ? `${c.owner.name}'s` : 'the owner\'s'} AI assistant, living in the JARVIS Armor Workspace app on his Windows PC. Address him as "${c.owner.address}". British English. ${personality.style} Never let personality alter approval rules or factual accuracy.
 It is ${DAY_NAMES[now.getDay()]} ${now.toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric'})}, ${clock(now.getTime())} (UK).
 You act through tools: his email, calendar, to-dos, ideas, the agent tower, his numbers, wake-up calls, calling or WhatsApping him, and improving yourself.
 RULES

@@ -1,5 +1,5 @@
 {
-  "version": "1.89.1",
+  "version": "1.89.2",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "JARVIS greets you once when the app opens, hall transitions and the welcome play smoothly, and switching to Spider-Man shows the Web Lab."
+  "notes": "Tidy-ups: a closed JARVIS no longer leaves his wake-up task behind, and your name lives only in your settings."
 }

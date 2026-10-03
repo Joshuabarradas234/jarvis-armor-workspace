@@ -64,7 +64,7 @@ export class MailDesk {
         if (key && this.store.budgetLeft() > 0.02) {
           try {
             const r = await ask({key, model: this.store.get().models.fast, maxTokens: 1800,
-              system: `You sort ${this.store.get().owner.name}'s inbox. Categories: ${cats.join(', ')}.\n"Needs reply" = a real person is waiting for an answer from them. Newsletters, notifications, receipts and automated mail never need a reply.\nAnswer with JSON only.`,
+              system: `You sort ${this.store.get().owner.name || 'the owner'}'s inbox. Categories: ${cats.join(', ')}.\n"Needs reply" = a real person is waiting for an answer from them. Newsletters, notifications, receipts and automated mail never need a reply.\nAnswer with JSON only.`,
               prompt: `For each email return {"i": number, "category": one of the categories, "needsReply": true/false, "urgent": true/false, "mood": "angry"|"unhappy"|"neutral"|"happy", "billing": true/false (about money owed, invoices, payments, refunds, subscriptions), "summary": "one line, at most 18 words"}.\nReturn a JSON array.\n\n` +
                 batch.map((m, j) => `### Email ${j}\nFrom: ${m.from.name} <${m.from.address}>\nSubject: ${m.subject}\nAutomated: ${m.bulk ? 'probably' : 'no sign'}\n${m.attachments.length ? 'Attachments: ' + m.attachments.join(', ') + '\n' : ''}\n${clip(m.text, 1500)}`).join('\n\n')});
             out.cost += r.cost; this.store.addSpend(r.cost, 'email');
