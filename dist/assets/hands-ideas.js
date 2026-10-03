@@ -1172,6 +1172,7 @@
           ${d.notes ? `<p>${esc(d.notes)}</p>` : ''}
         </article>`).join('') || `<div class="ix-empty">No ideas yet. Press <b>+ New idea</b>, or pinch it with your hand.</div>`;
       const counts = Object.fromEntries(STAGES.map(([k]) => [k, this.ideas.filter(d => d.stage === k).length]));
+      window.__jarvisPlanner?.wall(this.el, this.ideas);   // projects in progress as rings round the core
       this.el.querySelector('.ix-stages').innerHTML = STAGES.map(([k, n], i) => `<div class="st-${k}"><b>${counts[k]}</b><span>${n}</span></div>${i < STAGES.length - 1 ? '<i></i>' : ''}`).join('');
     },
     ringSpot(i) {   // new ideas land in an orbit round the core

@@ -118,7 +118,9 @@ export function parseDays(text) {
   const names = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
   const range = /\b(sun|mon|tue|wed|thu|fri|sat)[a-z]*\s*(?:-|to|–)\s*(sun|mon|tue|wed|thu|fri|sat)[a-z]*/.exec(t);
   if (range && !/mon(day)?\s*(-|to|–)\s*fri/.test(t)) { let a = names.indexOf(range[1]); const b = names.indexOf(range[2]); for (let i = 0; i < 7; i++) { out.add(a); if (a === b) break; a = (a + 1) % 7; } }
-  for (const [i, n] of names.entries()) if (new RegExp(`\\b${n}(day|s|sday|nesday|rsday|urday)?\\b`).test(t)) out.add(i);
+  // singular and plural ("Saturdays" used to be missed, so a Saturday-only line ran every day)
+  const DAY = ['sun(?:days?)?', 'mon(?:days?)?', 'tue(?:s|sdays?)?', 'wed(?:s|nesdays?)?', 'thu(?:rs|rsdays?)?', 'fri(?:days?)?', 'sat(?:urdays?)?'];
+  for (const [i, p] of DAY.entries()) if (new RegExp(`\\b${p}\\b`).test(t)) out.add(i);
   return out.size ? [...out].sort() : [0, 1, 2, 3, 4, 5, 6];
 }
 export function describeDays(days) {

@@ -11,6 +11,8 @@ import {readJson, writeJson} from '../brain/util.js';
  *   howTo(id, stepId)                          one step explained in detail: how to do it, tips, mistakes to avoid
  *   step(id, stepId, done)                     ticks a step; the idea's progress follows the plan
  *   toTodos(id, stepIds)                       copies steps into your to-dos
+ *   queueNight(id, stepId, {floorId, now})     hands a step to a Tower floor tonight (01:00-05:00), or now;
+ *                                              the floor's own budget applies and its draft comes back to the step
  */
 const line = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const block = (v, n) => String(v ?? '').replace(/\r/g, '').trim().slice(0, n);
@@ -33,7 +35,7 @@ export function cleanPlan(j, old) {
     steps: list(p?.steps).slice(0, 8).map((s, si) => {
       const title = line(s?.title, 140), prev = before.get(title.toLowerCase());
       return {id: `p${pi + 1}s${si + 1}`, title, detail: block(s?.detail, 700), who: WHO.includes(s?.who) ? s.who : 'you', time: line(s?.time, 80), cost: line(s?.cost, 80),
-        done: !!prev?.done, doneAt: prev?.doneAt || 0, howTo: prev?.howTo || '', todo: !!prev?.todo};
+        done: !!prev?.done, doneAt: prev?.doneAt || 0, howTo: prev?.howTo || '', todo: !!prev?.todo, night: prev?.night || null};
     }).filter(s => s.title)})).filter(p => p.steps.length);
   return {goal: line(j?.goal, 300), finished: line(j?.finished, 400), phases,
     risks: list(j?.risks).slice(0, 6).map(r => ({risk: line(r?.risk, 200), fix: line(r?.fix, 300)})).filter(r => r.risk),
@@ -48,7 +50,7 @@ const planText = p => p.phases.map(ph => `${ph.name}:\n${ph.steps.map(s => `- ${
 
 export class IdeaPlanner {
   /** `assistant` is the IdeaAssistant (it holds the ideas store and asks Claude); `todos` is a getter for your to-do list. */
-  constructor({assistant, todos, dir}) { Object.assign(this, {assistant, todos}); this.file = path.join(dir, 'ideas-brainstorms.json'); this.busy = new Set(); }
+  constructor({assistant, todos, dir, runner = () => null, tower = () => null, activeTheme = () => ''}) { Object.assign(this, {assistant, todos, runner, tower, activeTheme}); this.file = path.join(dir, 'ideas-brainstorms.json'); this.busy = new Set(); this.nightBusy = false; }
   ideas() { return this.assistant.ideas(); }
   sessions() { const s = readJson(this.file, []); return Array.isArray(s) ? s.filter(x => x && typeof x.id === 'string' && Array.isArray(x.ideas)) : []; }
   claim(key, what) { if (this.busy.has(key)) throw Error(`JARVIS is already ${what}.`); this.busy.add(key); return () => this.busy.delete(key); }
@@ -139,5 +141,73 @@ export class IdeaPlanner {
     for (const s of steps) { this.todos().add(line(`${s.title} (${name})`, 200), {source: `idea:${id}:${s.id}`}); s.todo = true; }
     this.ideas().setProject(id, project); this.assistant.changed();
     return {added: steps.length};
+  }
+
+  /* ---------------- the night shift: plan steps the agents can do ---------------- */
+  /** The hall whose Tower takes this idea's steps: the suit's hall, else the one you are in. */
+  themeFor(idea) { return idea.target?.kind === 'suit' ? idea.target.theme : this.activeTheme(); }
+  floors(id) { const theme = this.themeFor(this.assistant.get(id)); return {theme, floors: (this.tower()?.tower(theme).floors || []).map(f => ({id: f.id, name: f.name, number: f.number}))}; }
+  queueNight(id, stepId, {floorId, now = false} = {}) {
+    const {idea, project, step} = this.find(id, stepId);
+    if (step.done) throw Error('That step is already done.');
+    if (['queued', 'running'].includes(step.night?.status)) throw Error('That step is already with the agents.');
+    const theme = this.themeFor(idea), floor = this.tower().floor(theme, String(floorId || ''));
+    step.night = {status: 'queued', theme, floorId: floor.id, floorName: floor.name, at: Date.now(), runId: '', file: '', error: ''};
+    this.ideas().setProject(id, project); this.assistant.changed();
+    return now ? this.startStep(id, stepId) : Promise.resolve(step);
+  }
+  cancelNight(id, stepId) {
+    const {project, step} = this.find(id, stepId);
+    if (step.night?.status === 'running') throw Error('The agents have started. Stop it in the Tower if you need to.');
+    step.night = null; this.ideas().setProject(id, project); this.assistant.changed(); return step;
+  }
+  /** The brief a floor needs, built from the plan, so the agents can start without asking. */
+  briefFor(idea, project, phase, step) {
+    return {task: `${step.title}\n\n${step.detail || ''}`.trim(),
+      brief: {outcome: step.title, audience: `The owner, for the project “${idea.title}”`, files: 'None needed: the project notes are below.',
+        constraints: 'Drafts only: never send, publish, buy, book or contact anyone. Mark anything uncertain or that needs checking.',
+        finished: step.detail ? `${step.detail} Ready for the owner to check.` : `A finished draft of “${step.title}”, ready for the owner to check.`},
+      input: `PROJECT: ${idea.title}\nGOAL: ${project.goal}\nPHASE: ${phase.name}${phase.why ? ` (${phase.why})` : ''}\nNOTES ON THE IDEA:\n${block(idea.notes, 3000) || '(none)'}`};
+  }
+  async startStep(id, stepId) {
+    const {idea, project, phase, step} = this.find(id, stepId), n = step.night, b = this.briefFor(idea, project, phase, step);
+    let patch;
+    try {
+      const run = await this.runner().start(n.theme, n.floorId, b.task, {brief: b.brief, input: b.input, title: `Plan: ${step.title}`, planStep: `${id}:${stepId}`, scheduled: true});
+      patch = run.status === 'needs_brief' ? {status: 'failed', runId: run.id, error: 'The floor wants a fuller brief. Open it in the Tower.'} : {status: 'running', runId: run.id, error: ''};
+    } catch (e) { patch = {status: 'failed', error: line(e.message, 200)}; }
+    const fresh = this.find(id, stepId); fresh.step.night = {...fresh.step.night, ...patch};
+    this.ideas().setProject(id, fresh.project); this.assistant.changed(); return fresh.step;
+  }
+  queued() { return this.assistant.list().flatMap(i => stepsOf(i.project).filter(s => s.night?.status === 'queued' && !s.done).map(s => ({idea: i, step: s}))); }
+  /** Between 01:00 and 05:00, start the queued steps: one per floor at a time (the floor is busy until its run ends). */
+  async nightShift(now = new Date()) {
+    if (now.getHours() < 1 || now.getHours() >= 5 || this.nightBusy || !this.runner()) return 0;
+    this.nightBusy = true; let started = 0;
+    try {
+      const busy = new Set([...this.runner().live.values()].map(l => `${l.run.theme}|${l.run.floorId}`));
+      for (const {idea, step} of this.queued()) {
+        const key = `${step.night.theme}|${step.night.floorId}`; if (busy.has(key)) continue;
+        busy.add(key); const r = await this.startStep(idea.id, step.id); if (r.night?.status === 'running') started++;
+      }
+    } finally { this.nightBusy = false; }
+    return started;
+  }
+  /** For JARVIS's clock: wake the PC at 01:00 when steps are waiting for the night shift. */
+  upcoming(now = Date.now()) {
+    const n = this.queued().length; if (!n) return [];
+    const d = new Date(now); if (d.getHours() >= 1) d.setDate(d.getDate() + 1); d.setHours(1, 0, 0, 0);
+    return [{at: d.getTime(), kind: 'job', what: `the agents start ${n} plan step${n === 1 ? '' : 's'}`, source: 'ideas', id: 'plan-night'}];
+  }
+  /** A plan step's Tower run has ended (main calls this). Its draft waits for you on the step; you tick it done. */
+  runFinished(run) {
+    const [id, stepId] = String(run.planStep || '').split(':'); let found;
+    try { found = this.find(id, stepId); } catch { return false; }
+    const {project, step} = found, n = step.night || {};
+    if (run.handedTo) step.night = {...n, status: 'running', runId: run.handedTo.runId, floorName: run.handedTo.floorName};
+    else step.night = {...n, runId: run.id, file: run.final || '', status: run.status === 'done' && !run.rehearsal ? 'ready' : 'failed',
+      error: run.status === 'done' ? (run.rehearsal ? 'That was a rehearsal: connect an engine and try again.' : '') : run.status === 'budget' ? 'Stopped at the floor\'s budget cap. Open it in the Tower and press Continue.'
+        : run.status === 'needs_changes' ? 'It failed review. Open it in the Tower to correct it.' : run.status === 'stopped' ? 'It was stopped.' : line(run.error || run.note || 'The run hit a problem.', 200)};
+    this.ideas().setProject(id, project); this.assistant.changed(); return true;
   }
 }

@@ -49,7 +49,7 @@ export class TowerRunner {
     return {id: r.id, theme: r.theme, floorId: r.floorId, floorName: r.floorName, number: r.number, title: r.title, task: r.task, status: r.status, progress: r.progress,
       input:r.input||'', brief:r.brief, questions:r.questions||[], workflowId:r.workflowId||'', rework:r.rework||0, reviews:r.reviews||[], rewarded:!!r.rewarded, phase: r.phase, startedAt: r.startedAt, endedAt: r.endedAt, folder: r.folder, final: r.final, verdict: r.verdict, notes: r.notes, error: r.error, note: r.note,
       rehearsal: r.rehearsal, calls: r.calls, cost: Math.round((r.cost || 0) * 10000) / 10000, budget: r.budget, chainSpent: r.chainSpent || 0, dayBase: r.dayBase || null, resumed: r.resumed || 0, feedback: r.feedback || null, approvals: r.approvals || [],
-      sourceKey:r.sourceKey||'',meetingWork:!!r.meetingWork,learnedSkills:r.learnedSkills||[],skillUseRecorded:!!r.skillUseRecorded,skillOutcomeRecorded:!!r.skillOutcomeRecorded,learningError:r.learningError||'',
+      sourceKey:r.sourceKey||'',notify:r.notify||'',planStep:r.planStep||'',meetingWork:!!r.meetingWork,learnedSkills:r.learnedSkills||[],skillUseRecorded:!!r.skillUseRecorded,skillOutcomeRecorded:!!r.skillOutcomeRecorded,learningError:r.learningError||'',
       ideaId: r.ideaId || '', scheduled: !!r.scheduled, from: r.from || null, handedTo: r.handedTo || null, chain: r.chain || [],
       desk: r.desk ? {lead: r.desk.lead.slice(-12), reviewer: r.desk.reviewer.slice(-12)} : null,
       steps: r.steps.map(s => ({id: s.id, agent: s.agent, agentName: s.agentName, title: s.title, method:s.method||'', instructions:(s.instructions||'').slice(0,2000), after:s.after||[], status: s.status, engine: s.engine, file: s.file, live: s.live, started: s.started, ended: s.ended, error: s.error, log: (s.log || []).slice(-12)}))};
@@ -204,7 +204,7 @@ export class TowerRunner {
     fs.mkdirSync(folderAbs, {recursive: true});
     fs.writeFileSync(path.join(folderAbs, '00 task.md'), `# Task\n\n${task}\n\n${briefText(brief)}\n`);
     if (opts.input) fs.writeFileSync(path.join(folderAbs, `00 input from ${String(opts.from?.floorName || 'previous floor').replace(/[<>:"/\\|?*]/g, '')}.md`), opts.input);
-    const r = {sourceKey:opts.sourceKey||'',meetingWork:!!opts.meetingWork,id: crypto.randomUUID(), theme, floorId, floorName: floor.name, number: floor.number, title, task, status:questions.length?'needs_brief':'planning', phase:questions.length?'needs_brief':'planning', progress: 2, brief,questions,rework:0,reviews:[],workflowId:workflow?.id||'',workflowPrompt:workflowText(workflow),
+    const r = {sourceKey:opts.sourceKey||'',notify:['message','call'].includes(opts.notify)?opts.notify:'',planStep:String(opts.planStep||'').slice(0,120),meetingWork:!!opts.meetingWork,id: crypto.randomUUID(), theme, floorId, floorName: floor.name, number: floor.number, title, task, status:questions.length?'needs_brief':'planning', phase:questions.length?'needs_brief':'planning', progress: 2, brief,questions,rework:0,reviews:[],workflowId:workflow?.id||'',workflowPrompt:workflowText(workflow),
       startedAt: Date.now(), endedAt: null, folder: folderAbs, folderAbs, floorDir, steps: [], final: null, verdict: null, notes: null, error: null, calls: 0, cost: Math.max(0, Number(opts.routeCost) || 0), chainSpent,
       budget: {...floor.budget,perRun:Math.min(taskLeft,floor.budget.perRun,floor.budget.perDay-spent)}, rehearsal: eng?(!eng.api.ready && !eng.claudeCode.ready)||floor.engine==='rehearsal':false, ideaId: opts.ideaId ?? floor.ideaId ?? '', scheduled: !!opts.scheduled,
       input: opts.input || '', from: opts.from || null, chain: [...(opts.chain || []), floorId], desk: {lead: [], reviewer: []}, approvals: []};
@@ -359,7 +359,7 @@ export class TowerRunner {
     // 4. assembly line: hand the finished piece up to the next floor
     if (next && !r.meetingWork && !r.rehearsal && !r.chain.includes(next.id) && r.chain.length < 4) {
       try {
-        const nr = await this.start(r.theme, next.id, r.task, {brief:r.brief,chainSpent:(r.chainSpent||0)+r.cost,input: finalBody, from: {runId: r.id, floorName: floor.name, floorId: floor.id}, chain: r.chain, ideaId: r.ideaId, title: r.title});
+        const nr = await this.start(r.theme, next.id, r.task, {brief:r.brief,chainSpent:(r.chainSpent||0)+r.cost,notify:r.notify,planStep:r.planStep,input: finalBody, from: {runId: r.id, floorName: floor.name, floorId: floor.id}, chain: r.chain, ideaId: r.ideaId, title: r.title});
         r.handedTo = {runId: nr.id, floorName: next.name};
       } catch (e) { r.note = `Could not hand on to ${next.name}: ${e.message}`; }
     }
@@ -389,6 +389,8 @@ export class TowerRunner {
     this.live.delete(r.id); this.save(r); this.emit(r);
     if (!stopped) this.log('tower', r.error);
   }
+  /** Tell the owner when this run ends: 'message', 'call' or '' (main passes it to JARVIS Core). */
+  tellMe(runId, how) { const l = this.live.get(runId); if (!l) return false; l.run.notify = ['message', 'call'].includes(how) ? how : ''; this.save(l.run); this.emit(l.run); return true; }
   stop(runId) {
     const l = this.live.get(runId); if (!l) return false;
     l.abort.abort(); for (const c of l.children) killTree(c);

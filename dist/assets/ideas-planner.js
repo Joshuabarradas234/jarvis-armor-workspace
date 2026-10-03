@@ -1,6 +1,7 @@
 /**
  * Ideas room: brainstorm projects with JARVIS, then plan one out step by step (src/ideas/planner.js).
  *   💡 Brainstorm  say what you are thinking about; JARVIS asks a few questions and suggests six projects
+ *   ◎ The wall    each project in progress is a glowing ring round the core; the arc is how far along it is
  *   📋 Plan it out phases and steps (who does each, rough time and cost), risks, what you need, this week's actions;
  *                  every step can be explained in detail, ticked off, or copied into your to-dos
  * Opened from the Ideas room (window.__jarvisPlanner). It only writes text: nothing is sent, bought or started.
@@ -67,7 +68,15 @@ if (J && (new URLSearchParams(location.search).get('view') || 'main') === 'main'
 .ixp-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:760px){.ixp-two{grid-template-columns:1fr}}
 .ixp-past{display:flex;flex-direction:column;gap:6px;margin-top:6px}
-.ixp-past button{text-align:left}`;
+.ixp-past button{text-align:left}
+.ixp-wall{position:absolute;left:50%;top:50%;width:min(86vmin,88vh);height:min(86vmin,88vh);transform:translate(-50%,-50%);z-index:4;pointer-events:none;overflow:visible}
+.ixp-wall circle{fill:none}
+.ixp-track{stroke:currentColor;stroke-opacity:.13;stroke-width:1.1}
+.ixp-arc{stroke:currentColor;stroke-width:1.9;stroke-linecap:round;filter:drop-shadow(0 0 2.2px currentColor);transition:stroke-dasharray 1.4s cubic-bezier(.2,.8,.2,1);animation:ixp-glow 4s ease-in-out infinite}
+.ixp-lab{fill:currentColor;font:600 3.1px "Segoe UI",system-ui,sans-serif;letter-spacing:.06px;pointer-events:all;cursor:pointer;opacity:.9}
+.ixp-lab:hover{opacity:1;text-decoration:underline}
+@keyframes ixp-glow{50%{stroke-opacity:.72}}
+@media (prefers-reduced-motion:reduce){.ixp-arc{animation:none;transition:none}}`;
 
   let el = null, view = null, busy = false;
   const room = () => document.querySelector('.ix-room');
@@ -149,13 +158,24 @@ if (J && (new URLSearchParams(location.search).get('view') || 'main') === 'main'
         ${ph.steps.map(s => `<div class="ixp-step ${s.done ? 'done' : ''}"><input type="checkbox" data-tick="${esc(s.id)}" ${s.done ? 'checked' : ''} aria-label="Done: ${esc(s.title)}">
           <div><span class="ixp-title">${esc(s.title)}</span> <span class="ixp-chip ${esc(s.who)}">${WHO[s.who] || 'You'}</span>${s.time ? ` <span class="ixp-note">· ${esc(s.time)}</span>` : ''}${s.cost && !/^(none|£?0|free)$/i.test(s.cost) ? ` <span class="ixp-note">· ${esc(s.cost)}</span>` : ''}
             ${s.detail ? `<div class="ixp-note" style="color:#b9ccd8">${esc(s.detail)}</div>` : ''}
-            <div class="ixp-row"><button type="button" class="ixp-small" data-p="how" data-step="${esc(s.id)}">${s.howTo ? (view.open === s.id ? 'Hide how-to' : 'How do I do this?') : '✦ How do I do this?'}</button>${s.done ? '' : s.todo ? '<span class="ixp-note">✓ In your to-dos</span>' : `<button type="button" class="ixp-small" data-p="todo" data-step="${esc(s.id)}">+ To-do</button>`}</div></div>
+            <div class="ixp-row"><button type="button" class="ixp-small" data-p="how" data-step="${esc(s.id)}">${s.howTo ? (view.open === s.id ? 'Hide how-to' : 'How do I do this?') : '✦ How do I do this?'}</button>${s.done ? '' : s.todo ? '<span class="ixp-note">✓ In your to-dos</span>' : `<button type="button" class="ixp-small" data-p="todo" data-step="${esc(s.id)}">+ To-do</button>`}${nightHtml(s)}</div></div>
           ${s.howTo && view.open === s.id ? `<div class="ixp-how">${md(s.howTo)}<div class="ixp-row"><span class="ixp-grow"></span><button type="button" class="ixp-small" data-p="how-again" data-step="${esc(s.id)}">Explain it differently</button></div></div>` : ''}</div>`).join('')}</section>`).join('')}
       <div class="ixp-two">${p.risks?.length ? `<div class="ixp-q"><p class="ixp-k">What could go wrong</p><ul>${p.risks.map(r => `<li><b>${esc(r.risk)}</b>${r.fix ? ` ${esc(r.fix)}` : ''}</li>`).join('')}</ul></div>` : '<div></div>'}
         ${p.needs?.length ? `<div class="ixp-q"><p class="ixp-k">What you will need</p><ul>${p.needs.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}</div>
       <div class="ixp-row" style="margin-top:12px"><button type="button" data-p="todo-phase">+ Next phase's steps to my to-dos</button><span class="ixp-grow"></span><button type="button" data-p="rethink">Rethink the plan…</button></div>
       <div data-rethink hidden><textarea name="feedback" rows="2" maxlength="2000" placeholder="What should be different? For example: cheaper, faster, or without a website"></textarea><div class="ixp-row"><span class="ixp-grow"></span><button type="button" class="ixp-go" data-p="plan-go">✦ Rewrite the plan</button></div></div>
       <p class="ixp-note">Planned ${new Date(p.at).toLocaleString('en-GB', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}. Ticking steps moves the idea's progress.</p>`;
+  }
+  /** Steps JARVIS or the agents could do: hand them to a Tower floor tonight (01:00-05:00), or now. */
+  function nightHtml(s) {
+    const n = s.night, at = `data-step="${esc(s.id)}"`;
+    if (s.done || (!n && !['agents', 'jarvis'].includes(s.who))) return '';
+    if (n?.status === 'queued') return `<span class="ixp-note">🌙 Queued for tonight · ${esc(n.floorName)}</span><button type="button" class="ixp-small" data-p="night-cancel" ${at}>Cancel</button>`;
+    if (n?.status === 'running') return `<span class="ixp-note">⏳ ${esc(n.floorName)} is working on it</span><button type="button" class="ixp-small" data-p="night-open" ${at}>Watch</button>`;
+    if (n?.status === 'ready') return `<span class="ixp-ok">✓ The agents' draft is ready</span><button type="button" class="ixp-small ixp-go" data-p="night-open" ${at}>Open it</button>`;
+    const fail = n?.status === 'failed' ? `<span class="ixp-bad">⚠ ${esc(n.error)}</span>` : '';
+    if (view.night === s.id) return `${fail}<select data-floor aria-label="Which floor">${(view.floors?.floors || []).map(f => `<option value="${esc(f.id)}" ${f.id === n?.floorId ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}</select><button type="button" class="ixp-small ixp-go" data-p="night-go" data-now="0" ${at}>🌙 Tonight</button><button type="button" class="ixp-small" data-p="night-go" data-now="1" ${at}>Start now</button><span class="ixp-note">Uses that floor's budget.</span>`;
+    return `${fail}<button type="button" class="ixp-small" data-p="night-pick" ${at}>🌙 ${n ? 'Try again with the agents' : 'Give to the agents'}</button>`;
   }
   async function tick(c) {
     const id = view?.idea?.id; if (!id || busy) return;
@@ -195,6 +215,20 @@ if (J && (new URLSearchParams(location.search).get('view') || 'main') === 'main'
       await guard(b, 'JARVIS is working it out…', async () => { const step = await call('idea-howto', {id, step: stepId, again: k === 'how-again'}); Object.assign(s, step); view.open = stepId; keep(); say(''); });
       return;
     }
+    if (k === 'night-pick') {
+      if (!view.floors) view.floors = await call('idea-night-floors', {id});
+      if (!view.floors.floors.length) { say('That hall has no Tower floors yet. Add one in the Tower first.', true); return; }
+      view.night = stepId; keep(); return;
+    }
+    if (k === 'night-go') {
+      const floorId = b.parentElement.querySelector('[data-floor]')?.value, now = b.dataset.now === '1';
+      await guard(b, now ? 'Handing it over…' : '', async () => { await call('idea-night', {id, step: stepId, floorId, now}); view.idea = (await call('ideas-list')).find(i => i.id === id) || view.idea; view.night = null; keep();
+        const st = steps(view.idea.project).find(x => x.id === stepId)?.night;
+        say(st?.status === 'failed' ? st.error : now ? 'The agents have started. Watch it in the Tower.' : 'Queued. The agents start after 01:00, and JARVIS wakes the PC for it if Windows allows.', st?.status === 'failed'); });
+      return;
+    }
+    if (k === 'night-cancel') { await call('idea-night-cancel', {id, step: stepId}); view.idea = (await call('ideas-list')).find(i => i.id === id) || view.idea; keep(); say('Taken off tonight\'s list.'); return; }
+    if (k === 'night-open') { const n = steps(view.idea.project).find(x => x.id === stepId)?.night; if (!n?.runId) return; close(); window.__jarvisIdeas?.close?.(); window.__jarvisTower?.showRun(n.theme, n.runId); return; }
     if (k === 'todo' || k === 'todo-phase') {
       const ids = k === 'todo' ? [stepId] : (view.idea.project.phases.find(ph => ph.steps.some(s => !s.done))?.steps || []).filter(s => !s.done).map(s => s.id);
       if (!ids.length) { say('Every step is done.', false); return; }
@@ -202,6 +236,34 @@ if (J && (new URLSearchParams(location.search).get('view') || 'main') === 'main'
       if (r) { for (const s of steps(view.idea.project)) if (ids.includes(s.id)) s.todo = true; keep(); say(`${r.added} step${r.added === 1 ? '' : 's'} added to your to-dos.`); }
     }
   }
+  try { J.on('ideas', m => {
+    if (!el || view?.kind !== 'plan' || busy || !Array.isArray(m?.list) || el.contains(document.activeElement) && /^(TEXTAREA|SELECT|INPUT)$/.test(document.activeElement.tagName)) return;
+    const i = m.list.find(x => x.id === view.idea.id); if (!i || JSON.stringify(i.project) === JSON.stringify(view.idea.project)) return;
+    view.idea = i; const main = el.querySelector('main'), y = main.scrollTop; drawPlan(); main.scrollTop = y;
+  }); } catch {}
+  /* ---------------- the project wall ---------------- */
+  const STAGE = {spark: '#ffd166', designing: '#b18cff', building: '#5fd4ff', testing: '#ff9f5f', done: '#a6ff84'};
+  /** Up to five projects in progress, newest first, as rings round the Ideas room's core. Click a name to open its plan. */
+  function wall(room, ideas) {
+    if (!room) return;
+    let svg = room.querySelector('.ixp-wall');
+    const list = (ideas || []).filter(i => i.stage !== 'done' && (i.progress > 0 || i.project)).sort((a, b) => b.updated - a.updated).slice(0, 5);
+    if (!list.length) { svg?.remove(); return; }
+    if (!document.getElementById('ixp-style')) { const st = document.createElement('style'); st.id = 'ixp-style'; st.textContent = CSS; document.head.appendChild(st); }
+    const fresh = !svg;
+    if (fresh) { svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'ixp-wall'); svg.setAttribute('viewBox', '-100 -100 200 200'); svg.setAttribute('aria-label', 'Projects in progress'); room.appendChild(svg); }
+    const old = new Map([...svg.querySelectorAll('.ixp-arc')].map(a => [a.dataset.id, a.style.strokeDasharray]));
+    svg.innerHTML = list.map((i, k) => {
+      const r = 62 + k * 6, len = 2 * Math.PI * r, pct = Math.max(0, Math.min(100, Number(i.progress) || 0)), title = i.title.length > 34 ? i.title.slice(0, 33) + '…' : i.title;
+      const dash = `${(len * pct / 100).toFixed(2)} ${len.toFixed(2)}`, from = old.get(i.id) || `0 ${len.toFixed(2)}`;
+      return `<g style="color:${STAGE[i.stage] || STAGE.building}"><title>${esc(i.title)}: ${pct}%${i.project ? '' : ' (no plan yet)'}</title>
+        <circle class="ixp-track" r="${r}"/><circle class="ixp-arc" data-id="${esc(i.id)}" data-to="${dash}" r="${r}" transform="rotate(-90)" style="stroke-dasharray:${from}"/>
+        <path id="ixp-ring-${k}" d="M ${-r} 0 A ${r} ${r} 0 0 1 ${r} 0" fill="none"/>
+        <text class="ixp-lab" data-id="${esc(i.id)}" dy="-1.4"><textPath href="#ixp-ring-${k}" startOffset="${3 + k * 2}%">${esc(title)} · ${pct}%</textPath></text></g>`;
+    }).join('');
+    requestAnimationFrame(() => requestAnimationFrame(() => { for (const a of svg.querySelectorAll('.ixp-arc')) a.style.strokeDasharray = a.dataset.to; }));
+    for (const t of svg.querySelectorAll('.ixp-lab')) t.addEventListener('click', e => { e.stopPropagation(); const i = list.find(x => x.id === t.dataset.id); if (!i) return; if (i.project) plan(i.id); else window.__jarvisIdeas?.edit(i); });
+  }
   addEventListener('keydown', e => { if (el && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); } }, true);
-  window.__jarvisPlanner = {brainstorm, plan, close, get open() { return !!el; }};
+  window.__jarvisPlanner = {brainstorm, plan, close, wall, get open() { return !!el; }};
 }

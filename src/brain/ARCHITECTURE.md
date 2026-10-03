@@ -32,7 +32,8 @@ an optional third screen shows "the vista"). Three halls, each with its own assi
   keeping finished steps. Claude Code agents may write only in their run folder; knowledge files are read-only.
 - `src/brain/` — **JARVIS Core**: the part that works on its own.
   - `index.js` `createJarvisCore(deps)`: the scheduler (every 20 s), reports, phone, approvals, chat, voice actions.
-  - `orders.js`: `Documents\JARVIS\Standing orders.md` (schedule, watch list, rules, business facts).
+  - `orders.js`: `Documents\JARVIS\Standing orders.md` (Remember and its call rules, schedule, watch list, rules, business facts).
+  - `dates.js`: bills, birthdays and other dates, reminded on WhatsApp a few days ahead and on the day (`dates.json`).
   - `llm.js` (Claude API + tool loop), `tools.js` (what JARVIS can do; levels read/auto/user/ask).
   - `phone.js` (Twilio WhatsApp/SMS/calls, CallMeBot) and `calls.js` (one-way calls). Everything phone-related is
     outbound from this computer: JARVIS polls Twilio for your WhatsApp replies. Nothing listens for connections

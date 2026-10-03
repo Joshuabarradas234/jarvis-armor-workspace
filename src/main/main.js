@@ -511,6 +511,7 @@ function towerDone(run,{last}={}){
 /** Night shift: floors with a schedule start on their own (and catch up within 3 hours if JARVIS was off). */
 async function towerNightShift(){
   if(!tower||!towerRunner)return;
+  planner?.nightShift().catch(e=>log('ideas',e.message));   // plan steps you gave to the agents for tonight
   const now=new Date(),day=now.toDateString(),mins=now.getHours()*60+now.getMinutes();
   let eng=null;
   for(const [theme,t] of Object.entries(tower.data.towers))for(const f of t.floors){
@@ -525,10 +526,12 @@ async function towerNightShift(){
 const towerAnnounced=new Set();
 function towerUpdate(run){
   const final=['done','failed','stopped','budget','needs_changes','needs_brief'].includes(run.status);
+  if(!final)towerAnnounced.delete(run.id);   // a continued run is announced again when it ends
   towerLatest.set(run.id,run);
   const send=()=>{towerThrottle.delete(run.id);const latest=towerLatest.get(run.id)||run;broadcast('tower',{type:'run',run:latest});if(['done','failed','stopped','budget','needs_changes','needs_brief'].includes(latest.status))towerLatest.delete(run.id);};
-  if(final){clearTimeout(towerThrottle.get(run.id));send();if(run.ideaId){try{assistant?.towerFinished(run);}catch(e){log('ideas',e.message);}}
-    if(towerAnnounced.has(run.id))return;towerAnnounced.add(run.id);if(towerAnnounced.size>200)towerAnnounced.delete(towerAnnounced.values().next().value);   // approving or commenting afterwards doesn't announce it again
+  if(final){clearTimeout(towerThrottle.get(run.id));send();if(run.ideaId){try{assistant?.towerFinished(run);}catch(e){log('ideas',e.message);}}if(run.planStep){try{planner?.runFinished(run);}catch(e){log('ideas',e.message);}}
+    if(towerAnnounced.has(run.id))return;towerAnnounced.add(run.id);
+    if(run.notify&&!run.handedTo)core?.towerTell(run).catch(e=>log('tower',e.message));   // you asked to hear when it ends (an assembly line tells you at its last floor)if(towerAnnounced.size>200)towerAnnounced.delete(towerAnnounced.values().next().value);   // approving or commenting afterwards doesn't announce it again
     if(run.status==='needs_changes'){observeWork('rework',{theme:run.theme,id:run.floorId,name:run.floorName});say(`${run.floorName} needs corrections. Nothing was handed on.`);}
     else if(run.status==='needs_brief')say(`${run.floorName} needs a complete brief before starting.`);
     else if(run.status==='done')say(`${run.floorName} has finished "${run.title}".${run.rehearsal?' That was a rehearsal.':''}`);
@@ -542,8 +545,8 @@ function towerReport(t=workstations.activeTheme){
   if(!active.length)return `${towerName(t)} is quiet, ${addr()}.${today.length?` ${today.length} ${today.length===1?'job':'jobs'} finished today.`:''}`;
   return `${towerName(t)}: ${active.map(r=>`${r.floorName} is ${r.progress} percent through "${r.title}"`).join('. ')}.`;
 }
-async function towerLobby(text,t=workstations.activeTheme){
-  const route=await towerRunner.route(t,text);const run=await towerRunner.start(t,route.floorId,text,{routeCost:route.cost});
+async function towerLobby(text,t=workstations.activeTheme,opts={}){
+  const route=await towerRunner.route(t,text);const run=await towerRunner.start(t,route.floorId,text,{routeCost:route.cost,notify:opts.notify});
   return {...route,run,floorName:tower.floor(t,route.floorId).name};
 }
 function towerView(t){
@@ -1066,7 +1069,7 @@ async function api(event,method,payload){
     case 'tower-add-floor':{const f=tower.addFloor(workstations.activeTheme);return {...towerView(workstations.activeTheme),added:f.id};}
     case 'tower-remove-floor':{if(towerRunner.active(workstations.activeTheme).some(r=>r.floorId===payload))throw Error('That floor is working. Stop it first.');tower.removeFloor(workstations.activeTheme,String(payload));return towerView(workstations.activeTheme);}
     case 'tower-reset':{tower.resetExamples(workstations.activeTheme);return towerView(workstations.activeTheme);}
-    case 'tower-run':{const run=await towerRunner.start(workstations.activeTheme,String(payload?.floorId||''),String(payload?.task||''),{brief:payload?.brief,resumeId:typeof payload?.resumeId==='string'?payload.resumeId:'',workflowId:typeof payload?.workflowId==='string'?payload.workflowId:'',ideaId:typeof payload?.ideaId==='string'?payload.ideaId:undefined});return run;}
+    case 'tower-run':{const run=await towerRunner.start(workstations.activeTheme,String(payload?.floorId||''),String(payload?.task||''),{brief:payload?.brief,resumeId:typeof payload?.resumeId==='string'?payload.resumeId:'',workflowId:typeof payload?.workflowId==='string'?payload.workflowId:'',ideaId:typeof payload?.ideaId==='string'?payload.ideaId:undefined,notify:['message','call'].includes(payload?.notify)?payload.notify:''});return run;}
     case 'tower-desk':return towerRunner.desk(String(payload?.runId||''),String(payload?.who||''));
     case 'tower-approve':{
       const a=towerRunner.approve(String(payload?.runId||''),Number(payload?.i),!!payload?.yes);
@@ -1078,6 +1081,7 @@ async function api(event,method,payload){
     }
     case 'tower-lobby':return towerLobby(String(payload||'').slice(0,4000));
     case 'tower-continue':return towerRunner.continue(String(payload?.runId||''),{budget:payload?.budget});
+    case 'tower-tell':return towerRunner.tellMe(String(payload?.runId||''),String(payload?.how||''));
     case 'tower-stop':return towerRunner.stop(String(payload||''));
     case 'tower-feedback':{const result=towerRunner.feedback(String(payload?.runId||''),!!payload?.good,String(payload?.comment||''));const r=tower.runs.find(r=>r.id===payload?.runId);if(result.changed&&r?.feedback?.good)observeWork('accepted',{theme:r.theme,id:r.floorId,name:r.floorName});return result;}
     case 'tower-skills':return tower.skillPage(workstations.activeTheme,String(payload?.floorId||''),payload?.query,payload?.page);
@@ -1120,6 +1124,9 @@ async function api(event,method,payload){
     case 'idea-plan':return planner.plan(String(payload?.id||''),String(payload?.feedback||'').slice(0,2000));
     case 'idea-howto':return planner.howTo(String(payload?.id||''),String(payload?.step||''),{again:payload?.again===true});
     case 'idea-step':return planner.step(String(payload?.id||''),String(payload?.step||''),payload?.done===true);
+    case 'idea-night-floors':return planner.floors(String(payload?.id||''));
+    case 'idea-night':return planner.queueNight(String(payload?.id||''),String(payload?.step||''),{floorId:String(payload?.floorId||''),now:payload?.now===true});
+    case 'idea-night-cancel':return planner.cancelNight(String(payload?.id||''),String(payload?.step||''));
     case 'idea-todos':return planner.toTodos(String(payload?.id||''),Array.isArray(payload?.steps)?payload.steps.map(String).slice(0,60):[]);
     case 'idea-decline':return assistant.decline(String(payload?.id||''));
     case 'idea-open':{const a=assistant.get(String(payload?.id||'')).assist||{};const f=payload?.what==='diff'?a.diffFile:insideTower(a.resultFile);if(!f||!fs.existsSync(f))throw Error('That file is not there any more.');const err=await shell.openPath(f);if(err)throw Error(err);return true;}
@@ -1296,7 +1303,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     tower=new TowerStore({dir:userDir,docs:app.getPath('documents')});towerRunner=new TowerRunner({store:tower,getKey:readTowerKey,onUpdate:towerUpdate,onDone:towerDone,log});setInterval(towerNightShift,30000);setTimeout(towerNightShift,20000);
     assistant=new IdeaAssistant({ideas:()=>ideas,tower:()=>tower,runner:()=>towerRunner,workstations:()=>workstations,board:t=>boardFor(t),readKey:readTowerKey,settings:()=>settings.get(),
       dir:userDir,appRoot:root,desktop:app.getPath('desktop'),log,broadcast,say:t=>say(t),addr:()=>addr(),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},notify:(title,body)=>{try{if(Notification.isSupported()&&!focusActive()&&!meetings?.active)new Notification({title,body}).show();}catch{}}});
-    planner=new IdeaPlanner({assistant,todos:()=>todos,dir:userDir});
+    planner=new IdeaPlanner({assistant,todos:()=>todos,dir:userDir,runner:()=>towerRunner,tower:()=>tower,activeTheme:()=>workstations.activeTheme});
     setInterval(()=>assistant.night(()=>visits.get('__','ideasNight').day,day=>visits.set('__','ideasNight',{day})).catch(e=>log('ideas',e.message)),10*60000);
     wake=new WakeTimer({dir:userDir});
     try{core=createJarvisCore({userDir,docs:app.getPath('documents'),appVersion:app.getVersion(),boot:BOOT||{asarRoot:root,root,base:app.getVersion(),version:null,label:app.getVersion()},log,broadcast,
@@ -1307,9 +1314,9 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       todos,calendar,ideas,tower,towerRunner,meetingFollowups,scripts,assets,workstations,photoIntake:true,routinesEnabled:true,
       mediaUrl:file=>addMedia(file).url,
       normalisePhoto:bytes=>{let im=nativeImage.createFromBuffer(bytes);if(im.isEmpty())throw Error('The photo could not be decoded.');const size=im.getSize();if(size.width*size.height>32e6)throw Error('Photo dimensions are too large.');im=im.resize(size.width>=size.height?{width:Math.min(1400,size.width)}:{height:Math.min(1400,size.height)});return im.toJPEG(85);},
-      printDocument:async(file,out)=>{const w=new BrowserWindow({show:false,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,partition:'proposal-print-'+Date.now()}});w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());try{await w.loadFile(file);writeText(out,await w.webContents.printToPDF({printBackground:true,preferCSSPageSize:true}));}finally{w.destroy();}},openFile:async file=>{const error=await shell.openPath(file);if(error)throw Error(error);return true;},sendMeeting:async p=>{if(core?.mail.ready())return core.mail.sendNew(p);const cfg=settings.get().meeting||{},password=gmailPassword();if(!cfg.from||!password)throw Error('Connect email in JARVIS Core or Meeting settings first.');await sendGmail({user:cfg.from,password,to:p.to,subject:p.subject,text:p.text});},towerLobby:(text,hall)=>towerLobby(text,hall&&workstations.themes.some(t=>t.id===hall)?hall:workstations.activeTheme),
+      printDocument:async(file,out)=>{const w=new BrowserWindow({show:false,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,partition:'proposal-print-'+Date.now()}});w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());try{await w.loadFile(file);writeText(out,await w.webContents.printToPDF({printBackground:true,preferCSSPageSize:true}));}finally{w.destroy();}},openFile:async file=>{const error=await shell.openPath(file);if(error)throw Error(error);return true;},sendMeeting:async p=>{if(core?.mail.ready())return core.mail.sendNew(p);const cfg=settings.get().meeting||{},password=gmailPassword();if(!cfg.from||!password)throw Error('Connect email in JARVIS Core or Meeting settings first.');await sendGmail({user:cfg.from,password,to:p.to,subject:p.subject,text:p.text});},towerLobby:(text,hall,opts)=>towerLobby(text,hall&&workstations.themes.some(t=>t.id===hall)?hall:workstations.activeTheme,opts),
       briefing:()=>briefingData('briefing'),weather:briefWeather,health:()=>checkHealth(),openUrl:(url,title)=>broadcast('hologram',{kind:'link',url,title}),
-      wakeAt:at=>wake.set(at),wakeTimers:()=>wake.timers(),keepAwake:on=>{try{if(on&&awakeBlock===null)awakeBlock=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awakeBlock!==null){powerSaveBlocker.stop(awakeBlock);awakeBlock=null;}}catch(e){log('brain',e.message);}},
+      wakeAt:at=>wake.set(at),upcomingExtra:()=>planner?.upcoming()||[],wakeTimers:()=>wake.timers(),keepAwake:on=>{try{if(on&&awakeBlock===null)awakeBlock=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awakeBlock!==null){powerSaveBlocker.stop(awakeBlock);awakeBlock=null;}}catch(e){log('brain',e.message);}},
       relaunch:()=>{app.relaunch();app.quit();},logFile:path.join(userDir,'jarvis.log')});core.start();}catch(e){core=null;coreError=String(e?.message||e);log('brain','JARVIS Core did not start: '+(e?.stack||e?.message));if(BOOT?.version&&!e?.code)BOOT.markBad?.(`JARVIS Core did not start: ${coreError.slice(0,200)}`);}   /* a code fault rolls the update back; a disk or permission problem (e.code) would fail on any version */
     panels=new PanelManager({window:()=>displays?.work,onChange:list=>broadcast('panels',list),log});
     deckPanels=new PanelManager({window:()=>displays?.console,onChange:list=>broadcast('deck',{type:'panels',list}),log});

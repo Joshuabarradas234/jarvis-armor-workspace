@@ -113,6 +113,14 @@ He works from the file `Documents\JARVIS\Standing orders.md`, which you can edit
 
 Under **Facts about my business**, list anything he should know. The overnight audit checks those facts for anything stale or contradictory.
 
+### What he remembers, bills and birthdays (1.89)
+
+Say "Jarvis, remember …" and he writes it under **Remember** in your standing orders, so he keeps it in mind; "forget …" takes it out. Lines such as "No calls before 08:00 on Saturdays" are call rules: he WhatsApps you instead of ringing for the calls he makes on his own. Wake-up calls you set yourself still ring.
+
+For bills, birthdays and other dates, say "remind me about …" or add them in **JARVIS Core → Remember**. He WhatsApps you a few days before and on the day, from 09:00 and outside quiet hours.
+
+When you give the Tower a job, you can ask him to **WhatsApp** or **call** you when it is done.
+
 ### Waking the PC for calls (1.88)
 
 If the PC is asleep, JARVIS cannot call. So he keeps one Windows task, **JARVIS wake-up**, set two minutes before his next call, message or report. Windows wakes the PC for it, and JARVIS stays awake for a few minutes to do the job. The task is in your own account, he moves it as your schedule changes, and he removes it when you quit him. Switch it off in **Settings → JARVIS Core → Quiet hours and nights**.

@@ -22,6 +22,11 @@ and picks up any change as soon as it is saved. Keep the headings; edit the line
 - My phone, for calls and WhatsApp: ${phone}
 - I live in the UK: UK time, British English.
 
+## Remember
+<!-- What JARVIS should always keep in mind about you. Say "Jarvis, remember …" to add a line, or "forget …".
+     Call rules such as "No calls before 08:00 on Saturdays" or "Never call me on Sundays" apply to the calls
+     he makes on his own; a wake-up call you set yourself still rings. -->
+
 ## Every day
 - 02:30 — Run the overnight audit (Optimize): check yourself and every agent for stale facts and conflicting rules. Fix the safe things; ask me about the rest.
 - 03:00 — Review yourself: find what is not working or could work better, prepare the changes, and ask me before installing anything.
@@ -56,6 +61,7 @@ and picks up any change as soon as it is saved. Keep the headings; edit the line
 }
 
 const SECTION_KEYS = [
+  ['remember', /^remember|things to remember|preferences/i],
   ['about', /about me|who i am|about you/i],
   ['everyday', /every ?day|schedule|routine|daily|timetable|when to/i],
   ['watch', /watch|numbers|metrics|kpi/i],
@@ -121,6 +127,29 @@ export function parseScheduleLine(raw) {
     label: time ? `${time} ${describeDays(days)}` : `every ${every >= 60 && every % 60 === 0 ? (every === 60 ? 'hour' : `${every / 60} hours`) : `${every} minutes`}${window ? ` (${pad2(Math.floor(window[0] / 60))}:${pad2(window[0] % 60)}–${pad2(Math.floor(window[1] / 60))}:${pad2(window[1] % 60)})` : ''}${days.length < 7 ? ' ' + describeDays(days) : ''}`};
 }
 
+/**
+ * A call rule from the Remember section: "No calls before 08:00 on Saturdays", "No calls after 9pm",
+ * "Never call me on Sundays". Null when the line is not about calls.
+ */
+export function parseCallRule(raw) {
+  const t = String(raw || '').toLowerCase().replace(/[’']/g, '');
+  if (!/\b(no (phone )?calls?|(do not|dont|never) (ring|call|phone))\b/.test(t)) return null;
+  const clock = s => {
+    const m = /^(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?$/.exec(String(s || '').trim()); if (!m) return null;
+    let h = Number(m[1]); const mi = Number(m[2] || 0);
+    if (m[3] === 'pm' && h < 12) h += 12; if (m[3] === 'am' && h === 12) h = 0;
+    return h > 23 || mi > 59 ? null : `${pad2(h)}:${pad2(mi)}`;
+  };
+  const time = '(\\d{1,2}(?:[:.]\\d{2})?\\s*(?:am|pm)?)', before = new RegExp(`\\bbefore\\s+${time}`).exec(t), after = new RegExp(`\\bafter\\s+${time}`).exec(t);
+  let rest = t; for (const m of [before, after]) if (m) rest = rest.replace(m[0], ' ');
+  return {notBefore: before ? clock(before[1]) : null, notAfter: after ? clock(after[1]) : null, days: parseDays(rest), text: String(raw).trim()};
+}
+/** The first call rule that forbids a call at `at` (ms), or null. */
+export function callBlocked(rules, at = Date.now()) {
+  const d = new Date(at), hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  return (rules || []).find(r => r.days.includes(d.getDay()) && ((!r.notBefore && !r.notAfter) || (r.notBefore && hm < r.notBefore) || (r.notAfter && hm >= r.notAfter))) || null;
+}
+
 /** "- Signups: https://x/stats.json → data.signups (alert if it moves 25%)" */
 export function parseWatchLine(raw) {
   const line = String(raw).replace(/^\s*[-*•]\s*/, '').trim();
@@ -154,12 +183,12 @@ export class StandingOrders {
     try { this.ensure(); st = fs.statSync(this.file); if (this.cache && !force && st.mtimeMs === this.mtime) return this.cache; text = this.read(); }
     catch (e) {
       if (this.cache) return this.cache;
-      return {text: '', mtime: 0, file: this.file, sections: {about: [], everyday: [], watch: [], allowed: [], ask: [], facts: [], other: []}, jobs: [], watch: [], problems: [{line: 0, text: '', why: `I could not open the standing orders: ${e.message}`}]};
+      return {text: '', mtime: 0, file: this.file, sections: {remember: [], about: [], everyday: [], watch: [], allowed: [], ask: [], facts: [], other: []}, jobs: [], watch: [], callRules: [], problems: [{line: 0, text: '', why: `I could not open the standing orders: ${e.message}`}]};
     }
     const lines = text.split('\n');
-    const sections = {about: [], everyday: [], watch: [], allowed: [], ask: [], facts: [], other: []};
+    const sections = {remember: [], about: [], everyday: [], watch: [], allowed: [], ask: [], facts: [], other: []};
     let cur = 'other', inComment = false;
-    const out = {text, mtime: st.mtimeMs, file: this.file, sections, jobs: [], watch: [], problems: []};
+    const out = {text, mtime: st.mtimeMs, file: this.file, sections, jobs: [], watch: [], callRules: [], problems: []};
     lines.forEach((l, i) => {
       if (inComment) { if (l.includes('-->')) inComment = false; return; }
       if (/^\s*<!--/.test(l)) { if (!l.includes('-->')) inComment = true; return; }
@@ -169,7 +198,8 @@ export class StandingOrders {
       const item = {line: i + 1, text: l.replace(/^\s*[-*•]\s+/, '').trim()};
       if (/^\(.*\)$/.test(item.text)) return;   // a placeholder in brackets
       sections[cur].push(item);
-      if (cur === 'everyday') {
+      if (cur === 'remember') { const r = parseCallRule(item.text); if (r) out.callRules.push({...r, line: i + 1}); }
+      else if (cur === 'everyday') {
         const j = parseScheduleLine(l);
         if (j?.error) out.problems.push({line: i + 1, text: item.text, why: j.error});
         else if (j) out.jobs.push({...j, line: i + 1});
@@ -206,7 +236,7 @@ export class StandingOrders {
   /** Add a bullet at the end of a section (creating the section if it is missing). */
   addLine(section, line, why) {
     const text = this.read().replace(/\s+$/, '') + '\n'; const lines = text.split('\n');
-    const titles = {about: 'About me', everyday: 'Every day', watch: 'Watch', allowed: 'You may do on your own', ask: 'Always ask me first', facts: 'Facts about my business'};
+    const titles = {remember: 'Remember', about: 'About me', everyday: 'Every day', watch: 'Watch', allowed: 'You may do on your own', ask: 'Always ask me first', facts: 'Facts about my business'};
     const re = (SECTION_KEYS.find(([k]) => k === section) || [null, null])[1];
     let start = -1; lines.forEach((l, i) => { const h = /^#{2,4}\s+(.+?)\s*$/.exec(l); if (h && re && re.test(h[1]) && start < 0) start = i; });
     const bullet = `- ${String(line).replace(/^\s*[-*•]\s*/, '').replace(/\s+/g, ' ').trim()}`;
@@ -216,9 +246,12 @@ export class StandingOrders {
     lines.splice(at, 0, bullet);
     return this.write(lines.join('\n'), why);
   }
-  removeLine(match, why) {
+  /** Remove the first bullet containing `match`; with `section`, only from that section. */
+  removeLine(match, why, section = null) {
     const text = this.read(); const lines = text.split('\n'); const m = String(match).trim().toLowerCase();
-    const i = lines.findIndex(l => /^\s*[-*•]\s/.test(l) && l.toLowerCase().includes(m));
+    if (section && !SECTION_KEYS.some(([k]) => k === section)) throw Error('Unknown section.');
+    let cur = 'other'; const inSection = lines.map(l => { const h = /^#{2,4}\s+(.+?)\s*$/.exec(l); if (h) cur = (SECTION_KEYS.find(([, r]) => r.test(h[1])) || ['other'])[0]; return !section || cur === section; });
+    const i = m ? lines.findIndex((l, n) => inSection[n] && /^\s*[-*•]\s/.test(l) && l.toLowerCase().includes(m)) : -1;
     if (i < 0) throw Error('No line like that in the standing orders.');
     lines.splice(i, 1); return this.write(lines.join('\n'), why);
   }

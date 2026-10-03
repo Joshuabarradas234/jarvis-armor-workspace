@@ -169,7 +169,7 @@
           [`${money(s.spend.today)} of ${money(s.spend.budget)} today`, true],
         ];
         const nWait = s.approvals.length;
-        const tabs = [['needs', 'Needs you', nWait], ['reports', 'Reports'], ['activity', 'What I did'], ['schedule', 'Schedule'], ['updates', 'My updates', s.updates.updates.filter(u => u.status === 'drafting').length ? '…' : 0], ['talk', 'Talk to me'], ['routines', 'Routines'], ['workdesk', 'Work desk']];
+        const tabs = [['needs', 'Needs you', nWait], ['reports', 'Reports'], ['activity', 'What I did'], ['schedule', 'Schedule'], ['remember', 'Remember'], ['updates', 'My updates', s.updates.updates.filter(u => u.status === 'drafting').length ? '…' : 0], ['talk', 'Talk to me'], ['routines', 'Routines'], ['workdesk', 'Work desk']];
         this.el.innerHTML = `<div class="jc-top"><div><p>JARVIS CORE · WORKING WHILE YOU'RE AWAY</p><h2>${esc(s.config.owner.address === 'sir' ? 'At your service, sir.' : 'At your service.')}<small>${esc(s.version)}</small></h2>
           <div class="jc-chips">${chips.map(([t, ok]) => `<span class="jc-chip ${ok ? 'ok' : 'bad'}">${esc(t)}</span>`).join('')}${(!s.key || !s.phone.any) ? '<button data-act="settings">Set up…</button>' : ''}</div>
           ${sb.sandbox && sb.lapsed ? `<div class="jc-warn">⚠ Twilio's WhatsApp sandbox forgets you three days after you join, so I can't WhatsApp you. From your phone, ${esc(sb.renew || 'send the join code to +1 415 523 8886.')}</div>` : ''}</div>
@@ -214,6 +214,20 @@
           <div><h3>Wake-up calls</h3>${alarms || '<p class="jc-muted">No one-off wake-up calls. Say “Jarvis, wake me up at 6:30”, or WhatsApp him “wake me at 6:30”.</p>'}
           <form class="jc-form" data-form="alarm"><input name="when" placeholder="06:30, or tomorrow at 7" required style="width:190px"><select name="kind"><option value="call">Call me</option><option value="whatsapp">WhatsApp me</option></select><button class="jc-go">Set</button></form>
           <h3>Next up</h3>${s.upcoming.slice(0, 8).map(u => `<div class="jc-row"><time>${esc(when(u.at))}</time><div>${u.kind === 'call' ? '📞' : u.kind === 'message' ? '💬' : '⏱'} ${esc(u.what)}</div></div>`).join('') || '<p class="jc-muted">Nothing in the next two days.</p>'}</div></div>`;
+      },
+      view_remember(s) {
+        const r = s.remember || {lines: [], rules: []}, rules = new Set(r.rules), icon = {bill: '💷', birthday: '🎂', other: '📅'};
+        const lines = r.lines.map(t => `<div class="jc-row"><i>${rules.has(t) ? '📵' : '•'}</i><div style="flex:1">${esc(t)}${rules.has(t) ? '<span class="auto">CALL RULE</span>' : ''}</div><button data-act="remember-remove" data-text="${esc(t)}" title="Forget this">Forget</button></div>`).join('');
+        const soon = d => d.daysLeft === null ? 'passed' : d.daysLeft === 0 ? 'today' : d.daysLeft === 1 ? 'tomorrow' : `in ${d.daysLeft} days`;
+        const dates = (s.dates || []).map(d => `<div class="jc-row"><time>${d.next ? esc(new Date(d.next).toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric', month: 'short'})) : ''}</time><div style="flex:1">${icon[d.kind] || '📅'} <b>${esc(d.name)}</b>${d.amount ? ` · ${esc(d.amount)}` : ''}<div class="jc-muted">${d.repeat === 'monthly' ? 'Every month' : d.repeat === 'yearly' ? 'Every year' : 'Once'} · ${soon(d)} · reminder ${d.ahead ? `${d.ahead} day${d.ahead === 1 ? '' : 's'} before and ` : ''}on the day</div></div><button data-act="date-remove" data-id="${esc(d.id)}">Remove</button></div>`).join('');
+        return `<div class="jc-cols"><div><h3>What I remember about you</h3><p class="jc-muted">The <b>Remember</b> section of your standing orders. Say “Jarvis, remember …” or add a line here. Call rules (📵) such as <i>No calls before 08:00 on Saturdays</i> apply to the calls JARVIS makes on his own; wake-up calls you set still ring.</p>
+          ${lines || '<p class="jc-muted">Nothing yet.</p>'}
+          <form class="jc-form" data-form="remember"><input name="text" placeholder="e.g. No calls before 08:00 on Saturdays" maxlength="300" required style="flex:1 1 260px"><button class="jc-go">Remember</button></form></div>
+          <div><h3>Bills and birthdays</h3><p class="jc-muted">JARVIS WhatsApps you a few days before, and on the day (from 09:00, outside quiet hours). Or say “Jarvis, remind me about Mum's birthday on 12 March”.</p>
+          ${dates || '<p class="jc-muted">No dates yet.</p>'}
+          <form class="jc-form" data-form="date"><select name="kind"><option value="bill">💷 Bill</option><option value="birthday">🎂 Birthday</option><option value="other">📅 Other</option></select><input name="name" placeholder="Name, e.g. Council tax" maxlength="80" required style="flex:1 1 160px">
+            <input type="date" name="date" required title="The date (for a monthly bill, any month with the right day)"><select name="repeat"><option value="monthly">Every month</option><option value="yearly">Every year</option><option value="once">Once</option></select>
+            <input name="amount" placeholder="Amount (optional)" maxlength="30" style="width:130px"><label class="jc-muted">Remind <input type="number" name="ahead" min="0" max="30" value="3" style="width:56px"> days before</label><button class="jc-go">Add</button></form></div></div>`;
       },
       view_updates(s) {
         const u = s.updates;
@@ -262,6 +276,8 @@
         }
         if (act === 'send-report') { if (!this.reportId) return toast('Pick a report first.'); const how = t.dataset.how; t.disabled = true; await core('run', {kind: 'report', send: how, id: this.reportId}); toast(how === 'call' ? 'Calling you with this report.' : 'Sent this report to WhatsApp.'); return this.refresh(); }
         if (act === 'alarm-cancel') { await core('alarm-cancel', {id: t.dataset.id}); return this.refresh(); }
+        if (act === 'remember-remove') { await core('remember-remove', {text: t.dataset.text}); toast('Forgotten.'); return this.refresh(); }
+        if (act === 'date-remove') { await core('date-remove', {id: t.dataset.id}); return this.refresh(); }
         if (act === 'github-open') { await core('github-open', {version: t.dataset.v}); return; }
         if (act === 'github-propose') { t.disabled = true; try { const r = await core('github-propose', {version: t.dataset.v}); toast(r?.url ? 'Proposed on GitHub. Merge it there when the tests pass.' : r?.message || 'Nothing to propose.'); } catch (err) { toast(err.message); } return this.refresh(); }
         if (act === 'undo') { if (!confirm('Go back to the previous version of JARVIS? He will restart.')) return; await core('undo'); toast('Restarting on the previous version…'); return; }
@@ -291,6 +307,12 @@
           catch (e) { this.chat.push({text: `⚠ ${e.message}`}); }
           finally { this.sending = false; this.chat = this.chat.slice(-40); await this.refresh(); }
           return;
+        }
+        if (form === 'remember') { await core('remember-add', {text: data.text}); toast('Remembered.'); f.reset(); return this.refresh(); }
+        if (form === 'date') {
+          const [y, m, d] = String(data.date).split('-').map(Number), birthYear = data.kind === 'birthday' && y <= new Date().getFullYear() - 2;
+          const r = await core('date-add', {name: data.name, kind: data.kind, repeat: data.kind === 'birthday' && data.repeat === 'monthly' ? 'yearly' : data.repeat, day: d, month: m, year: data.repeat === 'once' || birthYear ? y : undefined, amount: data.amount, ahead: Number(data.ahead)});
+          toast(`Added. Next: ${new Date(r.next || Date.now()).toLocaleDateString('en-GB', {day: 'numeric', month: 'short'})}.`); f.reset(); return this.refresh();
         }
         if (form === 'alarm') { const a = await core('alarm-add', {when: data.when, kind: data.kind}); toast(`Set for ${when(a.at)}.`); return this.refresh(); }
         if (form === 'feature') { await core('feature', {text: data.text}); toast('Building it in a copy of myself. You will be asked before it is installed.'); f.reset(); return this.refresh(); }

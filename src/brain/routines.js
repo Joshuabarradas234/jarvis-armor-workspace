@@ -4,7 +4,7 @@ import {saveArchive, sha256, buildSelfRelease} from './archives.js';
 import {dayKey} from './util.js';
 import {zonedParts, wallTime} from './travel.js';
 
-const BACKUP_FILES = ['settings.json', 'workstations.json', 'suit-visits.json', 'hall-calibration.json', 'work-suggestions.json', 'tower.json', 'tower-runs.json', 'todos.json', 'calendar.json', 'ideas.json', 'workbench.json', 'brain.json', 'reports.json', 'alarms.json', 'meetings.json', 'meeting-followups.json', 'product-studio.json', 'meeting-work.json', 'work-desk.json', 'photo-drop.json', 'brain-spend-history.json'];
+const BACKUP_FILES = ['settings.json', 'workstations.json', 'suit-visits.json', 'hall-calibration.json', 'work-suggestions.json', 'tower.json', 'tower-runs.json', 'todos.json', 'calendar.json', 'ideas.json', 'workbench.json', 'brain.json', 'reports.json', 'alarms.json', 'meetings.json', 'meeting-followups.json', 'product-studio.json', 'meeting-work.json', 'work-desk.json', 'photo-drop.json', 'brain-spend-history.json', 'dates.json', 'ideas-brainstorms.json'];
 export function weeklyText(core, now = Date.now()) {
   const since = now - 7 * 864e5, runs = (core.deps.tower?.runs || []).filter(r => !r.rehearsal && Number(r.endedAt || r.startedAt) >= since), todos = core.deps.todos?.list() || [];
   const done = todos.filter(t => t.done && t.doneAt >= since), open = todos.filter(t => !t.done);
