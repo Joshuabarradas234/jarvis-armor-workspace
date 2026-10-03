@@ -40,8 +40,12 @@ import {createJarvisCore} from '../brain/index.js';
 import {HallCalibrationStore} from '../services/hall-calibration.js';
 import {SelfUpdater} from '../brain/selfupdate.js';
 import {WakeTimer,WAKE_ARG} from './wake-timer.js';
+import {rangeResponse} from './ranges.js';
 
 protocol.registerSchemesAsPrivileged([{scheme:'jarvis',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true,corsEnabled:true}}]);
+/* The graphics chip's video decoder crawled through the H.264 transition and welcome videos (about 4 frames a second on the owner's
+   Intel Arc PC, while the same files decode at full speed in software). Set JARVIS_HW_VIDEO=1 to try the hardware decoder again. */
+if(process.env.JARVIS_HW_VIDEO!=='1')app.commandLine.appendSwitch('disable-accelerated-video-decode');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 /** Set by boot.js: which approved self-update is running (root), and the installed app underneath it (asarRoot). */
 const BOOT=globalThis.__jarvisBoot||null;
@@ -103,7 +107,7 @@ function packClip(themeId,action){
 function speakable(t){const v={i:1,v:5,x:10,l:50,c:100};return String(t).replace(/\b(Mark|Mk|MK|MARK)\s+([IVXLC]+)\b/g,(m,a,r)=>{if(!/^(?=[IVXLC])(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/.test(r))return m;let n=0;const w=r.toLowerCase();for(let k=0;k<w.length;k++){const x=v[w[k]],y=v[w[k+1]]||0;n+=x<y?-x:x;}return `${a} ${n}`;});}
 function say(text,opts={}){if(!text)return;broadcast('caption',{text});voice?.speak(speakable(text),settings.get(),voiceProfile(),undefined,opts);}
 /** A hall can greet you with its own recording instead of a spoken line. */
-let introPlayed=false;
+let introPlayed=false,introVoiced=false;   // introVoiced: this opening played the welcome recording, which already says JARVIS's greeting
 function sayReady(){
   const theme=workstations.theme();const rel=theme?.voice?.readySound;
   if(rel&&introPlayed){const clip=packClip(theme.id,'ready');if(clip){voice?.speak('',settings.get(),voiceProfile(),clip);return;}say(theme.readyLine);return;}
@@ -1264,6 +1268,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       const url=new URL(request.url);let target;
       if(url.host==='media'){target=mediaFiles.get(url.pathname.split('/')[1]);if(!target)return new Response('Missing media',{status:404});}
       else {let bases=url.host==='app'?distRoots:url.host==='asset'?[assets]:url.host==='custom'?[path.join(userDir,'assets')]:null;if(!bases)return new Response('Forbidden',{status:403});const rel=decodeURIComponent(url.pathname).replace(/^\/+/, '');if(/[:*?"<>|\u0000]/.test(rel))return new Response('Forbidden',{status:403});if(url.host==='app'&&/^(vendor|wallpaper)\//i.test(rel))bases=[path.join(baseRoot,'dist')];   /* the big shared libraries only ever come from the installed app */for(const base of bases){const t=path.resolve(base,rel||'index.html');if(!t.startsWith(base+path.sep))return new Response('Forbidden',{status:403});target=t;if(bases.length===1||fs.existsSync(t))break;}}
+      const range=request.headers.get('range');if(range&&target){const r=rangeResponse(target,range,{'Access-Control-Allow-Origin':'*'});if(r)return r;}   /* videos and sounds: a proper 206, or transitions stall */
       return net.fetch(pathToFileURL(target).toString(),{headers:request.headers}).then(res=>{const headers=new Headers(res.headers);headers.set('Access-Control-Allow-Origin','*');return new Response(res.body,{status:res.status,statusText:res.statusText,headers});}).catch(()=>new Response('Not found',{status:404}));
     });
     const camOK=(wc,perm,details)=>{if(perm!=='media')return false;const t=wc&&trusted.get(wc.id);if(!t||t.role!=='main')return false;const types=details?.mediaTypes||[];return !types.includes('audio')||!!meetings?.m;};   /* audio only for a meeting */
@@ -1285,11 +1290,11 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       if(command){if(command.theme&&command.theme!==workstations.activeTheme){try{workstations.setTheme(command.theme);refreshModules();broadcast('theme',themePayload());updateTray();scheduleChatter();scheduleHealth();setTimeout(()=>{if(settings.get().voiceEnabled)voice.listen(true);},0);}catch(e){log('voice',e.message);}}handled=!!dispatch(command.action,command.id,command);if(handled){followUntil=Date.now()+12000;if(!TALK.includes(command.action)&&!String(command.action).startsWith('core-'))setTimeout(()=>{try{acknowledge(command.action,command.id);}catch{}},260);}}broadcast('heard',{text:heard,confidence:Math.round((confidence||0)*100),handled,why:handled?'':why,name:voiceContext().theme?.assistant||'Jarvis'});status.commandHistory.unshift({time:Date.now(),text:heard,confidence:Math.round((confidence||0)*100),accepted:!!text,handled});status.commandHistory=status.commandHistory.slice(0,50);tray?.setToolTip(`JARVIS · heard: “${heard}” ${Math.round((confidence||0)*100)}%${handled?' ✓':''}`);broadcast('status',getStatus());},onStatus:text=>{voiceStatus=text;broadcast('status',getStatus());},log});
     machine=new WorkspaceMachine({modules,onChange:s=>{
       displays?.setActive(s.state!=='IDLE');broadcast('snapshot',s);
-      if(s.state==='WAKE')say('System starting up.');
+      if(s.state==='WAKE'){const st=settings.get().startup||{};introVoiced=!!(st.enabled&&st.sound);if(introVoiced)broadcast('caption',{text:'System starting up.'});else say('System starting up.');}   // with a welcome recording, that recording is JARVIS's voice: nothing is spoken over it
       if(s.state==='ARMOR_HALL'&&s.selected===null){if(pendingModule){const id=pendingModule;pendingModule=null;queueMicrotask(()=>dispatch('select',id));}else if(pendingShow){const id=pendingShow;pendingShow=null;setTimeout(()=>dispatch('suit-show',id),600);}}
       if(s.state==='SUIT_SELECTED'&&s.selected&&machine?.previous!=='SUIT_SELECTED')suitUp(s.selected);
       if(s.state==='SHUTDOWN')say('Standing by.');
-      if(s.state==='ARMOR_HALL'&&machine?.previous==='HELMET_OPENING'){sayReady();morningBrief();}
+      if(s.state==='ARMOR_HALL'&&machine?.previous==='HELMET_OPENING'){if(introVoiced)introPlayed=true;else sayReady();introVoiced=false;morningBrief();}   // the welcome recording already greeted you
       if(s.state==='MODULE'&&s.selected&&machine?.previous!=='MODULE')suitOpened(s.selected);
       if(machine?.value?.selected&&s.state==='RETURNING'){}
       if(s.state==='MODULE'&&s.selected){if(machine.previous!=='MODULE'){try{const chosen=workstations.suit(s.selected);observeWork('suit',{theme:workstations.activeTheme,id:chosen.id,name:chosen.name,suit:true});}catch{}}const suit=modules.find(m=>m.id===s.selected);setTimeout(async()=>{if(machine.value.state!=='MODULE'||machine.value.selected!==s.selected)return;applyLayout(s.selected,{links:false}).then(r=>{if(r&&(r.placed||r.error))broadcast('layout-result',{id:s.selected,...r});}).catch(e=>log('layout',e.message));const resumed=await restoreSession(s.selected);broadcast('launch-result',{id:s.selected,resumed});if(resumed){try{const v=voiceProfile();if(v?.lines?.resume)say(v.lines.resume);}catch{}return;}if(!suit?.autoLaunch)return;launchSuit(s.selected).then(r=>broadcast('launch-result',{id:s.selected,...r})).catch(e=>log('launch',e.message));},400);}
