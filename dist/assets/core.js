@@ -227,7 +227,7 @@
           ${dates || '<p class="jc-muted">No dates yet.</p>'}
           <form class="jc-form" data-form="date"><select name="kind"><option value="bill">💷 Bill</option><option value="birthday">🎂 Birthday</option><option value="other">📅 Other</option></select><input name="name" placeholder="Name, e.g. Council tax" maxlength="80" required style="flex:1 1 160px">
             <input type="date" name="date" required title="The date (for a monthly bill, any month with the right day)"><select name="repeat"><option value="monthly">Every month</option><option value="yearly">Every year</option><option value="once">Once</option></select>
-            <input name="amount" placeholder="Amount (optional)" maxlength="30" style="width:130px"><label class="jc-muted">Remind <input type="number" name="ahead" min="0" max="30" value="3" style="width:56px"> days before</label><button class="jc-go">Add</button></form></div></div>`;
+            <input name="amount" placeholder="Amount (optional)" maxlength="30" style="width:130px"><label class="jc-muted" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap">Remind <input type="number" name="ahead" min="0" max="30" value="3" style="width:56px"> days before</label><button class="jc-go">Add</button></form></div></div>`;
       },
       view_updates(s) {
         const u = s.updates;
