@@ -18,8 +18,11 @@ export function attentionItems({approvals = [], runs = [], missions = [], drafts
     const base = {title: text(r.title), theme: r.theme, floorId: r.floorId, runId: r.id, source: 'tower', at: r.endedAt || r.startedAt || 0};
     const waiting = (r.approvals || []).filter(a => a.status === 'waiting').length;
     if (waiting) items.push({...base, id: `approval:${r.id}`, kind: 'approval', detail: `${r.floorName}: ${waiting} decision${waiting === 1 ? '' : 's'} waiting.`, action: 'Review requests'});
-    if (blocked.has(r.status) || r.feedback?.good === false) items.push({...base, id: `run:${r.id}`, kind: 'blocked', detail: text(r.error || r.notes || r.questions?.join(' ') || r.note || 'Review the brief and decide how to continue.', 500), action: 'Review and correct'});
-    else if (r.status === 'done' && !r.feedback) items.push({...base, id: `run:${r.id}`, kind: 'finished', detail: `${r.floorName}${r.rehearsal ? ' · rehearsal only' : ''}: ready for your review.`, action: 'Read and review'});
+    // a card you cleared stays away until that run changes again
+    const id = `run:${r.id}`, revision = JSON.stringify([r.status, r.endedAt || 0, r.feedback?.good ?? null]), cleared = seen[id] === revision;
+    if (blocked.has(r.status) || r.feedback?.good === false) { if (!cleared) items.push({...base, id, revision, clearable: true, kind: 'blocked', detail: text(r.error || r.notes || r.questions?.join(' ') || r.note || 'Review the brief and decide how to continue.', 500), action: ['stopped', 'failed', 'budget'].includes(r.status) && !r.meetingWork && !r.rehearsal ? 'Open to continue' : 'Review and correct'}); }
+    else if (r.status === 'done' && !r.feedback && r.rehearsal) { if (!cleared) items.push({...base, id, revision, clearable: true, kind: 'finished', detail: `${r.floorName} · rehearsal only: placeholder work, nothing to rate.`, action: 'Look at it'}); }
+    else if (r.status === 'done' && !r.feedback) items.push({...base, id, kind: 'finished', detail: `${r.floorName}: ready for your review.`, action: 'Read and review'});
   }
   for (const m of missions) {
     if (!['done', 'blocked'].includes(m.status)) continue;
@@ -59,9 +62,9 @@ export class Workbench {
     return {items: attentionItems({approvals: this.core()?.approvals.list({status: 'waiting'}) || [], runs: this.tower.runs, missions: this.workstations.themes.flatMap(t => this.missions.board(t.id, this.workstations.modules(t.id)).map(m => ({...m, theme: t.id}))), drafts: this.state.drafts, meetingWork:this.core()?.meetingWork?.items||[], meetings:this.core()?.deps?.meetingFollowups?.list()||[], seen: this.state.seen}), error: this.loadError || ''};
   }
   acknowledge(id) {
-    const item = this.attention().items.find(i => i.id === id && i.source === 'mission' && i.kind === 'finished');
-    if (!item) throw Error('That task is no longer waiting for review.');
-    this.state.seen[id] = item.revision; this.save(); return true;
+    const item = this.attention().items.find(i => i.id === id && (i.source === 'mission' && i.kind === 'finished' || i.clearable));
+    if (!item) throw Error('That card is no longer waiting.');
+    this.state.seen[id] = item.revision; this.state.seen = Object.fromEntries(Object.entries(this.state.seen).slice(-300)); this.save(); return true;
   }
   draft(id) { const d = this.state.drafts.find(d => d.id === id); if (!d) throw Error('That brief is no longer saved.'); return d; }
   put(p) {

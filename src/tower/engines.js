@@ -1,13 +1,14 @@
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import path from 'node:path';
 
 /**
  * The brains behind the tower's agents.
  *  - api:         the Claude API (your Anthropic API key). Quick, structured; used for planning and sign-off.
  *  - claude-code: the Claude Code app on this computer, run in the floor's folder. It can read the floor's
- *                 knowledge files and write documents there. Used for the hands-on work.
+ *                 knowledge files and write documents in the run's own folder. Used for the hands-on work.
  *  - rehearsal:   no AI at all. Shows how a run flows with placeholder output, until an engine is connected.
  */
 const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -52,6 +53,7 @@ export const CLAUDE = (() => { const own = path.join(os.homedir(), '.local', 'bi
 /** Is Claude Code installed and on the PATH? (checked once, then remembered) */
 export function detectClaudeCode(force = false) {
   if (codeProbe && !force) return codeProbe;
+  helpProbe = null;
   codeProbe = new Promise(resolve => {
     let out = '', done = false;
     const finish = v => { if (!done) { done = true; resolve(v); } };
@@ -65,6 +67,21 @@ export function detectClaudeCode(force = false) {
   });
   return codeProbe;
 }
+/** Whether this Claude Code can stop itself at a spending limit (--max-budget-usd). Asked once. */
+let helpProbe = null;
+export function claudeCodeFlags() {
+  helpProbe ||= new Promise(resolve => {
+    let out = '';
+    try {
+      const child = spawn(CLAUDE, ['--help'], {shell: true, windowsHide: true});
+      child.stdout.on('data', d => { out += d; });
+      child.on('error', () => resolve({budget: false}));
+      child.on('close', () => resolve({budget: /--max-budget-usd/.test(out)}));
+      setTimeout(() => { try { child.kill(); } catch {} resolve({budget: false}); }, 15000);
+    } catch { resolve({budget: false}); }
+  });
+  return helpProbe;
+}
 
 /**
  * Run one agent turn through Claude Code, in the floor's folder. The prompt goes in on stdin (no length
@@ -72,13 +89,17 @@ export function detectClaudeCode(force = false) {
  * the web if the floor allows it, but it has no shell: it cannot run commands, send mail or install anything.
  */
 /**
- * Agents are fenced into their floor's folder: they may read and write there, and nowhere else
+ * Agents are fenced into their floor's folder: they may read there, and nowhere else
  * (tested: a read of any other path is refused). No shell, and no searching the rest of the disk.
+ * With `writes` (a folder inside it, such as this run's), they may write only there: never the
+ * floor's knowledge files or other runs. Each such fence has its own file, removed when the agent finishes.
  */
-function fenceFile(dir, web, custom) {
-  const file = path.join(dir || os.tmpdir(), custom ? 'jarvis-coder.json' : web ? 'tower-agent-web.json' : 'tower-agent.json');
-  const allow = custom?.allow || ['Read(./**)', 'Edit(./**)', ...(web ? ['WebSearch', 'WebFetch'] : [])];
-  const deny = custom?.deny || ['Bash', 'Glob', 'Grep', 'NotebookEdit', ...(web ? [] : ['WebSearch', 'WebFetch'])];
+export function fenceRule(folder) { return String(folder).replace(/\\/g, '/').replace(/[[\]{}*?!]/g, '?'); }   // a glob that matches only this folder
+export function fenceFile(dir, web, custom, writes) {
+  const name = custom ? custom.name || 'jarvis-coder.json' : writes ? `fences/agent-${crypto.randomUUID()}.json` : web ? 'tower-agent-web.json' : 'tower-agent.json';
+  const file = path.join(dir || os.tmpdir(), name);
+  const allow = custom?.allow || ['Read(./**)', writes ? `Edit(./${fenceRule(writes)}/**)` : 'Edit(./**)', ...(web ? ['WebSearch', 'WebFetch'] : [])];
+  const deny = custom?.deny || ['Bash', 'Glob', 'Grep', 'NotebookEdit', ...(writes ? ['Edit(./knowledge/**)'] : []), ...(web ? [] : ['WebSearch', 'WebFetch'])];
   fs.mkdirSync(path.dirname(file), {recursive: true});
   fs.writeFileSync(file, JSON.stringify({permissions: {allow, deny}}, null, 1));
   return file;
@@ -98,9 +119,10 @@ function describeTool(c) {
   if (c.name === 'WebFetch') return `Reading ${String(i.url || '').replace(/^https?:\/\//, '').slice(0, 80)}`;
   return `${c.name}`;
 }
-export function callClaudeCode({cwd, prompt, model = 'sonnet', web = false, maxTurns = 14, onLine, onEvent, register, settingsDir, fence, timeoutMin = 20, extraArgs = []}) {
+export function callClaudeCode({cwd, prompt, model = 'sonnet', web = false, maxTurns = 14, onLine, onEvent, register, settingsDir, fence, writes, maxBudget, timeoutMin = 20, extraArgs = []}) {
   return new Promise((resolve, reject) => {
-    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--max-turns', String(maxTurns), '--settings', fenceFile(settingsDir, web, fence), ...extraArgs];
+    const settings = fenceFile(settingsDir, web, fence, writes);
+    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--max-turns', String(maxTurns), '--settings', settings, ...(maxBudget > 0 ? ['--max-budget-usd', maxBudget.toFixed(2)] : []), ...extraArgs];
     let child;
     try { child = spawn(CLAUDE, args.map(q), {cwd, shell: true, windowsHide: true, detached: process.platform !== 'win32'}); }
     catch (e) { reject(Error('Claude Code could not start: ' + e.message)); return; }
@@ -117,12 +139,14 @@ export function callClaudeCode({cwd, prompt, model = 'sonnet', web = false, maxT
     };
     child.stdout.on('data', d => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (l) line(l); } });
     child.stderr.on('data', d => { err += d; });
-    child.on('error', e => { clearTimeout(timer); reject(Error('Claude Code could not start: ' + e.message)); });
+    child.on('error', e => { clearTimeout(timer); if (writes) try { fs.rmSync(settings, {force: true}); } catch {} reject(Error('Claude Code could not start: ' + e.message)); });
     child.on('close', code => {
       clearTimeout(timer); if (buf.trim()) line(buf.trim());
+      if (writes) try { fs.rmSync(settings, {force: true}); } catch {}
       if (child.stoppedByUser) return reject(Error('Stopped.'));
       const cost = Number(result?.total_cost_usd) || 0;
       if (result && !result.is_error && String(result.result || draft).trim()) resolve({text: String(result.result || draft).trim(), cost});
+      else if (/budget/i.test(result?.subtype || '')) { const e = Error('The run reached its budget cap while Claude Code was working.'); e.budget = true; e.cost = cost; reject(e); }
       else reject(Error(`Claude Code stopped (${result?.subtype || code}). ${String(result?.result || err || '').trim().split(/\r?\n/).slice(-3).join(' ').slice(0, 400)}`));
     });
     child.stdin.end(prompt);

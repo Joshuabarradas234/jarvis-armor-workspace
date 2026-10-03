@@ -1151,7 +1151,7 @@
         <canvas class="ix-core"></canvas>
         <div class="ix-name">${ASSIST[hall()] || 'J.A.R.V.I.S.'}</div>
         <header class="ix-head"><p>IDEAS · ${esc(hall() === 'batcave' ? 'THE CAVE' : hall() === 'spiderman' ? 'WEB LAB' : 'ARMOR HALL')}</p><h2>What we're building.</h2>
-          <div class="ix-actions"><button type="button" data-ix="new">+ New idea</button><button type="button" data-ix="tab">+ Tab</button><button type="button" data-ix="claude">✦ Brainstorm with Claude</button><button type="button" data-ix="cfg" title="How JARVIS works on ideas">⚙</button><button type="button" class="ix-x" data-ix="close" title="Close (Esc)">×</button></div></header>
+          <div class="ix-actions"><button type="button" data-ix="new">+ New idea</button><button type="button" data-ix="tab">+ Tab</button><button type="button" data-ix="brainstorm" title="JARVIS suggests projects, then plans one out step by step">💡 Brainstorm projects</button><button type="button" data-ix="claude" title="Claude's website in a side panel">✦ Open Claude</button><button type="button" data-ix="cfg" title="How JARVIS works on ideas">⚙</button><button type="button" class="ix-x" data-ix="close" title="Close (Esc)">×</button></div></header>
         <div class="ix-cards"></div>
         <div class="ix-addtab" hidden></div>
         <footer class="ix-stages"></footer>
@@ -1165,13 +1165,14 @@
       const box = this.el.querySelector('.ix-cards');
       box.innerHTML = this.ideas.map((d, i) => `
         <article class="ix-card st-${d.stage}" data-id="${d.id}" style="left:${d.x}%;top:${d.y}%;--ph:${(i * 0.9) % 6}s">
-          <div class="ix-chip">${this.stageName(d.stage)}</div>${this.forTag(d)}${this.assistPill(d)}
+          <div class="ix-chip">${this.stageName(d.stage)}</div>${this.forTag(d)}${this.assistPill(d)}${this.planPill(d)}
           <h3>${esc(d.title)}</h3>
           <div class="ix-bar"><i style="width:${d.progress}%"></i></div>
           <div class="ix-meta"><span>${d.progress}%</span><span>${new Date(d.updated).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span></div>
           ${d.notes ? `<p>${esc(d.notes)}</p>` : ''}
         </article>`).join('') || `<div class="ix-empty">No ideas yet. Press <b>+ New idea</b>, or pinch it with your hand.</div>`;
       const counts = Object.fromEntries(STAGES.map(([k]) => [k, this.ideas.filter(d => d.stage === k).length]));
+      window.__jarvisPlanner?.wall(this.el, this.ideas);   // projects in progress as rings round the core
       this.el.querySelector('.ix-stages').innerHTML = STAGES.map(([k, n], i) => `<div class="st-${k}"><b>${counts[k]}</b><span>${n}</span></div>${i < STAGES.length - 1 ? '<i></i>' : ''}`).join('');
     },
     ringSpot(i) {   // new ideas land in an orbit round the core
@@ -1185,6 +1186,8 @@
         if (k === 'close') return this.close();
         if (k === 'new') return this.edit({ title: '', stage: 'spark', progress: 0, notes: '', ...this.ringSpot(this.ideas.length) });
         if (k === 'claude') return this.claude();
+        if (k === 'brainstorm') return window.__jarvisPlanner?.brainstorm();
+        if (k === 'plan') { const id = this.el.querySelector('.ix-edit form')?.dataset.id; if (!id) return; this.editEl(false); return window.__jarvisPlanner?.plan(id); }
         if (k === 'tab') return this.addTab(this.el.querySelector('.ix-addtab').hidden);
         if (k.startsWith('open:')) { this.addTab(false); return Holo.open({ url: b.dataset.url, title: b.dataset.title || '', scope: 'ideas' }); }
         if (await this.onAssist(k, b)) return;
@@ -1238,6 +1241,7 @@
         <label class="ix-k">How far along <output>${d.progress}%</output></label>
         <input type="range" name="progress" min="0" max="100" step="5" value="${d.progress}">
         <textarea name="notes" rows="5" placeholder="Notes, next steps, what we decided…">${esc(d.notes)}</textarea>
+        ${d.id ? `<div class="ix-row"><button type="button" class="ix-go" data-ix="plan">📋 ${d.project ? `Open the plan (${this.planCount(d)} steps done)` : 'Plan it out step by step'}</button><span></span></div>` : ''}
         <div class="ix-assist"></div>
         <div class="ix-row">${d.id ? '<button type="button" class="ix-del" data-ix="delete">Delete</button>' : ''}<span></span><button type="button" data-ix="cancel">Cancel</button>${d.id ? '' : '<button type="button" data-ix="save-assist">Save & get JARVIS on it</button>'}<button type="submit" class="ix-save">Save</button></div>
       </form>`;
@@ -1258,6 +1262,8 @@
         return d.id ? this.ideas.find(x => x.id === d.id) : this.ideas.filter(x => x.title === p.title.replace(/[\r\n]+/g, ' ').trim().slice(0, 120)).sort((a, b) => b.created - a.created)[0];
       } catch (x) { toast(x.message || String(x)); return null; }
     },
+    planCount(d) { const all = (d.project?.phases || []).flatMap(p => p.steps); return all.length ? `${all.filter(s => s.done).length}/${all.length}` : ''; },
+    planPill(d) { const n = this.planCount(d); return n ? `<div class="ix-as" title="Project plan: steps done">📋 ${n}</div>` : ''; },
     forTag(d) { const t = d.target; if (!t) return ''; return `<div class="ix-for">${t.kind === 'app' ? '⚙ JARVIS app' : esc(t.name || 'Suit')}</div>`; },
     assistPill(d) {
       const st = d.assist?.status, L = { thinking: 'JARVIS is thinking', waiting: 'Needs your OK', working: 'Being worked on', review: 'Ready to review' };

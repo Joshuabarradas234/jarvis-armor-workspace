@@ -52,7 +52,7 @@ test('retrieval is scoped, relevant, deduplicated and bounded; policy changes ap
  const matches=matchSkills(data,'ironman',f.floor.id,r.task,brief);assert.ok(matches.length>0&&matches.length<=3);assert.ok(skillContext(matches).length<8000);
 });
 test('retained earlier tasks migrate once; a skill save error does not turn a finished task into a failure',async t=>{
- const f=fixture(t),r=await f.run();f.store.data.taskSkills=[];delete r.steps[0].method;f.store.flush();let loaded=new TowerStore({dir:f.dir,docs:f.dir});assert.equal(loaded.data.taskSkills.length,1);assert.equal(loaded.data.taskSkills[0].steps[0].method,'');loaded=new TowerStore({dir:f.dir,docs:f.dir});assert.equal(loaded.data.taskSkills.length,1);
+ const f=fixture(t),r=await f.run();f.store.data.taskSkills=[];delete r.steps[0].method;delete r.steps[0].instructions;f.store.flush();let loaded=new TowerStore({dir:f.dir,docs:f.dir});assert.equal(loaded.data.taskSkills.length,1);assert.equal(loaded.data.taskSkills[0].steps[0].method,'');loaded=new TowerStore({dir:f.dir,docs:f.dir});assert.equal(loaded.data.taskSkills.length,1);
  f.store.learn=()=>{throw Error('Disk locked');};const next=await f.run();assert.equal(next.status,'done');assert.ok(fs.existsSync(next.final));assert.match(next.learningError,/Restart JARVIS/);assert.equal(f.runner.completed,2);
 });
 test('skill browser searches older entries, paginates and escapes all stored content',async t=>{

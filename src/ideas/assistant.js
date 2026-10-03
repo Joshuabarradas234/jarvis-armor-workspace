@@ -56,11 +56,13 @@ export class IdeaAssistant {
   }
 
   /* ---------------- 1. think it through ---------------- */
-  async ask(system, prompt) {
-    const key = this.readKey();
-    if (key) return (await this.api({key, model: this.tower().settings().plannerModel, system, prompt, maxTokens: 2500})).text;
+  /** Ask Claude for text (the API key, else Claude Code). What it costs is added to JARVIS's spend for the day. */
+  async ask(system, prompt, {maxTokens = 2500, kind = 'ideas'} = {}) {
+    const key = this.readKey(), paid = r => { try { if (r.cost > 0) this.spent?.(r.cost, kind); } catch {} return r.text; };
+    if (key) return paid(await this.api({key, model: this.tower().settings().plannerModel, system, prompt, maxTokens}));
     const code = await this.detect();
-    if (code.ready) { fs.mkdirSync(this.tower().root, {recursive: true}); return (await this.code({settingsDir: this.dir, cwd: this.tower().root, prompt: `${system}\n\n${prompt}`, model: 'sonnet', maxTurns: 2})).text; }
+    if (code.ready) { fs.mkdirSync(this.tower().root, {recursive: true}); return paid(await this.code({settingsDir: this.dir, cwd: this.tower().root, prompt: `${system}\n\n${prompt}`, model: 'sonnet', maxTurns: 2,
+      fence: {name: 'ideas-thinking.json', allow: [], deny: ['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep', 'NotebookEdit', 'WebSearch', 'WebFetch']}})); }   // thinking needs no tools
     throw Error('Connect Claude first: add an API key in the tower (Engines), or install Claude Code.');
   }
   context(idea) {

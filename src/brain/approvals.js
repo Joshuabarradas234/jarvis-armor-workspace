@@ -74,7 +74,7 @@ export class Approvals {
     // the same request twice (same kind + ref) while the first is still waiting is one request
     if (ref) { const dup = this.data.items.find(a => a.status === 'waiting' && a.kind === kind && a.ref === ref); if (dup) return dup; }
     const token = crypto.randomBytes(18).toString('base64url');
-    const a = {id: this.data.next++, token, code: codeOf(token), kind, title: clip(String(title).replace(/\s+/g, ' ').trim(), 200), detail: clip(detail, 6000), payload, risk: ['low', 'normal', 'high'].includes(risk) ? risk : 'normal',
+    const a = {id: this.data.next++, token, code: codeOf(token), kind, title: clip(String(title).replace(/\s+/g, ' ').trim(), 200), detail: clip(detail, 20000), payload, risk: ['low', 'normal', 'high'].includes(risk) ? risk : 'normal',
       ref: String(ref || ''), source, group: String(group || ''), status: 'waiting', createdAt: Date.now(), expiresAt: Date.now() + Math.max(1, expiresHours) * 3600e3,
       notified: [], notifiedAt: 0, decidedAt: 0, via: '', proof: '', note: '', result: '', finishedAt: 0};
     this.data.items.push(a); this.save();

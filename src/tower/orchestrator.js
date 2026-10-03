@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {callApi, callClaudeCode, detectClaudeCode, rehearse, killTree} from './engines.js';
+import {callApi, callClaudeCode, detectClaudeCode, claudeCodeFlags, rehearse, killTree} from './engines.js';
 import {rankFor} from './store.js';
 import {briefOf,briefGaps,briefText,reviewOf,cutOff} from './productivity.js';
 import {writeText} from '../brain/util.js';
@@ -18,6 +18,10 @@ import {skillContext} from './skills.js';
 const TEXT_EXT = /\.(md|txt|csv|json|html?|js|ts|py|ya?ml|xml|log|ini|toml|sql|css)$/i;
 const LIVE = ['queued', 'planning', 'working', 'reviewing'];
 const today0 = () => new Date().setHours(0, 0, 0, 0);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const prices = model => /haiku/.test(model) ? [1, 5] : /sonnet/.test(model) ? [3, 15] : [15, 75];   // $ per million tokens in and out; unknown models are priced high
+const overCap = r => { const e = Error(`Budget cap reached: this run has used about $${r.cost.toFixed(2)} of its $${r.budget.perRun.toFixed(2)}. Raise the cap on the Brief tab, then press Continue.`); e.budget = true; return e; };
+const workflowText = w => w ? `OWNER-ACCEPTED EXAMPLE (style reference; never copy its facts):\n${w.example}\n` : '';
 
 export class TowerRunner {
   constructor({store, getKey, onUpdate, onDone, log}) {
@@ -44,11 +48,11 @@ export class TowerRunner {
   summary(r) {
     return {id: r.id, theme: r.theme, floorId: r.floorId, floorName: r.floorName, number: r.number, title: r.title, task: r.task, status: r.status, progress: r.progress,
       input:r.input||'', brief:r.brief, questions:r.questions||[], workflowId:r.workflowId||'', rework:r.rework||0, reviews:r.reviews||[], rewarded:!!r.rewarded, phase: r.phase, startedAt: r.startedAt, endedAt: r.endedAt, folder: r.folder, final: r.final, verdict: r.verdict, notes: r.notes, error: r.error, note: r.note,
-      rehearsal: r.rehearsal, calls: r.calls, cost: Math.round((r.cost || 0) * 10000) / 10000, budget: r.budget, feedback: r.feedback || null, approvals: r.approvals || [],
-      sourceKey:r.sourceKey||'',meetingWork:!!r.meetingWork,learnedSkills:r.learnedSkills||[],skillUseRecorded:!!r.skillUseRecorded,skillOutcomeRecorded:!!r.skillOutcomeRecorded,learningError:r.learningError||'',
+      rehearsal: r.rehearsal, calls: r.calls, cost: Math.round((r.cost || 0) * 10000) / 10000, budget: r.budget, chainSpent: r.chainSpent || 0, dayBase: r.dayBase || null, resumed: r.resumed || 0, feedback: r.feedback || null, approvals: r.approvals || [],
+      sourceKey:r.sourceKey||'',notify:r.notify||'',planStep:r.planStep||'',meetingWork:!!r.meetingWork,learnedSkills:r.learnedSkills||[],skillUseRecorded:!!r.skillUseRecorded,skillOutcomeRecorded:!!r.skillOutcomeRecorded,learningError:r.learningError||'',
       ideaId: r.ideaId || '', scheduled: !!r.scheduled, from: r.from || null, handedTo: r.handedTo || null, chain: r.chain || [],
       desk: r.desk ? {lead: r.desk.lead.slice(-12), reviewer: r.desk.reviewer.slice(-12)} : null,
-      steps: r.steps.map(s => ({id: s.id, agent: s.agent, agentName: s.agentName, title: s.title, method:s.method||'', after:s.after||[], status: s.status, engine: s.engine, file: s.file, live: s.live, started: s.started, ended: s.ended, error: s.error, log: (s.log || []).slice(-12)}))};
+      steps: r.steps.map(s => ({id: s.id, agent: s.agent, agentName: s.agentName, title: s.title, method:s.method||'', instructions:(s.instructions||'').slice(0,2000), after:s.after||[], status: s.status, engine: s.engine, file: s.file, live: s.live, started: s.started, ended: s.ended, error: s.error, log: (s.log || []).slice(-12)}))};
   }
   emit(r) { r.progress = this.progressOf(r); this.onUpdate(this.summary(r)); }
   save(r) { const i = this.store.runs.findIndex(x => x.id === r.id); const snap = this.summary(r); if (i >= 0) this.store.runs[i] = snap; else this.store.runs.push(snap); this.store.flush(); }
@@ -58,7 +62,8 @@ export class TowerRunner {
     const base = r.phase === 'planning' ? 4 : 12;
     return Math.min(96, Math.round(base + (done + going * 0.4) / n * 72 + (r.phase === 'reviewing' ? 10 : 0)));
   }
-  spentToday(theme, floorId) { return this.store.runs.filter(r => r.theme === theme && r.floorId === floorId && r.startedAt >= today0()).reduce((a, r) => a + (Number(r.cost) || 0), 0); }
+  /** Today's spend on a floor: runs started today, plus what older runs continued today have spent since. */
+  spentToday(theme, floorId) { const t0 = today0(); return this.store.runs.filter(r => r.theme === theme && r.floorId === floorId).reduce((a, r) => a + (r.startedAt >= t0 ? Number(r.cost) || 0 : r.dayBase?.day === t0 ? Math.max(0, (Number(r.cost) || 0) - r.dayBase.cost) : 0), 0); }
 
   /* ------------------------------------------------------------------ building the prompts */
   knowledgeText(theme, floor, budget = 14000) {
@@ -96,32 +101,53 @@ export class TowerRunner {
     const live = this.live.get(r.id);
     if (!live || live.abort.signal.aborted) throw Error('Stopped.');
     if(r.meetingWork){engine='api';web=false;}
-    if(r.cost>=r.budget.perRun){const e=Error('The run has reached its budget cap.');e.budget=true;throw e;}
-    r.calls = (r.calls || 0) + 1;
+    if(r.cost>=r.budget.perRun)throw overCap(r);
     const note = text => { const e = {t: Date.now(), text: String(text).slice(0, 300)}; if (step) { (step.log ||= []).push(e); step.log = step.log.slice(-60); } else if (desk) { desk.push(e); } this.emit(r); };
-    let res;
-    if (engine === 'rehearsal') { r.rehearsal=true; note('Rehearsing (no AI connected)…'); res = await rehearse({kind, floor, agent, task: r.task, step, steps: r.steps, signal: live.abort.signal}); }
-    else if (engine === 'api') {
-      const s = this.store.settings();
-      note(`Asking Claude (${kind === 'work' ? s.workerModel : s.plannerModel})${web ? ' with web search' : ''}…`);
-      let reservation=0,maxTokens=kind==='review'?8000:5000;
-      if(r.meetingWork){const allowance=r.budget.perRun-r.cost,model=kind==='work'?s.workerModel:s.plannerModel,prices=/haiku/.test(model)?[1,5]:/sonnet/.test(model)?[3,15]:[15,75];const input=(Buffer.byteLength(system)+Buffer.byteLength(prompt)+500)*prices[0]/1e6;maxTokens=Math.min(3000,Math.floor((allowance-input)*1e6/prices[1]));if(maxTokens<256){const e=Error('The meeting allowance cannot cover the next agent response. Review the partial work before increasing it.');e.budget=true;throw e;}reservation=input+maxTokens*prices[1]/1e6;r.cost+=reservation;this.save(r);}
-      try { res = await callApi({key: this.getKey(), model: kind === 'work' ? s.workerModel : s.plannerModel, system, prompt, web, maxTokens, signal: live.abort.signal,...(r.meetingWork?{retries:0}:{})}); }
-      finally { if(reservation)r.cost-=reservation; }   // a failed call must not leave the reservation in the run's cost
-      note('Answer received.');
-      if (res.truncated) { note('The answer reached the length limit and was cut off.'); res = {...res, text: cutOff(kind, res.text)}; }
-      if (step) step.draft = res.text;
-    } else {
-      const s = this.store.settings();
-      note('Starting work in the floor folder…');
-      res = await callClaudeCode({settingsDir: this.store.dir, cwd: r.floorDir || r.folderAbs, prompt: `${system}\n\n---\n\n${prompt}`, model: s.codeModel, web, maxTurns: kind === 'work' ? 16 : 8,
-        onLine: line => { if (step) step.live = line; },
-        onEvent: ev => { if (ev.kind === 'text' && step) step.draft = ev.draft; note(ev.kind === 'tool' ? ev.text : `✎ ${ev.text.replace(/\s+/g, ' ').slice(0, 140)}`); },
-        register: c => live.children.add(c)});
+    const s = this.store.settings(), model = kind === 'work' ? s.workerModel : s.plannerModel;
+    let maxTokens = kind === 'review' ? 8000 : 5000, hold = 0;
+    // Calls running side by side each hold what they may cost, so together they cannot run past the cap.
+    // A call waits while the others finish; one call on its own may still start whenever the run is under its cap.
+    if (!r.meetingWork && engine !== 'rehearsal') {
+      const [pin, pout] = prices(model);
+      hold = engine === 'api' ? ((Buffer.byteLength(system) + Buffer.byteLength(prompt)) / 3 + 500) * pin / 1e6 + maxTokens * pout / 1e6 + (web ? 0.1 : 0) : Math.max(0.25, r.codeAvg || 0.5);
+      let waited = false;
+      while ((r.held || 0) > 0 && r.cost + r.held + hold > r.budget.perRun) {
+        if (!waited) { note('Waiting for budget room while colleagues finish…'); waited = true; }
+        await sleep(400);
+        if (live.abort.signal.aborted) throw Error('Stopped.');
+      }
+      if (r.cost >= r.budget.perRun) throw overCap(r);
+      r.held = (r.held || 0) + hold;
     }
+    r.calls = (r.calls || 0) + 1;
+    let res;
+    try {
+      if (engine === 'rehearsal') { r.rehearsal=true; note('Rehearsing (no AI connected)…'); res = await rehearse({kind, floor, agent, task: r.task, step, steps: r.steps, signal: live.abort.signal}); }
+      else if (engine === 'api') {
+        note(`Asking Claude (${model})${web ? ' with web search' : ''}…`);
+        let reservation=0;
+        if(r.meetingWork){const allowance=r.budget.perRun-r.cost,[pin,pout]=prices(model);const input=(Buffer.byteLength(system)+Buffer.byteLength(prompt)+500)*pin/1e6;maxTokens=Math.min(3000,Math.floor((allowance-input)*1e6/pout));if(maxTokens<256){const e=Error('The meeting allowance cannot cover the next agent response. Review the partial work before increasing it.');e.budget=true;throw e;}reservation=input+maxTokens*pout/1e6;r.cost+=reservation;this.save(r);}
+        try { res = await callApi({key: this.getKey(), model, system, prompt, web, maxTokens, signal: live.abort.signal,...(r.meetingWork?{retries:0}:{})}); }
+        finally { if(reservation)r.cost-=reservation; }   // a failed call must not leave the reservation in the run's cost
+        note('Answer received.');
+        if (res.truncated) { note('The answer reached the length limit and was cut off.'); res = {...res, text: cutOff(kind, res.text)}; }
+        if (step) step.draft = res.text;
+      } else {
+        note('Starting work in the floor folder…');
+        // Claude Code may write only in this run's folder, and stops itself at what is left of the cap
+        const room = Math.max(0.05, r.budget.perRun - r.cost - (r.held - hold)), flags = await claudeCodeFlags();
+        res = await callClaudeCode({settingsDir: this.store.dir, cwd: r.floorDir, writes: path.relative(r.floorDir, r.folderAbs), maxBudget: flags.budget ? room : 0, prompt: `${system}\n\n---\n\n${prompt}`, model: s.codeModel, web, maxTurns: kind === 'work' ? 16 : 8,
+          onLine: line => { if (step) step.live = line; },
+          onEvent: ev => { if (ev.kind === 'text' && step) step.draft = ev.draft; note(ev.kind === 'tool' ? ev.text : `✎ ${ev.text.replace(/\s+/g, ' ').slice(0, 140)}`); },
+          register: c => live.children.add(c)});
+        r.codeCalls = (r.codeCalls || 0) + 1; r.codeAvg = ((r.codeAvg || 0) * (r.codeCalls - 1) + (Number(res.cost) || 0)) / r.codeCalls;
+      }
+    } catch (e) { if (e.cost) r.cost += e.cost; throw e; }   // a call stopped at the cap still spent what it spent
+    finally { if (hold) r.held -= hold; }
     r.cost = (r.cost || 0) + (Number(res.cost) || 0);
     if(live.abort.signal.aborted)throw Error('Stopped.');
-    if (r.budget && r.cost > r.budget.perRun) { const e = Error(`Budget cap reached: this run has used about $${r.cost.toFixed(2)} of its $${r.budget.perRun.toFixed(2)}. Raise the cap on the Brief tab to let it go further.`); e.budget = true; throw e; }
+    // an answer that took the run past its cap is kept (it is paid for); the next call stops instead
+    if (r.cost > r.budget.perRun) note(`This answer took the run to about $${r.cost.toFixed(2)}, past its $${r.budget.perRun.toFixed(2)} cap. Nothing more will start.`);
     return res.text;
   }
 
@@ -141,12 +167,13 @@ export class TowerRunner {
     }
     const system = `You are ${head.name}, ${head.title} of ${tower.name}. ${head.prompt}`;
     const prompt = `A task has arrived in the lobby:\n"""${task}"""\n\nFloors:\n${list}\n\nPick the one floor that should start it. Reply with JSON only: {"floor":"<floor id>","reason":"<one short sentence, in your voice>"}`;
-    let text;
-    if (engine === 'api') text = (await callApi({key: this.getKey(), model: this.store.settings().plannerModel, system, prompt, maxTokens: 300})).text;
-    else { fs.mkdirSync(this.store.root, {recursive: true}); text = (await callClaudeCode({settingsDir: this.store.dir, cwd: this.store.root, prompt: `${system}\n\n${prompt}`, model: 'haiku', maxTurns: 1})).text; }
-    const j = parseJson(text) || {};
+    let res;
+    if (engine === 'api') res = await callApi({key: this.getKey(), model: this.store.settings().plannerModel, system, prompt, maxTokens: 300});
+    else { fs.mkdirSync(this.store.root, {recursive: true}); res = await callClaudeCode({settingsDir: this.store.dir, cwd: this.store.root, prompt: `${system}\n\n${prompt}`, model: 'haiku', maxTurns: 1,
+      fence: {name: 'tower-router.json', allow: [], deny: ['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep', 'NotebookEdit', 'WebSearch', 'WebFetch']}}); }   // choosing a floor needs no tools
+    const j = parseJson(res.text) || {};
     const pick = floors.find(f => f.id === j.floor) || floors[0];
-    return {floorId: pick.id, reason: `${head.name}: "${String(j.reason || 'On it.').slice(0, 200)}"`};
+    return {floorId: pick.id, reason: `${head.name}: "${String(j.reason || 'On it.').slice(0, 200)}"`, cost: Number(res.cost) || 0};   // the choice is paid for: it counts in the run it starts
   }
 
   /* ------------------------------------------------------------------ a run */
@@ -158,7 +185,7 @@ export class TowerRunner {
     if(opts.meetingWork&&!this.getKey())throw Error('Meeting drafts need the Claude API key.');
     const previous=opts.resumeId?this.store.runs.find(r=>r.id===opts.resumeId&&r.theme===theme&&r.floorId===floorId&&['needs_brief','needs_changes'].includes(r.status)):null;
     if(opts.resumeId&&!previous)throw Error('That run cannot be resumed. Start a new task instead.');
-    if(previous){opts={...opts,meetingWork:previous.meetingWork||opts.meetingWork,input:[previous.input,previous.notes?'CORRECTIONS TO RESOLVE: '+previous.notes:''].filter(Boolean).join('\n'),from:previous.from,chain:(previous.chain||[]).filter(id=>id!==floorId)};}
+    if(previous){opts={...opts,meetingWork:previous.meetingWork||opts.meetingWork,input:[previous.input,previous.notes?'CORRECTIONS TO RESOLVE: '+previous.notes:''].filter(Boolean).join('\n'),from:previous.from,chain:(previous.chain||[]).filter(id=>id!==floorId),chainSpent:previous.chainSpent||0};}
     const brief=briefOf({...floor.taskBrief,...opts.brief,outcome:opts.brief?.outcome||task});
     const questions=briefGaps(brief).map(x=>'Please specify '+x+'.');
     const eng=questions.length?null:opts.meetingWork?{api:{ready:true},claudeCode:{ready:false}}:await this.engines(); // busy check after the await
@@ -167,6 +194,9 @@ export class TowerRunner {
     if ([...this.live.values()].some(l => l.run.floorId === floorId && l.run.theme === theme)) throw Error(`${floor.name} is already working on something. Stop it or wait for it to finish.`);
     const spent = this.spentToday(theme, floorId);
     if (spent >= floor.budget.perDay) throw Error(`${floor.name} has used its daily budget (about $${spent.toFixed(2)} of $${floor.budget.perDay.toFixed(2)}). Raise it on the Brief tab, or wait until tomorrow.`);
+    // a task budget covers the whole assembly line: each floor gets what the floors before it left
+    const chainSpent = Math.max(0, Number(opts.chainSpent) || 0), taskLeft = brief.budget ? brief.budget - chainSpent : Infinity;
+    if (taskLeft < 0.05) throw Error(`The task budget ($${brief.budget.toFixed(2)}) was used by the floors before, about $${chainSpent.toFixed(2)}.`);
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     const title = (opts.title || task.split(/\r?\n/)[0]).replace(/[<>:"/\\|?*]/g, '').slice(0, 48).trim() || 'Task';
     const floorDir = this.store.folder(theme, floor);
@@ -174,9 +204,9 @@ export class TowerRunner {
     fs.mkdirSync(folderAbs, {recursive: true});
     fs.writeFileSync(path.join(folderAbs, '00 task.md'), `# Task\n\n${task}\n\n${briefText(brief)}\n`);
     if (opts.input) fs.writeFileSync(path.join(folderAbs, `00 input from ${String(opts.from?.floorName || 'previous floor').replace(/[<>:"/\\|?*]/g, '')}.md`), opts.input);
-    const r = {sourceKey:opts.sourceKey||'',meetingWork:!!opts.meetingWork,id: crypto.randomUUID(), theme, floorId, floorName: floor.name, number: floor.number, title, task, status:questions.length?'needs_brief':'planning', phase:questions.length?'needs_brief':'planning', progress: 2, brief,questions,rework:0,reviews:[],workflowId:workflow?.id||'',workflowPrompt:workflow?`OWNER-ACCEPTED EXAMPLE (style reference; never copy its facts):\n${workflow.example}\n`:'',
-      startedAt: Date.now(), endedAt: null, folder: folderAbs, folderAbs, floorDir, steps: [], final: null, verdict: null, notes: null, error: null, calls: 0, cost: 0,
-      budget: {...floor.budget,perRun:Math.min(brief.budget??floor.budget.perRun,floor.budget.perRun,floor.budget.perDay-spent)}, rehearsal: eng?(!eng.api.ready && !eng.claudeCode.ready)||floor.engine==='rehearsal':false, ideaId: opts.ideaId ?? floor.ideaId ?? '', scheduled: !!opts.scheduled,
+    const r = {sourceKey:opts.sourceKey||'',notify:['message','call'].includes(opts.notify)?opts.notify:'',planStep:String(opts.planStep||'').slice(0,120),meetingWork:!!opts.meetingWork,id: crypto.randomUUID(), theme, floorId, floorName: floor.name, number: floor.number, title, task, status:questions.length?'needs_brief':'planning', phase:questions.length?'needs_brief':'planning', progress: 2, brief,questions,rework:0,reviews:[],workflowId:workflow?.id||'',workflowPrompt:workflowText(workflow),
+      startedAt: Date.now(), endedAt: null, folder: folderAbs, folderAbs, floorDir, steps: [], final: null, verdict: null, notes: null, error: null, calls: 0, cost: Math.max(0, Number(opts.routeCost) || 0), chainSpent,
+      budget: {...floor.budget,perRun:Math.min(taskLeft,floor.budget.perRun,floor.budget.perDay-spent)}, rehearsal: eng?(!eng.api.ready && !eng.claudeCode.ready)||floor.engine==='rehearsal':false, ideaId: opts.ideaId ?? floor.ideaId ?? '', scheduled: !!opts.scheduled,
       input: opts.input || '', from: opts.from || null, chain: [...(opts.chain || []), floorId], desk: {lead: [], reviewer: []}, approvals: []};
     if(questions.length){r.note='Complete the task brief before agents start.';this.save(r);this.emit(r);return this.summary(r);}
     if(previous){previous.status=previous.phase='restarted';previous.endedAt=Date.now();previous.note='Continued in a new run: '+r.id;}
@@ -187,21 +217,61 @@ export class TowerRunner {
     return this.summary(r);
   }
 
-  async run(r, eng) {
-    const floor = this.store.floor(r.theme, r.floorId);
-    const lead = floor.agents.find(a => a.role === 'lead');
-    const reviewer = floor.agents.find(a => a.role === 'reviewer');
-    const team = floor.agents.filter(a => a.role === 'specialist');
-    const max = this.store.settings().maxSteps;
+  /**
+   * Carry on a run that stopped, failed or reached its budget, in the same folder. Finished steps keep
+   * their work (read back from their files) and only the rest is done again. `budget` raises the task's
+   * own budget; the floor's caps on the Brief tab still apply.
+   */
+  async continue(runId, opts = {}) {
+    const old = this.store.runs.find(x => x.id === runId);
+    if (!old || !['stopped', 'failed', 'budget'].includes(old.status)) throw Error('Only a run that stopped, failed or reached its budget can be continued.');
+    if (old.meetingWork) throw Error('Retry this from the meeting work plan, so its allowance stays right.');
+    if (old.rehearsal) throw Error('A rehearsal cannot be continued. Start the task again once an engine is connected.');
+    const floor = this.store.floor(old.theme, old.floorId), floorDir = this.store.folder(old.theme, floor), rel = path.relative(floorDir, old.folder || '');
+    if (!old.folder || !fs.existsSync(old.folder) || !rel || rel.startsWith('..') || path.isAbsolute(rel)) throw Error('This run’s folder has moved or gone (the floor may have been renamed). Start the task again.');
+    const brief = {...old.brief};
+    if (opts.budget !== undefined && opts.budget !== '') { const b = Number(opts.budget); if (!(b >= 0.05 && b <= 100)) throw Error('Enter a task budget between $0.05 and $100.'); brief.budget = b; }
+    const eng = await this.engines();
+    if (!eng.api.ready && !eng.claudeCode.ready) throw Error('Connect the Claude API key or Claude Code first.');
+    if (this.live.has(runId) || [...this.live.values()].some(l => l.run.floorId === floor.id && l.run.theme === old.theme)) throw Error(`${floor.name} is already working on something. Stop it or wait for it to finish.`);
+    // the tightest of the three caps applies: the floor's per run, what is left of its day, and the task's own budget
+    const cost = Number(old.cost) || 0, spent = this.spentToday(old.theme, floor.id);
+    const [why, perRun] = [['run', floor.budget.perRun], ['day', cost + floor.budget.perDay - spent], ...(brief.budget ? [['task', brief.budget - (old.chainSpent || 0)]] : [])].sort((a, b) => a[1] - b[1])[0];
+    if (perRun - cost < 0.02) throw Error(why === 'day' ? `${floor.name} has used its daily budget. Raise it on the Brief tab, or continue tomorrow.`
+      : why === 'task' ? `This task has used about $${(cost + (old.chainSpent || 0)).toFixed(2)} of its $${brief.budget.toFixed(2)} budget. Enter a higher task budget, then press Continue.`
+      : `This run has used about $${cost.toFixed(2)} of the floor’s $${floor.budget.perRun.toFixed(2)} cap per run. Raise “per run” on the Brief tab, then press Continue.`);
+    let steps = old.steps.map(s => ({...s, log: [...(s.log || [])], live: '', draft: '', output: '', excerpt: '', instructions: s.instructions || s.method || s.title}));
+    for (const s of steps) if (s.status === 'done') {
+      try { s.output = fs.readFileSync(s.file, 'utf8').replace(/^# .*\r?\n_.*_\r?\n\r?\n/, '').trimEnd(); s.excerpt = s.output.replace(/\s+/g, ' ').slice(0, 280); }
+      catch { s.status = 'queued'; }   // its file is gone: do that step again
+    }
+    const specialist = id => floor.agents.find(a => a.id === id && a.role === 'specialist');
+    if (steps.some(s => s.status !== 'done' && !specialist(s.agent))) steps = [];   // the team has changed since: the lead plans again
+    for (const s of steps) if (s.status !== 'done') Object.assign(s, {status: 'queued', error: null, started: null, ended: null, engine: this.pick(floor, specialist(s.agent), eng)});
+    const workflow = old.workflowId ? this.store.workflows(old.theme).find(w => w.id === old.workflowId) : null;
+    const learned = (this.store.data.taskSkills || []).filter(s => (old.learnedSkills || []).includes(s.id));
+    const kept = steps.filter(s => s.status === 'done').length;
+    const r = {...old, brief, steps, floorName: floor.name, folderAbs: old.folder, floorDir, budget: {...floor.budget, perRun}, status: steps.length ? 'working' : 'planning', phase: steps.length ? 'working' : 'planning',
+      endedAt: null, error: null, note: kept ? `Continued: ${kept} finished step${kept === 1 ? '' : 's'} kept.` : 'Continued from the start.', resumed: (old.resumed || 0) + 1,
+      workflowPrompt: workflowText(workflow), skillPrompt: skillContext(learned), desk: {lead: [...(old.desk?.lead || [])], reviewer: [...(old.desk?.reviewer || [])]}, reviews: [...(old.reviews || [])]};
+    if (old.startedAt < today0() && old.dayBase?.day !== today0()) r.dayBase = {day: today0(), cost};   // from here on, its spend counts against today
+    this.live.set(r.id, {abort: new AbortController(), children: new Set(), run: r});
+    this.save(r); this.emit(r);
+    this.run(r, eng).catch(e => this.fail(r, e));
+    return this.summary(r);
+  }
 
-    // 1. plan
+  /** The lead plans the work. False when the lead needs answers from you first. */
+  async plan(r, floor, eng) {
+    const lead = floor.agents.find(a => a.role === 'lead'), reviewer = floor.agents.find(a => a.role === 'reviewer');
+    const team = floor.agents.filter(a => a.role === 'specialist'), max = this.store.settings().maxSteps;
     const leadEngine = this.pick(floor, lead, eng);
     if(leadEngine!=='rehearsal'&&r.learnedSkills?.length)this.store.recordSkillUse(r);
     const planPrompt = `${this.inputBlock(r)}TASK FROM YOUR BOSS:\n"""${r.task}"""\n\nPlan the work for your team (${team.map(a => `${a.id} = ${a.name}, ${a.title}`).join('; ')}).\nUse at most ${max} steps and at most one step per team member. Each step goes to one team member. Steps that need another step's result list that step's agent id in "after".\nThe reviewer (${reviewer.name}) checks and finishes everything afterwards, so do not add a review step.\n\nIf critical information or a required source is missing, return {"questions":["one specific question"],"steps":[]} and do not assign work. Otherwise reply with JSON only:\n{"summary":"one sentence","steps":[{"agent":"<team id>","title":"short title","instructions":"exactly what to produce","after":["<agent id of an earlier step>"]}]}`;
     const planText = await this.ask(r, {kind: 'plan', agent: lead, engine: leadEngine, system: this.system(r.theme, floor, lead, leadEngine), prompt: planPrompt, desk: r.desk.lead});
     const plan = parseJson(planText);
     if(Array.isArray(plan?.questions)&&plan.questions.some(x=>typeof x==='string'&&x.trim())){
-      r.questions=plan.questions.filter(x=>typeof x==='string').slice(0,8).map(x=>x.slice(0,400));r.status=r.phase='needs_brief';r.note='The lead needs these answers before starting.';this.live.delete(r.id);this.save(r);this.emit(r);return;
+      r.questions=plan.questions.filter(x=>typeof x==='string').slice(0,8).map(x=>x.slice(0,400));r.status=r.phase='needs_brief';r.note='The lead needs these answers before starting.';this.live.delete(r.id);this.save(r);this.emit(r);return false;
     }
     let steps = Array.isArray(plan?.steps) ? plan.steps : [];
     steps = steps.filter(s => team.some(a => a.id === s.agent)).slice(0, max);
@@ -219,6 +289,15 @@ export class TowerRunner {
       return {id: `s${i + 1}`, agent: a.id, agentName: a.name, title: String(s.title || a.title).slice(0, 120), method:String(s.instructions||'').slice(0,800), instructions: String(s.instructions || '').slice(0, 2000),
         after: (Array.isArray(s.after) ? s.after : []).filter(x => x !== a.id), status: 'queued', engine: this.pick(floor, a, eng), file: null, output: '', excerpt: '', live: '', log: [], draft: ''};
     });
+    return true;
+  }
+
+  async run(r, eng) {
+    const floor = this.store.floor(r.theme, r.floorId);
+    const reviewer = floor.agents.find(a => a.role === 'reviewer');
+
+    // 1. plan (a continued run keeps the plan it already has)
+    if (!r.steps.length && !(await this.plan(r, floor, eng))) return;
     r.phase = 'working'; r.status = 'working'; this.save(r); this.emit(r);
 
     // 2. the team works: a step starts once every step it waits on (by agent) is finished; up to 3 at a time
@@ -255,7 +334,7 @@ export class TowerRunner {
       const revText=await this.ask(r,{kind:'review',agent:reviewer,engine:revEngine,system:this.system(r.theme,floor,reviewer,revEngine),desk:r.desk.reviewer,
         prompt:`${this.inputBlock(r)}TASK: ${r.task}\nTEAM WORK:\n${work.slice(0,60000)}\nCheck every acceptance criterion and source. Do not approve missing, failed or incomplete work. Return CHANGES with actionable corrections when needed. External actions stay drafts. Include proposed actions as APPROVAL: email | recipient | subject (or post | platform | title, spend | what | amount).\nReply exactly:\nVERDICT: APPROVED or CHANGES\nNOTES: specific reasons and corrections\n---\n<complete deliverable in Markdown>`});
       const review=reviewOf(revText,r.steps);r.verdict=review.verdict;r.notes=review.notes;
-      const reviewFile=path.join(r.folderAbs,`REVIEW-${attempt+1}.md`);writeText(reviewFile,revText);r.reviews.push({verdict:r.verdict,notes:r.notes,file:reviewFile});
+      const reviewFile=path.join(r.folderAbs,`REVIEW-${r.reviews.length+1}.md`);writeText(reviewFile,revText);r.reviews.push({verdict:r.verdict,notes:r.notes,file:reviewFile});
       if(r.verdict==='APPROVED'){finalBody=review.body;break;}
       if(attempt===1){r.status=r.phase='needs_changes';r.endedAt=Date.now();r.note='Review failed after correction. Revise the brief and run again; nothing was handed on.';this.live.delete(r.id);this.store.recordSkillOutcome(r,false);this.learn(r);this.save(r);this.emit(r);return;}
       r.rework++;r.phase=r.status='working';this.save(r);this.emit(r);
@@ -280,7 +359,7 @@ export class TowerRunner {
     // 4. assembly line: hand the finished piece up to the next floor
     if (next && !r.meetingWork && !r.rehearsal && !r.chain.includes(next.id) && r.chain.length < 4) {
       try {
-        const nr = await this.start(r.theme, next.id, r.task, {brief:r.brief,input: finalBody, from: {runId: r.id, floorName: floor.name, floorId: floor.id}, chain: r.chain, ideaId: r.ideaId, title: r.title});
+        const nr = await this.start(r.theme, next.id, r.task, {brief:r.brief,chainSpent:(r.chainSpent||0)+r.cost,notify:r.notify,planStep:r.planStep,input: finalBody, from: {runId: r.id, floorName: floor.name, floorId: floor.id}, chain: r.chain, ideaId: r.ideaId, title: r.title});
         r.handedTo = {runId: nr.id, floorName: next.name};
       } catch (e) { r.note = `Could not hand on to ${next.name}: ${e.message}`; }
     }
@@ -295,7 +374,7 @@ export class TowerRunner {
   async step(r, floor, s) {
     const agent = floor.agents.find(a => a.id === s.agent);
     const earlier = r.steps.filter(o => s.after.includes(o.agent) && o.status === 'done').map(o => `## From ${o.agentName}: ${o.title}\n\n${o.output}`).join('\n\n---\n\n');
-    const prompt = `${this.inputBlock(r)}TASK FROM YOUR BOSS:\n"""${r.task}"""\n\nYOUR STEP (from ${floor.agents.find(a => a.role === 'lead')?.name}): ${s.title}\n${s.instructions}\n\n${earlier ? `WORK FROM YOUR COLLEAGUES THAT YOUR STEP BUILDS ON:\n\n${earlier.slice(0, 40000)}\n\n` : ''}${s.engine === 'claude-code' ? `Your working folder is the floor folder. If you create files, save them in "${path.relative(r.floorDir, r.folderAbs).replace(/\\/g, '/')}". ` : ''}Reply with your finished work in Markdown.`;
+    const prompt = `${this.inputBlock(r)}TASK FROM YOUR BOSS:\n"""${r.task}"""\n\nYOUR STEP (from ${floor.agents.find(a => a.role === 'lead')?.name}): ${s.title}\n${s.instructions}\n\n${earlier ? `WORK FROM YOUR COLLEAGUES THAT YOUR STEP BUILDS ON:\n\n${earlier.slice(0, 40000)}\n\n` : ''}${s.engine === 'claude-code' ? `Your working folder is the floor folder. If you create files, save them in "${path.relative(r.floorDir, r.folderAbs).replace(/\\/g, '/')}": you cannot write anywhere else, and the knowledge files are read-only. ` : ''}Reply with your finished work in Markdown.`;
     const web = floor.tools.web && (agent.web || floor.agents.filter(a => a.role === 'specialist').every(a => !a.web));
     const text = await this.ask(r, {kind: 'work', agent, engine: s.engine, system: this.system(r.theme, floor, agent, s.engine), prompt, web, step: s});
     s.output = text; s.draft = text; s.excerpt = text.replace(/\s+/g, ' ').slice(0, 280);
@@ -310,6 +389,8 @@ export class TowerRunner {
     this.live.delete(r.id); this.save(r); this.emit(r);
     if (!stopped) this.log('tower', r.error);
   }
+  /** Tell the owner when this run ends: 'message', 'call' or '' (main passes it to JARVIS Core). */
+  tellMe(runId, how) { const l = this.live.get(runId); if (!l) return false; l.run.notify = ['message', 'call'].includes(how) ? how : ''; this.save(l.run); this.emit(l.run); return true; }
   stop(runId) {
     const l = this.live.get(runId); if (!l) return false;
     l.abort.abort(); for (const c of l.children) killTree(c);

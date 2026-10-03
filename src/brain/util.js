@@ -52,6 +52,8 @@ export function wordsToNumber(s) {
 export function parseWhen(input, now = new Date()) {
   let t = ' ' + String(input || '').toLowerCase().replace(/[’']/g, '').replace(/[,!?]/g, ' ').replace(/(\d)\s*([ap])\.?m\.?\b/g, '$1 $2m').replace(/\s+/g, ' ').trim() + ' ';
   const base = new Date(now);
+  // "ten minutes from now" means "in ten minutes"
+  t = t.replace(/ ((?:[a-z]+ )?[a-z\d]+) (minutes?|mins?|hours?|hrs?) from now /, (m, n, u) => { const k = [n, n.split(' ').pop()].find(x => /^an?$/.test(x) || wordsToNumber(x) !== null); return k ? m.replace(`${k} ${u} from now`, `in ${k} ${u}`) : m; });
   // relative: "in 5 minutes", "in an hour and a half", "in 2 hours", "in half an hour", or just "ten minutes"
   let rel = /\bin (?:(an?|[\w ]+?) (minutes?|mins?|hours?|hrs?)|half an hour|an hour and a half)\b/.exec(t)
     || (!/\b(past|to|at)\b/.test(t) ? /^ (an?|\w+(?: \w+)?) (minutes?|mins?|hours?|hrs?) $/.exec(t) : null);
@@ -116,7 +118,9 @@ export function parseDays(text) {
   const names = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
   const range = /\b(sun|mon|tue|wed|thu|fri|sat)[a-z]*\s*(?:-|to|–)\s*(sun|mon|tue|wed|thu|fri|sat)[a-z]*/.exec(t);
   if (range && !/mon(day)?\s*(-|to|–)\s*fri/.test(t)) { let a = names.indexOf(range[1]); const b = names.indexOf(range[2]); for (let i = 0; i < 7; i++) { out.add(a); if (a === b) break; a = (a + 1) % 7; } }
-  for (const [i, n] of names.entries()) if (new RegExp(`\\b${n}(day|s|sday|nesday|rsday|urday)?\\b`).test(t)) out.add(i);
+  // singular and plural ("Saturdays" used to be missed, so a Saturday-only line ran every day)
+  const DAY = ['sun(?:days?)?', 'mon(?:days?)?', 'tue(?:s|sdays?)?', 'wed(?:s|nesdays?)?', 'thu(?:rs|rsdays?)?', 'fri(?:days?)?', 'sat(?:urdays?)?'];
+  for (const [i, p] of DAY.entries()) if (new RegExp(`\\b${p}\\b`).test(t)) out.add(i);
   return out.size ? [...out].sort() : [0, 1, 2, 3, 4, 5, 6];
 }
 export function describeDays(days) {
@@ -180,6 +184,24 @@ export function writeJson(file, value, space = 1) {
 export function writeText(file, text) {
   fs.mkdirSync(path.dirname(file), {recursive: true});
   const tmp = `${file}.${process.pid}.tmp`; fs.writeFileSync(tmp, text); replaceFile(tmp, file);
+}
+/**
+ * Read a saved JSON file that must not be lost. A damaged one is kept aside (name.broken-<time>) and the last
+ * good copy (name.bak, kept by writeJsonKeep) is used instead. Undefined when there is nothing to read.
+ */
+export function readJsonKeep(file, log = () => {}) {
+  let raw;
+  try { raw = fs.readFileSync(file, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') log(`${path.basename(file)} could not be read: ${e.message}`); return undefined; }
+  try { return JSON.parse(raw); } catch {}
+  const aside = `${file}.broken-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  try { fs.copyFileSync(file, aside); } catch {}
+  try { const good = JSON.parse(fs.readFileSync(`${file}.bak`, 'utf8')); log(`${path.basename(file)} was damaged, so the last good copy was used. The damaged file is kept as ${path.basename(aside)}.`); return good; }
+  catch { log(`${path.basename(file)} was damaged and there is no good copy. It is kept as ${path.basename(aside)}.`); return undefined; }
+}
+/** Save JSON, keeping the copy it replaces as name.bak when that copy was whole. */
+export function writeJsonKeep(file, value, space = 1) {
+  try { JSON.parse(fs.readFileSync(file, 'utf8')); fs.copyFileSync(file, `${file}.bak`); } catch {}
+  writeJson(file, value, space);
 }
 export const safeFileName = s => String(s || '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled';
 /** Normalise a UK-style phone number to +44… (keeps other international numbers as they are). */

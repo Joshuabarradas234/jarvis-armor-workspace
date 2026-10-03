@@ -69,6 +69,7 @@ import {skillsHtml} from './task-skills.js';
       this.el.addEventListener('dragover', e => { if (e.target.closest('.tw-drop')) { e.preventDefault(); e.target.closest('.tw-drop').classList.add('over'); } });
       this.el.addEventListener('dragleave', e => e.target.closest('.tw-drop')?.classList.remove('over'));
       this.el.addEventListener('drop', e => { const z = e.target.closest('.tw-drop'); if (!z) return; e.preventDefault(); z.classList.remove('over'); const paths = [...e.dataTransfer.files].map(f => J.pathFor?.(f)).filter(Boolean); if (paths.length) this.addKnowledge(paths); });
+      this.el.addEventListener('change', e => { const t = e.target.closest('[data-tw-tell]'); if (t) call('tower-tell', { runId: t.dataset.twTell, how: t.value }).then(() => toast(t.value ? `I'll ${t.value === 'call' ? 'ring' : 'WhatsApp'} you when it's done.` : 'All right, I will just show it.')).catch(x => toast(x.message || String(x))); });
       this.el.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && e.target.matches('.tw-lobby input')) { e.preventDefault(); this.lobby(); } if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.matches('.tw-task')) { e.preventDefault(); this.run(); } });
       clearInterval(this.clock); this.clock = setInterval(() => this.tick(), 1000);
       await this.refresh(true);
@@ -209,6 +210,7 @@ import {skillsHtml} from './task-skills.js';
         pane.innerHTML = `${live ? '' : `<div class="tw-ask"><textarea class="tw-task" rows="3" maxlength="4000" placeholder="Give ${esc(f.name)} a task…  (Ctrl+Enter to run)" data-resume="${['needs_brief','needs_changes'].includes(show?.status)?esc(show.id):''}">${['needs_brief','needs_changes'].includes(show?.status)?esc(show.task):''}</textarea>
           ${briefFields(f,this.view.workflows||[],show)}<div class="tw-ask-row">${f.example ? `<button type="button" class="tw-chip" data-tw="example" title="${esc(f.example)}">Try the example: ${esc(f.example.slice(0, 70))}…</button>` : '<span></span>'}
             <select class="tw-idea" title="Move an idea card along when this finishes"><option value="">💡 No linked idea</option>${(this.view.ideas || []).map(i => `<option value="${esc(i.id)}" ${f.ideaId === i.id ? 'selected' : ''}>💡 ${esc(i.title.slice(0, 40))} · ${i.progress}%</option>`).join('')}</select>
+            <select class="tw-notify" title="When it is done"><option value="">🔕 Just show it</option><option value="message">💬 WhatsApp me when done</option><option value="call">📞 Call me when done</option></select>
             <button type="button" class="tw-go" data-tw="run">▶ Run floor</button></div></div>`}
           <div class="tw-run">${show ? this.runHtml(show) : '<p class="tw-empty">Nothing run yet on this floor. Give it a task above, or try the example.</p>'}</div>`;
       } else if(this.tab==='skills') {
@@ -262,11 +264,11 @@ import {skillsHtml} from './task-skills.js';
       const planStatus = r.phase === 'planning' ? 'planning' : ['failed', 'stopped'].includes(r.status) && !r.steps.length ? r.status : 'done';
       const revStatus = r.status === 'needs_changes' ? 'needs_changes' : r.status === 'done' ? 'done' : r.phase === 'reviewing' ? 'reviewing' : ['failed', 'stopped'].includes(r.status) ? r.status : 'queued';
       return `<div class="tw-rh"><div><p>${esc(STATUS[r.status] || r.status).toUpperCase()}${r.rehearsal ? ' · REHEARSAL' : ''}</p><h4>${esc(r.title)}</h4></div>
-          <div class="tw-rh-r"><span class="tw-cost" title="Estimated spend for this run">${money(r.cost)}</span><span class="tw-clock" data-start="${r.startedAt}" data-end="${r.endedAt || ''}">${since((r.endedAt || Date.now()) - r.startedAt)}</span>${this.view.active.includes(r.id) || ['planning', 'working', 'reviewing'].includes(r.status) ? `<button type="button" data-tw="stop" data-run="${esc(r.id)}">■ Stop</button>` : ''}<button type="button" data-tw="run-folder" data-path="${esc(r.folder)}">📁</button></div></div>
+          <div class="tw-rh-r"><span class="tw-cost" title="Estimated spend for this run">${money(r.cost)}</span><span class="tw-clock" data-start="${r.startedAt}" data-end="${r.endedAt || ''}">${since((r.endedAt || Date.now()) - r.startedAt)}</span>${this.view.active.includes(r.id) || ['planning', 'working', 'reviewing'].includes(r.status) ? `<select data-tw-tell="${esc(r.id)}" title="When it is done"><option value="">🔕 Just show it</option><option value="message" ${r.notify==='message'?'selected':''}>💬 WhatsApp me when done</option><option value="call" ${r.notify==='call'?'selected':''}>📞 Call me when done</option></select><button type="button" data-tw="stop" data-run="${esc(r.id)}">■ Stop</button>` : ''}<button type="button" data-tw="run-folder" data-path="${esc(r.folder)}">📁</button></div></div>
         <div class="tw-bar"><i style="width:${r.progress || 0}%"></i></div>
         ${r.from ? `<p class="tw-link">↓ Picked up from <a href="#" data-goto="${esc(r.from.runId)}">${esc(r.from.floorName)}</a></p>` : ''}${r.scheduled ? '<p class="tw-link">🌙 Night shift run</p>' : ''}
         ${r.error ? `<p class="tw-err">⚠ ${esc(r.error)}</p>` : ''}${r.note ? `<p class="tw-err">${esc(r.note)}</p>` : ''}
-${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.questions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul></div>`:''}${['needs_brief','needs_changes'].includes(r.status)?`<button data-tw="revise" data-run="${esc(r.id)}">Revise this brief</button>`:''}<div class="tw-steps">
+${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.questions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul></div>`:''}${['needs_brief','needs_changes'].includes(r.status)?`<button data-tw="revise" data-run="${esc(r.id)}">Revise this brief</button>`:''}${['stopped','failed','budget'].includes(r.status)&&!r.meetingWork&&!r.rehearsal?`<div class="tw-cont" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px"><button type="button" class="tw-go" data-tw="continue" data-run="${esc(r.id)}">Continue where it stopped</button>${r.status==='budget'?`<label>Task budget $ <input class="tw-cont-b" type="number" min="0.05" max="100" step="0.05" style="width:80px" value="${Math.min(100,Math.max(0.05,Math.ceil((r.budget?.perRun||0)*30)/20)).toFixed(2)}"></label>`:''}<small>Finished steps are kept. Only the rest is done again.</small></div>`:''}<div class="tw-steps">
           ${row(lead, 'Plans the work and briefs the team', planStatus, '', 'lead')}
           ${r.steps.map(s => row(byId(s.agent) || { name: s.agentName }, s.title, s.status, s.live && s.status === 'working' ? `<code>${esc(s.live)}</code>` : s.error ? `<code class="bad">${esc(s.error)}</code>` : '', s.id)).join('')}
           ${row(rev, 'Checks everything, fixes it, and signs it off', revStatus, r.notes ? `<blockquote>“${esc(r.notes)}”</blockquote>` : '', 'reviewer')}
@@ -302,7 +304,8 @@ ${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.ques
       const ideaId = $('.tw-idea', this.el)?.value || '';
       const brief=Object.fromEntries([...this.el.querySelectorAll('[data-brief]')].map(el=>[el.dataset.brief,el.type==='number'?Number(el.value):el.value.trim()]));
       const workflowId=this.el.querySelector('[data-workflow]')?.value||'';
-      try { const r = await call('tower-run', { floorId: f.id, task, ideaId,brief,workflowId,resumeId:ta.dataset.resume||'' }); this.openRun = r.id; this.onRun(r); this.renderPane(); }
+      const notify = $('.tw-notify', this.el)?.value || '';
+      try { const r = await call('tower-run', { floorId: f.id, task, ideaId,brief,workflowId,resumeId:ta.dataset.resume||'',notify }); this.openRun = r.id; this.onRun(r); this.renderPane(); }
       catch (e) { toast(e.message || String(e)); }
     },
     async lobby() {
@@ -404,6 +407,7 @@ ${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.ques
         if(k==='remove-workflow'){await call('tower-workflow-remove',b.dataset.workflow);await this.refresh();return;}
         if (k === 'lobby') return this.lobby();
         if (k === 'stop') { await call('tower-stop', b.dataset.run); return; }
+        if (k === 'continue') { const inp = b.parentElement.querySelector('.tw-cont-b'); b.disabled = true; try { const r = await call('tower-continue', { runId: b.dataset.run, ...(inp ? { budget: Number(inp.value) } : {}) }); this.openRun = r.id; this.onRun(r); this.renderPane(); toast('Carrying on. Finished steps are kept.'); } finally { b.disabled = false; } return; }
         if (k === 'folder') return call('tower-open', f.folder);
         if (k === 'run-folder' || k === 'openfile') return call('tower-open', b.dataset.path);
         if (k === 'read') return this.viewer(b.dataset.path);
