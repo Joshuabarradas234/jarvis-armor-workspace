@@ -27,6 +27,7 @@ export class IdeaStore{
       target:target(p.target===undefined?prev.target:p.target),
       origin:prev.origin==='local-suggestion'?'local-suggestion':undefined,
       assist:prev.assist||null,   // JARVIS's plan and where it stands; only the main process changes it (setAssist)
+      project:prev.project&&typeof prev.project==='object'?prev.project:null,   // the step-by-step project plan (src/ideas/planner.js, setProject)
       created:prev.created||Date.now(),updated:Date.now()};
     return out;
   }
@@ -35,6 +36,11 @@ export class IdeaStore{
     const i=this.items.find(x=>x.id===id);if(!i)throw Error('That idea no longer exists.');
     i.assist=patch===null?null:{...(i.assist||{}),...patch,updatedAt:Date.now()};
     this.flush();return i.assist;
+  }
+  /** Keep the idea's project plan (null clears it). */
+  setProject(id,project){
+    const i=this.items.find(x=>x.id===id);if(!i)throw Error('That idea no longer exists.');
+    i.project=project&&typeof project==='object'?project:null;this.flush();return i.project;
   }
   get(id){return this.items.find(x=>x.id===id)||null;}
   list(){return [...this.items].sort((a,b)=>a.created-b.created);}

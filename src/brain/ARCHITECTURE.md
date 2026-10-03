@@ -15,6 +15,8 @@ an optional third screen shows "the vista"). Three halls, each with its own assi
   `src/main/preload.cjs`, which is PROTECTED — reuse an existing channel such as `core` or `status`).
   `say(text)` speaks through the PC. `log(kind, message)` writes to `jarvis.log`.
 - `src/main/panels.js`, `src/main/tabs.js` — web pages shown inside the hall (floating panels, suit tabs).
+- `src/main/wake-timer.js` — the Windows task "JARVIS wake-up" that wakes the PC two minutes before the next call,
+  message or report (JARVIS Core moves it; `--jarvis-wake` only nudges the running clock).
 - `src/display/` — which window goes on which screen (`roles.js`, `windows.js`).
 - `src/state/machine.js` — the hall state machine: IDLE → WAKE → HELMET_OPENING → ARMOR_HALL → SUIT_HOVER →
   SUIT_SELECTED → MODULE (a suit is open) → RETURNING / SHUTDOWN.
@@ -41,7 +43,7 @@ an optional third screen shows "the vista"). Three halls, each with its own assi
 
 ### Screens — `dist/` (plain browser ES modules, loaded from `jarvis://app/`)
 - `dist/index.html` loads the main bundle `assets/index-*.js` (minified Vite build: the hall, settings window, setup
-  wizard — **avoid editing it**) and add-on modules: `hands-ideas.js` (hand tracking, Ideas room), `tower.js`
+  wizard — **avoid editing it**) and add-on modules: `hands-ideas.js` (hand tracking, Ideas room), `ideas-planner.js` (brainstorms and project plans), `tower.js`
   (the tower screen), `globe.js`, `deck.js` (second screen), `suits3d.js` (3D suits), `core.js` (JARVIS Core panel
   and its Settings tab). Add new features as new modules like these.
 - Each page is opened with `?view=main|console|settings|setup|wallpaper|vista`; add-ons check

@@ -113,6 +113,12 @@ He works from the file `Documents\JARVIS\Standing orders.md`, which you can edit
 
 Under **Facts about my business**, list anything he should know. The overnight audit checks those facts for anything stale or contradictory.
 
+### Waking the PC for calls (1.88)
+
+If the PC is asleep, JARVIS cannot call. So he keeps one Windows task, **JARVIS wake-up**, set two minutes before his next call, message or report. Windows wakes the PC for it, and JARVIS stays awake for a few minutes to do the job. The task is in your own account, he moves it as your schedule changes, and he removes it when you quit him. Switch it off in **Settings → JARVIS Core → Quiet hours and nights**.
+
+Windows only does this when **Allow wake timers** is on in your power plan. The settings page shows whether it is and, if not, where to turn it on. Many laptops allow it only when plugged in.
+
 ## 7. What it does not do (yet)
 
 - **Calls are one-way.** JARVIS speaks, then sends the same words to WhatsApp, and you answer there. To talk back on the call itself, the PC would have to accept connections from the internet, for example through a tunnel. That opening has not been made, and JARVIS may not add one himself.

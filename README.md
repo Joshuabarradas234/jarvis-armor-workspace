@@ -34,7 +34,7 @@ The app's **Check for updates** reads [`latest.json`](latest.json) from this rep
 - `src/main/`: Electron main process (windows, IPC, tabs, panels)
 - `src/control/`: control deck server, missions and agent runner
 - `src/tower/`: tower store, agent orchestration and engines
-- `src/ideas/`: the idea assistant (plans, approvals, tower hand-off, Claude Code builds in a git worktree)
+- `src/ideas/`: the idea assistant (plans, approvals, tower hand-off, Claude Code builds in a git worktree) and the planner (brainstorms, step-by-step project plans)
 - `src/meeting/`: meeting recording, offline transcription queue and the Gmail sender
 - `src/brain/`: JARVIS Core (phone and WhatsApp, approvals, schedule, email desk, audit, self-updates); `src/main/boot.js` picks which approved version to start
 - `tests/core/`: JARVIS Core tests against local stand-ins for Twilio, Gmail and Claude

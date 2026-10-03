@@ -340,6 +340,14 @@
   async function renderSettings(content) {
     let s; try { s = await core('status'); } catch (e) { content.innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
     const c = s.config, p = c.phone, em = c.email;
+    /* when the PC will next wake, and whether Windows allows it */
+    function wakeLine(w) {
+      if (!w || !c.wakePc) return '';
+      if (!w.available) return '<p class="muted">Waking from sleep needs Windows.</p>';
+      const t = w.timers, when = w.at ? new Date(w.at).toLocaleString('en-GB', {weekday: 'short', hour: '2-digit', minute: '2-digit'}) : '';
+      const allow = !t ? '' : t.mains === 'on' && t.battery === 'on' ? ' Windows allows wake timers.' : t.mains === 'on' ? ' Windows wakes it when plugged in, not on battery (to change that: Power Options → Change advanced power settings → Sleep → Allow wake timers → On battery: Enable).' : ' <b>Windows does not allow wake timers yet</b>: Control Panel → Power Options → Change plan settings → Change advanced power settings → Sleep → Allow wake timers → Enable (Plugged in).';
+      return `<p class="muted"${w.error ? ' style="color:#ffb2a6"' : ''}>${w.error ? 'Could not set the wake-up timer: ' + esc(w.error) : when ? `Next wake: ${esc(when)}, for ${esc(w.what || 'a scheduled job')}.` : 'Nothing is scheduled, so the PC will not be woken.'}${allow}</p>`;
+    }
     content.innerHTML = `<div class="settings-heading"><p class="eyebrow">PREFERENCES / JARVIS CORE</p><h1>JARVIS Core.</h1></div>
 <div class="jc-set">
 <p class="muted">The part of JARVIS that works when you're away: he calls or WhatsApps you with reports and wake-up calls, sorts your email, watches your numbers, audits himself and his agents overnight, and improves himself — <b>always asking you first</b> before anything involving your business, other people, money or his own code.</p>
@@ -383,8 +391,8 @@
 <div class="row">${chk('email.enabled', em.enabled, 'Read and sort my email')}${chk('email.draftReplies', em.draftReplies, 'Draft replies (saved in Gmail Drafts; never sent without my YES)')}<button type="button" data-test="email">Test connection</button><span class="msg" data-msg="email"></span></div>
 <details><summary>How to make a Gmail app password</summary><ol><li>Google Account → Security → turn on 2-Step Verification.</li><li>Then Security → App passwords → create one called “JARVIS”.</li><li>Paste the 16 letters above. JARVIS labels mail under <code>${esc(em.labelPrefix)}/…</code>, saves drafts, and only ever sends after you approve.</li></ol></details></section>
 <section><h3>Quiet hours and nights</h3><div class="grid"><label>Quiet from<input type="time" name="quiet.from" value="${esc(c.quiet.from)}"></label><label>Until<input type="time" name="quiet.to" value="${esc(c.quiet.to)}"></label></div>
-<div class="row">${chk('quiet.on', c.quiet.on, 'No messages during quiet hours (wake-up calls and your own schedule still happen)')}${chk('keepAwake', c.keepAwake, 'Keep this PC awake overnight when calls or jobs are scheduled')}${chk('pcVoice', c.pcVoice, 'Speak on the PC too')}</div>
-<p class="muted" style="margin:8px 0 0">The PC must be on (plugged in) for the night's work and the morning call. JARVIS stops Windows from sleeping while something is scheduled; closing the lid can still put it to sleep.</p></section>
+<div class="row">${chk('quiet.on', c.quiet.on, 'No messages during quiet hours (wake-up calls and your own schedule still happen)')}${chk('keepAwake', c.keepAwake, 'Keep this PC awake overnight when calls or jobs are scheduled')}${chk('wakePc', c.wakePc, 'Wake this PC from sleep for calls, messages and reports')}${chk('pcVoice', c.pcVoice, 'Speak on the PC too')}</div>
+<p class="muted" style="margin:8px 0 0">The PC must be on (plugged in) for the night's work and the morning call. JARVIS stops Windows from sleeping while something is scheduled. If it sleeps anyway (for example when you close the lid), Windows wakes it two minutes before the next call.</p>${wakeLine(s.wake)}</section>
 <section><h3>Improving himself</h3><div class="grid"><label>Improvements to prepare per night<input type="number" name="selfImprove.maxPerNight" min="0" max="5" value="${esc(c.selfImprove.maxPerNight)}"></label>
   <label>After you approve an update${sel('selfImprove.autoRestart', c.selfImprove.autoRestart, [['idle', 'Restart when I am not using JARVIS'], ['never', 'Wait until I restart him']])}</label></div>
 <div class="row">${chk('selfImprove.enabled', c.selfImprove.enabled, 'Review himself every night (the 03:00 line in the standing orders)')}</div>

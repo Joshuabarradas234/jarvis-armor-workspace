@@ -41,6 +41,7 @@ export const DEFAULTS = {
   routines: {weekly: true, backup: true, releases: true, zone: Intl.DateTimeFormat().resolvedOptions().timeZone},
   github: {repo: 'Joshuabarradas234/jarvis-armor-workspace', pullRequests: true},   // approved self-updates are proposed there as pull requests once a key is saved
   keepAwake: true,
+  wakePc: true,   // Windows wakes the PC from sleep for the next call, message or report
   pcVoice: true,
 };
 const SECRET_KEYS = ['twilioToken', 'callmebotKey', 'emailPassword', 'openaiKey', 'higgsfieldKey', 'githubToken'];
@@ -104,7 +105,7 @@ export class BrainStore {
     let zone=String(o.routines?.zone||DEFAULTS.routines.zone);try{new Intl.DateTimeFormat('en-GB',{timeZone:zone}).format();}catch{zone=DEFAULTS.routines.zone;}
     o.routines={weekly:o.routines?.weekly!==false,backup:o.routines?.backup!==false,releases:o.routines?.releases!==false,zone};
     o.github={repo:/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(String(o.github?.repo||'').trim())?String(o.github.repo).trim():DEFAULTS.github.repo,pullRequests:o.github?.pullRequests!==false};
-    o.keepAwake = o.keepAwake !== false; o.pcVoice = o.pcVoice !== false;
+    o.keepAwake = o.keepAwake !== false; o.wakePc = o.wakePc !== false; o.pcVoice = o.pcVoice !== false;
     return o;
   }
   get() { return this.config; }

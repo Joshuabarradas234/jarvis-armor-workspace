@@ -81,7 +81,7 @@ export function createJarvisCore(deps) {
       reports: store.reports.slice(-14).reverse().map(r => ({id: r.id, kind: r.kind, title: r.title, at: r.at, preview: clip(plain(r.text), 280), delivered: r.delivered, file: r.file})),
       activity: store.activity.slice(-80).reverse(),
       schedule: {file: orders.file, jobs: o.jobs.map(j => ({id: j.id, label: j.label, text: j.text, next: nextRun(j), line: j.line})), problems: o.problems, watch: o.watch.map(w => ({name: w.name, source: w.source}))},
-      upcoming: upcoming(), updates: updater.status(), spend: {today: store.spent(), budget: c.budgetPerDay},
+      upcoming: upcoming(), wake: {enabled: store.get().wakePc, available: !!deps.wakeAt, ...(store.state.wake || {}), timers: store.state.wakeTimers || null}, updates: updater.status(), spend: {today: store.spent(), budget: c.budgetPerDay},
       bedtime: store.state.bedtime || 0, awake: store.state.awakeAt || 0, calls: calls.active().map(s => ({id: s.id, purpose: s.purpose, status: s.status})),
       lastAudit: store.state.lastAudit || null, lastReview: store.state.lastReview || null, numbers: store.state.numbersLast || [], version: deps.boot?.label || deps.appVersion,
       routines: core.routines.status(),
@@ -667,6 +667,7 @@ ${JSON.stringify(facts, null, 1)}`});
   async function tick() {
     core.studio.tick().catch(e=>log('Product Studio: '+e.message)); core.meetingWork.tick().catch(e=>log('Meeting work: '+e.message));
     if (!store.get().enabled && awakeHeld) { awakeHeld = false; deps.keepAwake(false); }   // switched off: let the PC sleep again
+    if (!store.get().enabled && wakeSet) { wakeSet = 0; Promise.resolve(deps.wakeAt?.(null)).catch(() => {}); store.setState({wake: null}); }   // and stop waking it
     if (ticking || !store.get().enabled) return; ticking = true;
     try {
       const now = new Date(), mins = now.getHours() * 60 + now.getMinutes(), o = orders.parse();
@@ -696,13 +697,35 @@ ${JSON.stringify(facts, null, 1)}`});
       if (Date.now() - lastPoll > (quick ? 9000 : 28000)) { lastPoll = Date.now(); pollInbound(); }
       notifyApprovals(); flushOutbox().catch(() => {}); sandboxReminder();
       if (Date.now() - lastGc > 6 * 3600e3) { lastGc = Date.now(); try { updater.gc(); approvals.expire(); } catch (e) { log(e.message); } }
-      // stay awake through the night when there is work on the clock
+      // stay awake through the night when there is work on the clock, and for a few minutes after Windows wakes the PC for it
       {
-        const soon = !!store.get().keepAwake && (upcoming().some(u => u.at - Date.now() < 10 * 3600e3) || calls.active().length > 0);
+        const soon = (!!store.get().keepAwake && (upcoming().some(u => u.at - Date.now() < 10 * 3600e3) || calls.active().length > 0)) || Date.now() < wokeUntil;
         if (soon !== awakeHeld) { awakeHeld = soon; deps.keepAwake(soon); }
       }
+      syncWake();
     } catch (e) { log(`Clock: ${e.message}`); }
     finally { ticking = false; }
+  }
+  /**
+   * Windows wakes the PC two minutes before the next call, message or report: a scheduled task that JARVIS keeps
+   * on the next one (src/main/wake-timer.js). It only changes when the next one does; a failure is retried in half an hour.
+   */
+  let wakeSet = null, wakeFailed = 0, wokeUntil = 0, timersAt = 0;
+  function syncWake() {
+    if (!deps.wakeAt) return;
+    const c = store.get(), next = c.enabled && c.wakePc ? upcoming().find(u => u.at > Date.now() + 3 * 60000) : null, at = next ? next.at - 2 * 60000 : 0;
+    if (deps.wakeTimers && Date.now() - timersAt > 3600e3) { timersAt = Date.now(); Promise.resolve(deps.wakeTimers()).then(t => store.setState({wakeTimers: t || null}), () => {}); }
+    if (at === wakeSet && !(wakeFailed && Date.now() - wakeFailed > 30 * 60000)) return;
+    wakeSet = at; wakeFailed = 0;
+    Promise.resolve(deps.wakeAt(at || null)).then(done => store.setState({wake: at && done !== false ? {at, what: next.what, kind: next.kind, error: ''} : null}),
+      e => { wakeFailed = Date.now(); store.setState({wake: {at, what: next?.what || '', kind: next?.kind || '', error: e.message}}); log(`Could not set the wake-up timer: ${e.message}`); });
+  }
+  /** Windows has just woken the PC (or JARVIS's wake task ran): stay up for six minutes and look at the clock now. */
+  function woke(why = 'resume') {
+    wokeUntil = Date.now() + 6 * 60000;
+    if (!awakeHeld) { awakeHeld = true; deps.keepAwake(true); }
+    log(`The PC woke (${why}); checking the clock.`);
+    setTimeout(() => tick().catch(() => {}), 1500);
   }
   let timer = null;
   function start() {
@@ -839,6 +862,6 @@ ${JSON.stringify(facts, null, 1)}`});
     }
   }
 
-  Object.assign(core, {status, chat, bedtime, noteAwake, voice, recordMiss, api, start, dispose, tick, booted, pollInbound, handleInbound, notifyApprovals, message, ringReport, buildReport, runJob, inQuiet});
+  Object.assign(core, {status, woke, chat, bedtime, noteAwake, voice, recordMiss, api, start, dispose, tick, booted, pollInbound, handleInbound, notifyApprovals, message, ringReport, buildReport, runJob, inQuiet});
   return core;
 }

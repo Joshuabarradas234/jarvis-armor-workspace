@@ -34,10 +34,12 @@ import {TodoStore} from '../services/todos.js';
 import {IdeaStore} from '../services/ideas.js';
 import {WorkSuggestions} from '../services/work-suggestions.js';
 import {IdeaAssistant} from '../ideas/assistant.js';
+import {IdeaPlanner} from '../ideas/planner.js';
 import {weather,askAI} from '../services/integrations.js';
 import {createJarvisCore} from '../brain/index.js';
 import {HallCalibrationStore} from '../services/hall-calibration.js';
 import {SelfUpdater} from '../brain/selfupdate.js';
+import {WakeTimer,WAKE_ARG} from './wake-timer.js';
 
 protocol.registerSchemesAsPrivileged([{scheme:'jarvis',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true,corsEnabled:true}}]);
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
@@ -56,7 +58,7 @@ const assets=app.isPackaged?path.join(process.resourcesPath,'assets'):path.join(
 let userDir, hallCalibration, workSuggestions, workbench, meetingFollowups, callWatcher;
 function observeWork(kind,context){try{workSuggestions?.observe(kind,context);}catch(e){log('ideas',e.message);}}
 function log(kind,message){const row={time:new Date().toISOString(),kind,message:String(message).slice(0,800)};status.errors.push(row);status.errors=status.errors.slice(-50);try{const f=path.join(userDir,'jarvis.log');if(fs.existsSync(f)&&fs.statSync(f).size>2e6)fs.renameSync(f,f+'.previous');fs.appendFileSync(f,JSON.stringify(row)+'\n');}catch{}broadcast('status',getStatus());}
-let followUntil=0,panels=null,tower=null,towerRunner=null,towerKey=null,core=null,coreError='',lastUserAction=Date.now(),awakeBlock=null,bootMarked=false;
+let followUntil=0,panels=null,tower=null,towerRunner=null,towerKey=null,core=null,wake=null,coreError='',lastUserAction=Date.now(),awakeBlock=null,bootMarked=false;
 function voiceContext(){return {theme:workstations.theme(),themes:workstations.themes,modules,idle:machine?.value?.state==='IDLE',follow:Date.now()<followUntil};}
 function themePayload(){return {...workstations.describe(),allSuits:undefined};}
 /** Speech that started with the assistant's name (or came right after he spoke) but matched no command. */
@@ -372,7 +374,7 @@ function endFocus(){
   dispatch('home');pendingModule=back;
 }
 /* ---------- meeting mode: record a call for a suit, transcribe it offline, email the notes ---------- */
-let meetings=null,meetingFlush=null,meetingWatch=null,assistant=null;
+let meetings=null,meetingFlush=null,meetingWatch=null,assistant=null,planner=null;
 function gmailFile(){return path.join(userDir,'gmail-app-password.enc');}
 function gmailPassword(){try{return fs.existsSync(gmailFile())?safeStorage.decryptString(fs.readFileSync(gmailFile())):'';}catch(e){log('meeting','Could not read the Gmail app password: '+e.message);return '';}}
 function meetingInfo(){
@@ -1112,6 +1114,13 @@ async function api(event,method,payload){
     case 'ideas-targets':{const t=workstations.activeTheme;return {theme:t,hallName:workstations.theme(t).name,suits:workstations.modules(t).map(m=>({id:m.id,name:m.name,centre:!!m.isVehicle}))};}
     case 'idea-assist':{const id=String(payload?.id||'');assistant.get(id);assistant.think(id,{feedback:String(payload?.feedback||'').slice(0,2000)}).catch(e=>log('ideas',e.message));return true;}
     case 'idea-approve':return assistant.approve(String(payload?.id||''));
+    case 'ideas-brainstorm':return planner.brainstorm({topic:payload?.topic,about:payload?.about,answers:payload?.answers,from:typeof payload?.from==='string'?payload.from:''});
+    case 'ideas-brainstorms':return planner.sessions();
+    case 'ideas-adopt':return planner.adopt({session:String(payload?.session||''),index:Number(payload?.index)});
+    case 'idea-plan':return planner.plan(String(payload?.id||''),String(payload?.feedback||'').slice(0,2000));
+    case 'idea-howto':return planner.howTo(String(payload?.id||''),String(payload?.step||''),{again:payload?.again===true});
+    case 'idea-step':return planner.step(String(payload?.id||''),String(payload?.step||''),payload?.done===true);
+    case 'idea-todos':return planner.toTodos(String(payload?.id||''),Array.isArray(payload?.steps)?payload.steps.map(String).slice(0,60):[]);
     case 'idea-decline':return assistant.decline(String(payload?.id||''));
     case 'idea-open':{const a=assistant.get(String(payload?.id||'')).assist||{};const f=payload?.what==='diff'?a.diffFile:insideTower(a.resultFile);if(!f||!fs.existsSync(f))throw Error('That file is not there any more.');const err=await shell.openPath(f);if(err)throw Error(err);return true;}
     case 'ideas-config':{
@@ -1239,7 +1248,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
 
 
 
-  app.on('second-instance',()=>{if(machine)dispatch('wake');});   // a second launch while this one is still starting must not crash it
+  app.on('second-instance',(_e,argv)=>{if((argv||[]).includes(WAKE_ARG)){core?.woke?.('wake timer');return;}if(machine)dispatch('wake');});   // the wake task only nudges the clock; it never opens the hall   // a second launch while this one is still starting must not crash it
   app.whenReady().then(async()=>{Menu.setApplicationMenu(null);   /* Electron's default menu would reload or close the JARVIS screens on Ctrl+R / Ctrl+W */
     userDir=app.getPath('userData');fs.mkdirSync(userDir,{recursive:true});hallCalibration=new HallCalibrationStore(userDir);
     process.on('uncaughtException',e=>{try{log('crash',e?.stack||e?.message||String(e));}catch{}});
@@ -1286,8 +1295,10 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     callWatcher=new CallWatcher({scripts,tabs:()=>tabs,onEnd:()=>endMeeting(),log});
     tower=new TowerStore({dir:userDir,docs:app.getPath('documents')});towerRunner=new TowerRunner({store:tower,getKey:readTowerKey,onUpdate:towerUpdate,onDone:towerDone,log});setInterval(towerNightShift,30000);setTimeout(towerNightShift,20000);
     assistant=new IdeaAssistant({ideas:()=>ideas,tower:()=>tower,runner:()=>towerRunner,workstations:()=>workstations,board:t=>boardFor(t),readKey:readTowerKey,settings:()=>settings.get(),
-      dir:userDir,appRoot:root,desktop:app.getPath('desktop'),log,broadcast,say:t=>say(t),addr:()=>addr(),notify:(title,body)=>{try{if(Notification.isSupported()&&!focusActive()&&!meetings?.active)new Notification({title,body}).show();}catch{}}});
+      dir:userDir,appRoot:root,desktop:app.getPath('desktop'),log,broadcast,say:t=>say(t),addr:()=>addr(),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},notify:(title,body)=>{try{if(Notification.isSupported()&&!focusActive()&&!meetings?.active)new Notification({title,body}).show();}catch{}}});
+    planner=new IdeaPlanner({assistant,todos:()=>todos,dir:userDir});
     setInterval(()=>assistant.night(()=>visits.get('__','ideasNight').day,day=>visits.set('__','ideasNight',{day})).catch(e=>log('ideas',e.message)),10*60000);
+    wake=new WakeTimer({dir:userDir});
     try{core=createJarvisCore({userDir,docs:app.getPath('documents'),appVersion:app.getVersion(),boot:BOOT||{asarRoot:root,root,base:app.getVersion(),version:null,label:app.getVersion()},log,broadcast,
       say:t=>say(t),notify:(title,body)=>{try{if(Notification.isSupported())new Notification({title,body:String(body).slice(0,240)}).show();}catch{}broadcast('core',{type:'notice',title,body});},
       pcAwake:()=>machine?.value?.state!=='IDLE',isIdle:()=>machine?.value?.state==='IDLE'&&Date.now()-lastUserAction>5*60000,
@@ -1298,7 +1309,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       normalisePhoto:bytes=>{let im=nativeImage.createFromBuffer(bytes);if(im.isEmpty())throw Error('The photo could not be decoded.');const size=im.getSize();if(size.width*size.height>32e6)throw Error('Photo dimensions are too large.');im=im.resize(size.width>=size.height?{width:Math.min(1400,size.width)}:{height:Math.min(1400,size.height)});return im.toJPEG(85);},
       printDocument:async(file,out)=>{const w=new BrowserWindow({show:false,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,partition:'proposal-print-'+Date.now()}});w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());try{await w.loadFile(file);writeText(out,await w.webContents.printToPDF({printBackground:true,preferCSSPageSize:true}));}finally{w.destroy();}},openFile:async file=>{const error=await shell.openPath(file);if(error)throw Error(error);return true;},sendMeeting:async p=>{if(core?.mail.ready())return core.mail.sendNew(p);const cfg=settings.get().meeting||{},password=gmailPassword();if(!cfg.from||!password)throw Error('Connect email in JARVIS Core or Meeting settings first.');await sendGmail({user:cfg.from,password,to:p.to,subject:p.subject,text:p.text});},towerLobby:(text,hall)=>towerLobby(text,hall&&workstations.themes.some(t=>t.id===hall)?hall:workstations.activeTheme),
       briefing:()=>briefingData('briefing'),weather:briefWeather,health:()=>checkHealth(),openUrl:(url,title)=>broadcast('hologram',{kind:'link',url,title}),
-      keepAwake:on=>{try{if(on&&awakeBlock===null)awakeBlock=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awakeBlock!==null){powerSaveBlocker.stop(awakeBlock);awakeBlock=null;}}catch(e){log('brain',e.message);}},
+      wakeAt:at=>wake.set(at),wakeTimers:()=>wake.timers(),keepAwake:on=>{try{if(on&&awakeBlock===null)awakeBlock=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awakeBlock!==null){powerSaveBlocker.stop(awakeBlock);awakeBlock=null;}}catch(e){log('brain',e.message);}},
       relaunch:()=>{app.relaunch();app.quit();},logFile:path.join(userDir,'jarvis.log')});core.start();}catch(e){core=null;coreError=String(e?.message||e);log('brain','JARVIS Core did not start: '+(e?.stack||e?.message));if(BOOT?.version&&!e?.code)BOOT.markBad?.(`JARVIS Core did not start: ${coreError.slice(0,200)}`);}   /* a code fault rolls the update back; a disk or permission problem (e.code) would fail on any version */
     panels=new PanelManager({window:()=>displays?.work,onChange:list=>broadcast('panels',list),log});
     deckPanels=new PanelManager({window:()=>displays?.console,onChange:list=>broadcast('deck',{type:'panels',list}),log});
@@ -1314,16 +1325,16 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     tray=new Tray(icon);tray.setToolTip('JARVIS // ARMOR WORKSPACE');tray.on('double-click',()=>dispatch('wake'));updateTray();registerHotkeys(settings.get().hotkeys);
     {let relayoutTimer;const relayout=()=>{clearTimeout(relayoutTimer);relayoutTimer=setTimeout(()=>{if(machine?.value?.state!=='MODULE'||!machine.value.selected)return;const id=machine.value.selected;applyLayout(id,{links:false}).then(r=>{if(r&&(r.placed||r.error))broadcast('layout-result',{id,...r});}).catch(e=>log('layout',e.message));},1500);};for(const e of ['display-added','display-removed','display-metrics-changed'])screen.on(e,relayout);}
     onBattery=powerMonitor.isOnBatteryPower();powerMonitor.on('on-battery',()=>{onBattery=true;broadcast('status',getStatus());});powerMonitor.on('on-ac',()=>{onBattery=false;broadcast('status',getStatus());});
-    powerMonitor.on('resume',()=>{if(settings.get().voiceEnabled)voice.listen(true);displays.rebuild().catch(e=>log('resume',e.message));});
+    powerMonitor.on('resume',()=>{core?.woke?.('resume');if(settings.get().voiceEnabled)voice.listen(true);displays.rebuild().catch(e=>log('resume',e.message));});
     monitor=new SystemMonitor(data=>{telemetry=data;broadcast('telemetry',data);},()=>machine.value.state!=='IDLE');monitor.start().catch(e=>log('monitor',e.message));voice.listen(settings.get().voiceEnabled);
     const reminded=new Set();reminderTimer=setInterval(()=>{for(const event of calendar.list()){const delta=Date.parse(event.start)-Date.now();if(event.reminder&&delta>=0&&delta<=300000&&!reminded.has(event.id)&&!focusActive()&&Notification.isSupported()){reminded.add(event.id);new Notification({title:event.title,body:'Starting in '+Math.ceil(delta/60000)+' minutes.'}).show();}}},30000);
-    if(!settings.get().setupComplete)openSettings();else if(settings.get().autoStart||(!process.argv.includes('--startup')&&!settings.get().startMinimized))dispatch('wake');
+    if(!settings.get().setupComplete)openSettings();else if(process.argv.includes(WAKE_ARG))core?.woke?.('wake timer');else if(settings.get().autoStart||(!process.argv.includes('--startup')&&!settings.get().startMinimized))dispatch('wake');
     app.on('activate',()=>{if(machine)dispatch('wake');});
   }).catch(e=>{console.error(e);app.quit();});
 }
 app.on('window-all-closed',()=>{});
 app.on('before-quit',()=>{
-  if(quitting)return;quitting=true;try{meetings?.saveNow();}catch{}try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}try{core?.dispose();}catch{}
+  if(quitting)return;quitting=true;try{meetings?.saveNow();}catch{}try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}try{core?.dispose();}catch{}try{wake?.clearNow();}catch{}
   clearInterval(reminderTimer);clearTimeout(chatterTimer);clearTimeout(healthTimer);clearTimeout(focus.timer);try{deck?.close();}catch{}
   tabs?.dispose();machine?.dispose();monitor?.stop();voice?.dispose();globalShortcut.unregisterAll();
   // Let Electron close windows in its normal quit sequence, so renderer
