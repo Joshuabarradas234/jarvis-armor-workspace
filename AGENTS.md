@@ -87,10 +87,12 @@ change that way, put all of this in your pull request:
 5. If your change adds or changes files under `assets/` that the owner's PC needs, add them to `EXTRA_ASSETS` in
    `scripts/release/build-update.mjs`. The rest of `assets/` is large and already installed.
 
-After the owner merges the pull request into `main`, the release is published by hand: the zip from step 4 is attached to
-a GitHub release `v<version>`, with your notes as its description. There is no automatic publishing. GitHub does run the tests on every pull request (the **Tests** workflow): fix any red cross before asking for review.
+When the owner merges the pull request into `main`, the **Publish update** GitHub Action does the rest:
+- it runs the tests;
+- it builds the zip;
+- it creates the release `v<version>`, with the zip and your notes.
 
-Never create tags or releases yourself unless the owner asks you to.
+Never create tags or releases yourself, and never publish from a branch.
 
 ## Not for agents
 
