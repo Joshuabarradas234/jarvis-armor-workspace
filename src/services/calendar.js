@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 export class CalendarStore {
+  /** Re-read the saved file into this same object: everything holding it (JARVIS Core, meetings) sees the restored list. */
+  reload(){Object.assign(this,new CalendarStore(path.dirname(this.file)));return this;}
   constructor(dir){this.file=path.join(dir,'calendar.json');try{const loaded=JSON.parse(fs.readFileSync(this.file,'utf8'));this.events=Array.isArray(loaded)?loaded.filter(e=>e&&typeof e.id==='string'&&typeof e.title==='string'&&Number.isFinite(Date.parse(e.start))):[];}catch{this.events=[];}}
   list(){return [...this.events].sort((a,b)=>a.start.localeCompare(b.start));}
   save(event){

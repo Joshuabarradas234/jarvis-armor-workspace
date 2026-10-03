@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import {writeJson} from '../brain/util.js';
 import {SEED} from './seed.js';
 import {briefOf, usefulness} from './productivity.js';
-import {captureSkill,matchSkills,skillPage,setSkillEnabled} from './skills.js';
+import {captureSkill,matchSkills,skillPage,setSkillEnabled,recordStats} from './skills.js';
 
 const ROLES = ['lead', 'specialist', 'reviewer'];
 const ENGINES = ['auto', 'api', 'claude-code', 'rehearsal'];
@@ -33,6 +33,7 @@ export class TowerStore {
     for(const r of this.runs)if(r.status==='done'&&r.verdict==='CHANGES'){r.status=r.phase='needs_changes';r.progress=Math.min(r.progress||0,96);r.final=null;r.approvals=[];r.note='This older run failed review. Correct it before using its result.';}
     if(!['owner','review'].includes(this.data.settings.skillPolicy))this.data.settings.skillPolicy='owner';
     if(!Array.isArray(this.data.taskSkills))this.data.taskSkills=[];
+    if(!this.data.skillStats||typeof this.data.skillStats!=='object'||Array.isArray(this.data.skillStats))this.data.skillStats={};
     for(const r of this.runs)captureSkill(this.data,r);
     this.flush();
   }
@@ -137,7 +138,7 @@ export class TowerStore {
     for(const id of r.learnedSkills||[]){const s=this.data.taskSkills.find(s=>s.id===id&&s.theme===r.theme&&s.floorId===r.floorId);if(s)s.uses=(s.uses||0)+1;}
   }
   recordSkillOutcome(r,good) {
-    if(r.skillOutcomeRecorded)return;r.skillOutcomeRecorded=true;
+    if(r.skillOutcomeRecorded)return;r.skillOutcomeRecorded=true;recordStats(this.data,r,good);
     for(const id of r.learnedSkills||[]){const s=this.data.taskSkills.find(s=>s.id===id&&s.theme===r.theme&&s.floorId===r.floorId);if(s){const k=good?'acceptedUses':'reworkUses';s[k]=(s[k]||0)+1;}}
   }
   metrics(theme) {

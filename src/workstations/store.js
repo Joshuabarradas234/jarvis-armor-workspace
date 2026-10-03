@@ -81,6 +81,8 @@ function normaliseSuit(theme,s,saved){
   try{return validateSuit(base,saved);}catch{return base;}
 }
 export class WorkstationStore{
+  /** Re-read the saved suits into this same object, so nothing keeps the pre-restore copy. */
+  reload(opts){Object.assign(this,new WorkstationStore(opts));return this;}
   constructor({configFile,dir,log=()=>{}}){
     this.file=path.join(dir,'workstations.json');this.log=log;
     this.themes=JSON.parse(fs.readFileSync(configFile,'utf8'));

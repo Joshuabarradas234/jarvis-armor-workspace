@@ -4,6 +4,8 @@ import crypto from 'node:crypto';
 import {writeJson} from '../brain/util.js';
 /** A plain local to-do list, kept next to the calendar. */
 export class TodoStore {
+  /** Re-read the saved file into this same object: everything holding it (JARVIS Core, meetings) sees the restored list. */
+  reload(){Object.assign(this,new TodoStore(path.dirname(this.file)));return this;}
   constructor(dir){
     this.file=path.join(dir,'todos.json');
     try{const raw=JSON.parse(fs.readFileSync(this.file,'utf8'));

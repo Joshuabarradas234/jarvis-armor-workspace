@@ -54,6 +54,18 @@ export class MeetingFollowups {
     if (item.status === 'sending') throw Error('The previous send has an uncertain result. Check Sent mail before sending anything again.');
     item.status = 'sending'; this.save();
     try { await this.core().deps.sendMeeting(p); item.status = 'sent'; item.sentAt = Date.now(); this.save(); return `Meeting follow-up sent to ${p.to}.`; }
-    catch (e) { item.error = 'Sending was interrupted. Check Sent mail before trying again. ' + e.message; this.save(); throw Error(item.error); }
+    catch (e) {
+      // the mail server certainly did not take it (refused, or the body never went out): back to a draft you can fix and send
+      if (e.notSent) { item.status = 'draft'; item.error = 'Not sent: ' + e.message + ' Fix the problem, then review it for approval again.'; delete item.approval; this.save(); throw Error(item.error); }
+      item.error = 'Sending was interrupted after the email went out, so it may have been delivered. Check Sent mail, then tell JARVIS whether it arrived. ' + e.message; this.save(); throw Error(item.error);
+    }
+  }
+  /** After an interrupted send: you looked in Sent mail. It either went (done) or did not (back to a draft). */
+  checked(id, sent) {
+    const item = this.items.find(x => x.id === id); if (!item || item.status !== 'sending') throw Error('That follow-up is not waiting for a check.');
+    if (typeof sent !== 'boolean') throw Error('Say whether the email is in Sent mail.');
+    if (sent) Object.assign(item, {status: 'sent', sentAt: Date.now(), error: 'Marked as sent after you checked Sent mail.'});
+    else { Object.assign(item, {status: 'draft', error: 'Not in Sent mail, so it was not delivered. Review it for approval again.'}); delete item.approval; }
+    this.save(); return item;
   }
 }

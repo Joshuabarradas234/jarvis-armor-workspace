@@ -658,7 +658,7 @@ async function launch(id){
 function applyDurations(s){if(machine)machine.durations=workDurations(s);}
 function workspaceShortcut(command,id=tabs?.active){
   try{if(['menu','address','new'].includes(command)){displays?.work?.focus();displays?.work?.webContents.focus();broadcast('core',{type:'workspace-command',command,id});return;}
-    if(machine?.value.state!=='MODULE')return;if(command==='close')tabs.close(id);else if(command==='reopen')tabs.reopen();else{const list=tabs.list().filter(t=>!t.popped),i=list.findIndex(t=>t.id===id);if(list.length)tabs.activate(list[(i+(command==='previous'?-1:1)+list.length)%list.length].id);}
+    if(machine?.value.state!=='MODULE')return;if(command==='reload')tabs.navigate(id,'reload');else if(command==='close')tabs.close(id);else if(command==='reopen')tabs.reopen();else{const list=tabs.list().filter(t=>!t.popped),i=list.findIndex(t=>t.id===id);if(list.length)tabs.activate(list[(i+(command==='previous'?-1:1)+list.length)%list.length].id);}
   }catch(e){log('workspace',e.message);broadcast('core',{type:'workspace-error',message:e.message});}
 }
 let pendingDirect=false;
@@ -1173,10 +1173,10 @@ async function api(event,method,payload){
       if(['MODULE','SUIT_SELECTED','SUIT_HOVER'].includes(machine.value.state))dispatch('home');
       const dropped=[];
       if(data.settings){const next=sanitizeSettings(data.settings,defaults,k=>dropped.push(k));await applySettings(Object.fromEntries(Object.keys(defaults).map(k=>[k,next[k]])));}
-      if(data.workstations){const theme=workstations.activeTheme;write(files.workstations,data.workstations);workstations=new WorkstationStore({configFile:path.join(root,'config','themes.json'),dir:userDir,log});if(theme!==workstations.activeTheme&&workstations.themes.some(t=>t.id===theme))workstations.setTheme(theme);refreshModules();broadcast('theme',themePayload());updateTray();scheduleHealth();if(settings.get().voiceEnabled)voice.listen(true);}
-      if(data.calendar){write(files.calendar,data.calendar);calendar=new CalendarStore(userDir);}
-      if(data.todos){write(files.todos,data.todos);todos=new TodoStore(userDir);}
-      if(data.ideas){write(files.ideas,data.ideas);ideas=new IdeaStore(userDir);}
+      if(data.workstations){const theme=workstations.activeTheme;write(files.workstations,data.workstations);workstations.reload({configFile:path.join(root,'config','themes.json'),dir:userDir,log});if(theme!==workstations.activeTheme&&workstations.themes.some(t=>t.id===theme))workstations.setTheme(theme);refreshModules();broadcast('theme',themePayload());updateTray();scheduleHealth();if(settings.get().voiceEnabled)voice.listen(true);}
+      if(data.calendar){write(files.calendar,data.calendar);calendar.reload();}
+      if(data.todos){write(files.todos,data.todos);todos.reload();}
+      if(data.ideas){write(files.ideas,data.ideas);ideas.reload();}
       if(dropped.length)log('backup',`Restore skipped invalid settings: ${dropped.join(', ')}`);
       return {restored:true,live:true,savedAt:data.savedAt||null,fromVersion:data.version||null,skipped:dropped};
     }
@@ -1239,7 +1239,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
 
 
   app.on('second-instance',()=>{if(machine)dispatch('wake');});   // a second launch while this one is still starting must not crash it
-  app.whenReady().then(async()=>{
+  app.whenReady().then(async()=>{Menu.setApplicationMenu(null);   /* Electron's default menu would reload or close the JARVIS screens on Ctrl+R / Ctrl+W */
     userDir=app.getPath('userData');fs.mkdirSync(userDir,{recursive:true});hallCalibration=new HallCalibrationStore(userDir);
     process.on('uncaughtException',e=>{try{log('crash',e?.stack||e?.message||String(e));}catch{}});
     process.on('unhandledRejection',e=>{try{log('crash',e?.stack||String(e));}catch{}});

@@ -30,8 +30,10 @@ export function sendGmail({user, password, to, subject, text, attachments}) {
   return new Promise((resolve, reject) => {
     const sock = tls.connect({host: 'smtp.gmail.com', port: 465, servername: 'smtp.gmail.com'});
     let buf = '', step = 0, settled = false;
+    // the message body goes out at step 6; anything that fails before then certainly sent nothing
+    const lost = msg => { const e = Error(msg); e.notSent = step < 6; return e; };
     const finish = err => { if (settled) return; settled = true; clearTimeout(timer); try { sock.end(); } catch {} err ? reject(err) : resolve(true); };
-    const timer = setTimeout(() => { finish(Error('Gmail did not answer in time.')); sock.destroy(); }, 45000);
+    const timer = setTimeout(() => { finish(lost('Gmail did not answer in time.')); sock.destroy(); }, 45000);
     const send = line => sock.write(line + '\r\n');
     const data = message({from: user, to, subject, text, attachments}).replace(/^\./gm, '..');   // dot-stuffing
     // each reply moves the conversation on: greeting -> EHLO -> AUTH -> MAIL -> RCPT -> DATA -> body -> QUIT
@@ -56,12 +58,12 @@ export function sendGmail({user, password, to, subject, text, attachments}) {
         if (!want) return;
         if (code !== want) {
           const why = code === 535 ? 'Gmail refused the sign-in. Check the Gmail address and the 16-letter app password.' : `Gmail said: ${line.slice(0, 200)}`;
-          finish(Error(why)); return;
+          const e = Error(why); e.notSent = true; finish(e); return;   // Gmail refused it: nothing was accepted
         }
         step++; next();
       }
     });
-    sock.on('error', e => finish(Error('Could not reach Gmail: ' + e.message)));
-    sock.on('close', () => finish(step >= steps.length ? null : Error('Gmail closed the connection early.')));
+    sock.on('error', e => finish(lost('Could not reach Gmail: ' + e.message)));
+    sock.on('close', () => finish(step >= steps.length ? null : lost('Gmail closed the connection early.')));
   });
 }

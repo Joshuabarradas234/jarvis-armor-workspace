@@ -755,6 +755,7 @@ ${JSON.stringify(facts, null, 1)}`});
       case 'meeting-work-edit': return core.meetingWork.edit(p);
       case 'meeting-work-request': return core.meetingWork.request(String(p.id));
       case 'meeting-work-skip': return core.meetingWork.skip(p);
+      case 'meeting-work-retry': return core.meetingWork.retry(p);
       case 'studio-list': return core.studio.list();
       case 'studio-edit': return core.studio.edit(p);
       case 'studio-request': return core.studio.request(String(p.id));
@@ -784,6 +785,7 @@ ${JSON.stringify(facts, null, 1)}`});
       case 'travel-plan': {p=core.travel.proposal(p);const detail=core.travel.detail(p);const a=approvals.create({kind:'settings',title:'Travel mode: '+String(p.city).slice(0,100),detail,payload:{tool:'travel_apply',input:p},source:'travel review'});push();return {approval:a.id};}
       case 'travel-stop': {const a=approvals.create({kind:'settings',title:'End travel mode',detail:'Return future wake-up calls to this computer’s local time. Adjusted one-off wake-up calls return to their original times; any now in the past are cancelled.',payload:{tool:'travel_stop',input:{}}});push();return {approval:a.id};}
       case 'meeting-review': return deps.meetingFollowups.request(String(p.id),p);
+      case 'meeting-checked': return deps.meetingFollowups.checked(String(p.id),p.sent);
       case 'routine-open': {const list=[store.state.lastBackup?.file,...(store.state.selfReleases||[]).flatMap(r=>[r.file,r.notes,r.source])].filter(Boolean);if(!list.includes(p.file))throw Error('That file is not a saved backup or release.');return deps.openFile?.(p.file);}
       case 'save': { store.save(p || {}); push(); return status(); }
       case 'secret': store.setSecret(String(p.name), String(p.value ?? '')); push(); return store.secretFlags();

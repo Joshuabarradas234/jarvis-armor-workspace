@@ -1,6 +1,6 @@
 const text=(v,n=2000)=>typeof v==='string'?v.trim().slice(0,n):'';
 export function briefOf(value={}) {
-  return Object.fromEntries(['outcome','audience','files','constraints','finished','preferences','checklist'].map(k=>[k,text(value?.[k])]).concat([['budget',Number.isFinite(value?.budget)?Math.max(.05,Math.min(100,value.budget)):null]]));
+  return Object.fromEntries(['outcome','audience','files','constraints','finished','preferences','checklist'].map(k=>[k,text(value?.[k])]).concat([['budget',Number.isFinite(value?.budget)&&value.budget>0?Math.max(.05,Math.min(100,value.budget)):null]]));   // an empty budget means "use the floor's cap", never five cents
 }
 export function briefGaps(brief) {
   return ['outcome','audience','files','constraints','finished'].filter(k=>!brief[k]).map(k=>({outcome:'the outcome',audience:'who this is for',files:'the files or sources (or “none needed”)',constraints:'the constraints (or “none”)',finished:'what finished means'}[k]));
@@ -8,6 +8,8 @@ export function briefGaps(brief) {
 export function briefText(b) {
   return Object.entries(b||{}).filter(([,v])=>v!==null&&v!=='').map(([k,v])=>`${k.toUpperCase()}: ${v}`).join('\n');
 }
+/** A reply that hit the length limit is incomplete: a review can never approve it, and cut-off work is labelled for the reviewer. */
+export function cutOff(kind,text){const t=String(text||'');return kind==='review'?`VERDICT: CHANGES\nNOTES: The review was cut off at the length limit, so the deliverable is incomplete. Make it shorter or split it into parts.\n---\n${t||'(no text)'}`:`${t}\n\n[JARVIS: this answer was cut off at the length limit and is incomplete.]`;}
 export function reviewOf(raw,steps=[]) {
   const s=String(raw||'').trim(),m=/^VERDICT: *(APPROVED|CHANGES)\s*\r?\nNOTES: *([\s\S]*?)\r?\n---\s*\r?\n([\s\S]+)$/i.exec(s);
   const approved=!!m&&m[1].toUpperCase()==='APPROVED'&&!!m[2].trim()&&!!m[3].trim()&&steps.length>0&&steps.every(x=>x.status==='done');

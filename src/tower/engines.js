@@ -18,22 +18,32 @@ export async function callApi({key, model, system, prompt, web = false, maxToken
   if (!key) throw Error('No Claude API key set. Add one in the tower\'s Engines settings.');
   const body = {model, max_tokens: maxTokens, system, messages: [{role: 'user', content: prompt}]};
   if (web) body.tools = [{type: 'web_search_20250305', name: 'web_search', max_uses: 6}];
-  let res, tries = 0;
-  for (;;) {
-    // stoppable by the user AND still timed out: a hung request used to hold the floor forever
-    res = await fetch(API_URL, {method: 'POST', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300000)]) : AbortSignal.timeout(300000),
-      headers: {'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01'}, body: JSON.stringify(body)});
-    if ((res.status === 429 || res.status === 529 || res.status >= 500) && tries++ < retries) { await new Promise(r => setTimeout(r, 4000 * tries)); continue; }
-    break;
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Error(`Claude API ${res.status}: ${data?.error?.message || res.statusText}`);
-  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-  if (!text) throw Error('Claude API returned no text.');
-  const u = data.usage || {};
   const price = PRICES[Object.keys(PRICES).find(k => String(model).includes(k))] || PRICES.sonnet;
-  const cost = ((u.input_tokens || 0) * price[0] + (u.output_tokens || 0) * price[1]) / 1e6 + (u.server_tool_use?.web_search_requests || 0) * 0.01;
-  return {text, usage: u, cost};
+  const parts = []; let cost = 0, usage = {}, stop = '';
+  // a long web search can pause part-way ("pause_turn"): hand the answer back so Claude can finish it, at most three times
+  for (let turn = 0; turn < 4; turn++) {
+    let res, tries = 0;
+    for (;;) {
+      // stoppable by the user AND still timed out: a hung request used to hold the floor forever
+      try {
+        res = await fetch(API_URL, {method: 'POST', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300000)]) : AbortSignal.timeout(300000),
+          headers: {'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01'}, body: JSON.stringify(body)});
+      } catch (e) { if (signal?.aborted || tries++ >= retries) throw e; await new Promise(r => setTimeout(r, 4000 * tries)); continue; }   // a dropped connection is tried again too
+      if ((res.status === 429 || res.status === 529 || res.status >= 500) && tries++ < retries) { await new Promise(r => setTimeout(r, 4000 * tries)); continue; }
+      break;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Error(`Claude API ${res.status}: ${data?.error?.message || res.statusText}`);
+    const u = data.usage || {}; usage = u; stop = data.stop_reason || '';
+    cost += ((u.input_tokens || 0) * price[0] + (u.output_tokens || 0) * price[1]) / 1e6 + (u.server_tool_use?.web_search_requests || 0) * 0.01;
+    parts.push((data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n'));
+    if (stop !== 'pause_turn' || turn === 3) break;
+    body.messages = [...body.messages, {role: 'assistant', content: data.content || []}];
+  }
+  const text = parts.join('').trim();
+  if (!text) throw Error('Claude API returned no text.');
+  // max_tokens: the answer was cut off at the length limit; the caller must not treat it as complete
+  return {text, usage, cost, stopReason: stop, truncated: stop === 'max_tokens' || stop === 'pause_turn'};
 }
 
 let codeProbe = null;

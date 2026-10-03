@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {callApi, callClaudeCode, detectClaudeCode, rehearse, killTree} from './engines.js';
 import {rankFor} from './store.js';
-import {briefOf,briefGaps,briefText,reviewOf} from './productivity.js';
+import {briefOf,briefGaps,briefText,reviewOf,cutOff} from './productivity.js';
 import {writeText} from '../brain/util.js';
 import {skillContext} from './skills.js';
 
@@ -106,9 +106,10 @@ export class TowerRunner {
       note(`Asking Claude (${kind === 'work' ? s.workerModel : s.plannerModel})${web ? ' with web search' : ''}…`);
       let reservation=0,maxTokens=kind==='review'?8000:5000;
       if(r.meetingWork){const allowance=r.budget.perRun-r.cost,model=kind==='work'?s.workerModel:s.plannerModel,prices=/haiku/.test(model)?[1,5]:/sonnet/.test(model)?[3,15]:[15,75];const input=(Buffer.byteLength(system)+Buffer.byteLength(prompt)+500)*prices[0]/1e6;maxTokens=Math.min(3000,Math.floor((allowance-input)*1e6/prices[1]));if(maxTokens<256){const e=Error('The meeting allowance cannot cover the next agent response. Review the partial work before increasing it.');e.budget=true;throw e;}reservation=input+maxTokens*prices[1]/1e6;r.cost+=reservation;this.save(r);}
-      res = await callApi({key: this.getKey(), model: kind === 'work' ? s.workerModel : s.plannerModel, system, prompt, web, maxTokens, signal: live.abort.signal,...(r.meetingWork?{retries:0}:{})});
-      if(reservation)r.cost-=reservation;
+      try { res = await callApi({key: this.getKey(), model: kind === 'work' ? s.workerModel : s.plannerModel, system, prompt, web, maxTokens, signal: live.abort.signal,...(r.meetingWork?{retries:0}:{})}); }
+      finally { if(reservation)r.cost-=reservation; }   // a failed call must not leave the reservation in the run's cost
       note('Answer received.');
+      if (res.truncated) { note('The answer reached the length limit and was cut off.'); res = {...res, text: cutOff(kind, res.text)}; }
       if (step) step.draft = res.text;
     } else {
       const s = this.store.settings();
@@ -157,7 +158,7 @@ export class TowerRunner {
     if(opts.meetingWork&&!this.getKey())throw Error('Meeting drafts need the Claude API key.');
     const previous=opts.resumeId?this.store.runs.find(r=>r.id===opts.resumeId&&r.theme===theme&&r.floorId===floorId&&['needs_brief','needs_changes'].includes(r.status)):null;
     if(opts.resumeId&&!previous)throw Error('That run cannot be resumed. Start a new task instead.');
-    if(previous){opts={...opts,input:[previous.input,previous.notes?'CORRECTIONS TO RESOLVE: '+previous.notes:''].filter(Boolean).join('\n'),from:previous.from,chain:(previous.chain||[]).filter(id=>id!==floorId)};}
+    if(previous){opts={...opts,meetingWork:previous.meetingWork||opts.meetingWork,input:[previous.input,previous.notes?'CORRECTIONS TO RESOLVE: '+previous.notes:''].filter(Boolean).join('\n'),from:previous.from,chain:(previous.chain||[]).filter(id=>id!==floorId)};}
     const brief=briefOf({...floor.taskBrief,...opts.brief,outcome:opts.brief?.outcome||task});
     const questions=briefGaps(brief).map(x=>'Please specify '+x+'.');
     const eng=questions.length?null:opts.meetingWork?{api:{ready:true},claudeCode:{ready:false}}:await this.engines(); // busy check after the await

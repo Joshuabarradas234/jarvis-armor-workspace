@@ -254,3 +254,15 @@ Added the Work menu, browser shortcuts, Product Studio and transcript-backed mee
 ## Release 1.85.0: automatic task skills
 
 Finished reviewed Tower work now saves a durable recipe automatically. Owner acceptance enables reuse by default; an explicit setting allows reuse after agent review. Matching stays within the same hall and floor, with bounded prompts, rejection exclusions, usage provenance and a searchable Skills tab. The library survives run-history trimming and uses the existing settings backup. Core 121/121, frontend 190/190 and 124 syntax checks passed; browser controls tested with example data. Protected files and Control Deck are unchanged. See RELEASE-1.85.0.md and AUTOMATIC-TASK-SKILLS.md.
+
+## Release 1.85.1: fixes from the 1.85.0 review
+
+Fixed the dead ends and weak links found in the 1.85.0 review (docs: the review file on the owner's Desktop):
+- Meeting emails: a send that never reached the server returns to draft; an interrupted one asks the owner to confirm against Sent mail.
+- Meeting tasks: a refused or interrupted handoff returns its reservation and can be retried or dismissed; floor daily budgets are checked before reserving; finished runs settle to their actual cost; stopped runs can be retried under a new source key.
+- Skills: matching uses the owner's words (template wording stripped), rare words weigh more, outcome-based ranking, automatic pause after repeated returns, and a per-floor with/without tally kept beyond the 80-run history.
+- Cut-off answers: callApi reports max_tokens and continues pause_turn; a cut-off review is treated as CHANGES.
+- Budgets: an empty brief budget means the floor's cap (was 5 cents); meeting reservations leave the run cost when a call fails; resumed meeting runs keep their limits.
+- Backup restore reloads stores in place; Electron's default menu is removed and Ctrl+R / F5 reload the active tab.
+- Removed the unused non-SIMD MediaPipe build (6.2 MB) from dist/vendor/hands.
+- Tests: 203 frontend (13 new) and 121 core, on Windows.

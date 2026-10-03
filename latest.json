@@ -1,5 +1,5 @@
 {
-  "version": "1.85.0",
+  "version": "1.85.1",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "Finished Tower tasks now save reusable skills automatically and match them to future work."
+  "notes": "Fixes stuck meeting emails and tasks, better skill matching with a with/without comparison, cut-off AI answers caught, safer budgets, backup restores and Ctrl+R."
 }

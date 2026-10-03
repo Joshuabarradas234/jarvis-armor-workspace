@@ -325,8 +325,9 @@ export function smtpSend({host, port = 465, user, pass, from, to, raw, log, time
   const rcpts = [].concat(to).map(r => typeof r === 'string' ? r : r.address);
   if (!validAddress(user) || !rcpts.length || !rcpts.every(validAddress)) return Promise.reject(Error('Refused: an email address is not valid.'));
   return new Promise((resolve, reject) => {
-    let sock, buf = '', waiting = null, done = false, sent = false;
-    const fail = e => { if (done) return; done = true; clearTimeout(t); try { sock?.destroy(); } catch {} reject(e instanceof Error ? e : Error(String(e))); };
+    let sock, buf = '', waiting = null, done = false, sent = false, bodyOut = false;
+    // notSent: the server certainly has not taken the message (it refused, or the body never went out)
+    const fail = e => { if (done) return; done = true; clearTimeout(t); try { sock?.destroy(); } catch {} const err = e instanceof Error ? e : Error(String(e)); if (err.notSent === undefined) err.notSent = !bodyOut; reject(err); };
     const t = setTimeout(() => fail(Error('The mail server took too long.')), timeout);
     const onData = d => {
       buf += d.toString('utf8');
@@ -338,7 +339,7 @@ export function smtpSend({host, port = 465, user, pass, from, to, raw, log, time
         const code = Number(reply[end].slice(0, 3)); const w = waiting; waiting = null; w?.({code, text: reply.map(l => l.slice(4)).join(' ')});
       }
     };
-    const expect = (ok, cmd) => new Promise((res, rej) => { waiting = r => (ok.includes(r.code) ? res(r) : rej(Error(`Mail server said ${r.code}: ${r.text}`))); if (cmd !== undefined) sock.write(cmd + '\r\n'); });
+    const expect = (ok, cmd) => new Promise((res, rej) => { waiting = r => { if (ok.includes(r.code)) return res(r); const e = Error(`Mail server said ${r.code}: ${r.text}`); e.notSent = true; rej(e); }; if (cmd !== undefined) sock.write(cmd + '\r\n'); });
     const attach = s => { sock = s; s.on('data', onData); s.on('error', e => fail(Error(`Mail server: ${e.message}`))); s.on('close', () => { if (!sent) fail(Error('The mail server closed the connection.')); else if (!done) { done = true; clearTimeout(t); resolve(true); } }); };
     (async () => {
       const implicit = port === 465;
@@ -358,7 +359,7 @@ export function smtpSend({host, port = 465, user, pass, from, to, raw, log, time
       for (const r of rcpts) await expect([250, 251], `RCPT TO:<${r}>`);
       await expect([354], 'DATA');
       const body = raw.replace(/\r?\n/g, '\r\n').split('\r\n').map(l => l.startsWith('.') ? '.' + l : l).join('\r\n');
-      sock.write(body.endsWith('\r\n') ? body : body + '\r\n');
+      bodyOut = true; sock.write(body.endsWith('\r\n') ? body : body + '\r\n');
       await expect([250], '.'); sent = true;   // accepted: a connection closed after this is not a failure
       try { await Promise.race([expect([221], 'QUIT'), new Promise(r => setTimeout(r, 2000))]); } catch {}
       done = true; clearTimeout(t); try { sock.end(); } catch {} resolve(true);

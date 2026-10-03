@@ -11,6 +11,8 @@ function target(t){
   return null;
 }
 export class IdeaStore{
+  /** Re-read the saved file into this same object: everything holding it (JARVIS Core, meetings) sees the restored list. */
+  reload(){Object.assign(this,new IdeaStore(path.dirname(this.file)));return this;}
   constructor(dir){
     this.file=path.join(dir,'ideas.json');
     try{const raw=JSON.parse(fs.readFileSync(this.file,'utf8'));this.items=Array.isArray(raw)?raw.filter(x=>x&&typeof x.id==='string').map(x=>this.clean(x,x)):[];}catch{this.items=[];}

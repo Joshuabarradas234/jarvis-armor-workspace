@@ -183,6 +183,13 @@ export class BrainStore {
     for (const day of Object.keys(this.spendHistory).sort().slice(0,-90)) delete this.spendHistory[day];
     writeJson(path.join(this.dir, 'brain-spend-history.json'), this.spendHistory);
   }
+  /** Give back (part of) a reservation that was never used, within today's total. */
+  refundSpend(usd, kind = 'brain') {
+    if (!(usd > 0)) return; this.spent(); const back = Math.min(usd, this.spend.usd);
+    this.spend.usd = Math.round((this.spend.usd - back) * 10000) / 10000; this.spend.byKind[kind] = Math.max(0, Math.round(((this.spend.byKind[kind] || 0) - back) * 10000) / 10000);
+    writeJson(this.files.spend, this.spend); this.spendHistory[this.spend.day] = structuredClone(this.spend);
+    writeJson(path.join(this.dir, 'brain-spend-history.json'), this.spendHistory);
+  }
   budgetLeft() { return Math.max(0, this.config.budgetPerDay - this.spent()); }
   /* ---------- JARVIS's own notes (it may tidy these itself) ---------- */
   notesFile() { return path.join(this.home, 'Notes.md'); }

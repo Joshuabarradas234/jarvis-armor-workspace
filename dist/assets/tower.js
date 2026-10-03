@@ -393,7 +393,7 @@ ${r.questions?.length?`<div class="tw-err"><b>Before work starts</b><ul>${r.ques
         if (k === 'report') return call('tower-report');
         if (k === 'example') { const ta = $('.tw-task', this.el); ta.value = f.example; ta.focus(); return; }
         if (k === 'run') return this.run();
-        if(k==='revise'){const r=this.runs.get(b.dataset.run);const ta=$('.tw-task',this.el);if(ta){ta.value=r.task;ta.dataset.resume=r.id;}for(const el of this.el.querySelectorAll('[data-brief]'))el.value=r.brief?.[el.dataset.brief]??'';ta?.focus();return;}
+        if(k==='revise'){const r=this.runs.get(b.dataset.run);const ta=$('.tw-task',this.el);if(ta){ta.value=r.task;ta.dataset.resume=r.id;}for(const el of this.el.querySelectorAll('[data-brief]'))el.value=el.dataset.brief==='budget'?(r.brief?.budget||this.floor()?.budget?.perRun||''):(r.brief?.[el.dataset.brief]??'');ta?.focus();return;}
         if(k==='skill-policy'){await call('tower-settings',{skillPolicy:this.el.querySelector('[data-skill-policy]').value});toast('Learning setting saved. It applies to the next task.');this.renderPane();return;}
         if(k==='skill-toggle'){await call('tower-skill-enable',{id:b.dataset.skill,enabled:b.dataset.enabled==='true'});this.renderPane();return;}
         if(k==='skill-search'){this.skillQuery=this.el.querySelector('[data-skill-query]').value;this.skillPage=0;this.renderPane();return;}
