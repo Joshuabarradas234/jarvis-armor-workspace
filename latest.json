@@ -1,5 +1,5 @@
 {
-  "version": "1.85.2",
+  "version": "1.85.3",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "Suit shortcuts stop asking for Win+1 to 7, and the live wallpaper stops retrying on desktops that cannot show it. Includes all 1.85.1 fixes."
+  "notes": "Voice listening uses the newer Windows speech engine again (it crashed before), plus the 1.85.1 and 1.85.2 fixes."
 }

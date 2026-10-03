@@ -126,6 +126,14 @@ function Await-Action($op) {
   $t = $script:asTaskAction.Invoke($null, @($op))
   $t.Wait(-1) | Out-Null
 }
+# Windows PowerShell 5.1 shows the recogniser's constraint list as a bare COM object with no visible Add method,
+# so "$recognizer.Constraints.Add(...)" failed and the modern engine never started. Add through the .NET collection
+# interface the list is projected as; try the direct call first in case a later PowerShell exposes it.
+function Add-Constraint($recognizer, $constraint) {
+  try { $recognizer.Constraints.Add($constraint); return } catch {}
+  $iface = [System.Collections.Generic.ICollection[Windows.Media.SpeechRecognition.ISpeechRecognitionConstraint]]
+  $iface.GetMethod('Add').Invoke($recognizer.Constraints, [object[]]@($constraint)) | Out-Null
+}
 function Pick-Language {
   $supported = @([Windows.Media.SpeechRecognition.SpeechRecognizer]::SupportedGrammarLanguages)
   $lang = $supported | Where-Object { $_.LanguageTag -eq 'en-GB' } | Select-Object -First 1
@@ -145,7 +153,7 @@ if ($Diagnose) {
     try {
       $r = [Windows.Media.SpeechRecognition.SpeechRecognizer]::new((Pick-Language))
       $c = [Windows.Media.SpeechRecognition.SpeechRecognitionListConstraint]::new([string[]]@('jarvis test'), 'jv')
-      $r.Constraints.Add($c)
+      Add-Constraint $r $c
       $res = Await-Op $r.CompileConstraintsAsync() ([Windows.Media.SpeechRecognition.SpeechRecognitionCompilationResult])
       $out.modern.compile = [string]$res.Status
       $r.Dispose()
@@ -186,7 +194,7 @@ try {
   $lang = Pick-Language
   $recognizer = [Windows.Media.SpeechRecognition.SpeechRecognizer]::new($lang)
   $constraint = [Windows.Media.SpeechRecognition.SpeechRecognitionListConstraint]::new([string[]]$phrases, 'jarvis-commands')
-  $recognizer.Constraints.Add($constraint)
+  Add-Constraint $recognizer $constraint
   $compiled = Await-Op $recognizer.CompileConstraintsAsync() ([Windows.Media.SpeechRecognition.SpeechRecognitionCompilationResult])
   if ([string]$compiled.Status -ne 'Success') { throw "Command list could not be compiled ($($compiled.Status))." }
   $recognizer.Timeouts.InitialSilenceTimeout = [TimeSpan]::FromSeconds(6)

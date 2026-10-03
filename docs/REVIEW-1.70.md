@@ -270,3 +270,7 @@ Fixed the dead ends and weak links found in the 1.85.0 review (docs: the review 
 ## Release 1.85.2: quieter start-up
 
 Suit hotkeys register Ctrl+Alt+1..7 only (Win+1..7 belong to the Windows taskbar). The live wallpaper stops retrying after "WorkerW not found": a window closed because attaching failed no longer counts as a screen change, and the attempt is skipped until the wallpaper setting is switched off and on. These replace JARVIS self-update proposals #7 and #8, which were staged on an older base and would have removed the tower-skills IPC cases.
+
+## Release 1.85.3: modern speech engine
+
+listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5.1 cannot resolve on the WinRT IVector (seen as a bare `__ComObject`), so the modern engine always failed and the legacy engine took over (227 log entries). `Add-Constraint` now tries the direct call, then invokes `ICollection[ISpeechRecognitionConstraint].Add` by reflection. Verified on the owner's PC: `-Diagnose` reports compile Success, and a live run reports MICROPHONE LISTENING on the modern engine. The automatic publishing workflow (`.github/workflows/release.yml`) was removed at the owner's choice; releases are published by hand. The **Tests** workflow stays, so every pull request is checked, and AGENTS.md says so. scripts/release/build-update.mjs stays because Codex builds its update zips with it.

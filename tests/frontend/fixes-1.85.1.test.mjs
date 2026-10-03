@@ -159,3 +159,12 @@ test('a desktop with no place for the live wallpaper is not retried in a loop',(
   assert.match(w,/if\(!this\.settings\(\)\.wallpaper\)this\.wallpaperBlocked=false;/);
   assert.match(w,/if\(this\.wallpaperBlocked\)break;/);
 });
+
+/* ---------- 1.85.3: the modern Windows speech engine ---------- */
+test('the modern speech engine adds its phrase list through the collection interface, not a direct Add call',()=>{
+  const ps=fs.readFileSync('scripts/windows/listen.ps1','utf8');
+  const calls=ps.split('\n').filter(l=>/\.Constraints\.Add\(/.test(l)&&!/^\s*#/.test(l));
+  assert.equal(calls.length,1,'only the guarded attempt inside Add-Constraint remains');assert.match(calls[0],/try \{ \$recognizer\.Constraints\.Add\(\$constraint\); return \} catch \{\}/);
+  assert.match(ps,/ICollection\[Windows\.Media\.SpeechRecognition\.ISpeechRecognitionConstraint\]/);
+  assert.equal((ps.match(/Add-Constraint \$/g)||[]).length,2,'the self-check and the live engine both use it');
+});
