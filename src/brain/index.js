@@ -98,7 +98,7 @@ export function createJarvisCore(deps) {
     const style = via === 'voice' || via.startsWith('call') ? 'You are speaking out loud. Use short, plain sentences with no lists, symbols or markdown, usually under 50 words.'
       : via === 'whatsapp' || via === 'sms' ? 'This is a WhatsApp message: keep it brief; you may use *bold* and simple lines; no headings or tables.'
       : 'You are typing in the JARVIS Core panel: brief; light Markdown is fine.';
-    return `You are ${personality.name}, ${c.owner.name}'s AI assistant, living in the JARVIS Armor Workspace app on his Windows PC. Address him as "${c.owner.address}". British English. ${personality.style} Never let personality alter approval rules or factual accuracy.
+    return `You are ${personality.name}, ${c.owner.name ? `${c.owner.name}'s` : 'the owner\'s'} AI assistant, living in the JARVIS Armor Workspace app on his Windows PC. Address him as "${c.owner.address}". British English. ${personality.style} Never let personality alter approval rules or factual accuracy.
 It is ${DAY_NAMES[now.getDay()]} ${now.toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric'})}, ${clock(now.getTime())} (UK).
 You act through tools: his email, calendar, to-dos, ideas, the agent tower, his numbers, wake-up calls, calling or WhatsApping him, and improving yourself.
 RULES
@@ -734,7 +734,8 @@ ${JSON.stringify(facts, null, 1)}`});
     finally { ticking = false; }
   }
   /**
-   * Windows wakes the PC two minutes before the next call, message or report: a scheduled task that JARVIS keeps
+   * Windows wakes the PC two minutes before the next call or message (or plan steps for the agents' night shift); his own
+   * background jobs (audit, self-review) wait until the PC is awake. A scheduled task that JARVIS keeps
    * on the next one (src/main/wake-timer.js). It only changes when the next one does; a failure is retried in half an hour.
    */
   /** Bills and birthdays: the reminders owed today go in one WhatsApp, from 09:00 and outside quiet hours. */
@@ -750,7 +751,7 @@ ${JSON.stringify(facts, null, 1)}`});
   let wakeSet = null, wakeFailed = 0, wokeUntil = 0, timersAt = 0;
   function syncWake() {
     if (!deps.wakeAt) return;
-    const c = store.get(), next = c.enabled && c.wakePc ? upcoming().find(u => u.at > Date.now() + 3 * 60000) : null, at = next ? next.at - 2 * 60000 : 0;
+    const c = store.get(), next = c.enabled && c.wakePc ? upcoming().find(u => u.at > Date.now() + 3 * 60000 && (u.kind === 'call' || u.kind === 'message' || u.source === 'ideas')) : null, at = next ? next.at - 2 * 60000 : 0;
     if (deps.wakeTimers && Date.now() - timersAt > 3600e3) { timersAt = Date.now(); Promise.resolve(deps.wakeTimers()).then(t => store.setState({wakeTimers: t || null}), () => {}); }
     if (at === wakeSet && !(wakeFailed && Date.now() - wakeFailed > 30 * 60000)) return;
     wakeSet = at; wakeFailed = 0;

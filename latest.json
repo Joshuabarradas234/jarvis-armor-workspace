@@ -1,5 +1,5 @@
 {
-  "version": "1.89.1",
+  "version": "1.89.2",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "JARVIS greets you once when the app opens, hall transitions and the welcome play smoothly, and switching to Spider-Man shows the Web Lab."
+  "notes": "Each hall transition is heard once on two screens, the PC wakes at night only for calls and messages, and small tidy-ups."
 }

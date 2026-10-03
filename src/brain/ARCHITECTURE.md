@@ -1,7 +1,7 @@
 # JARVIS Armor Workspace — map for programmers (and for JARVIS improving himself)
 
 An Electron app (Electron 44, Node 22+, ES modules, **no npm dependencies at runtime, no build step**).
-It runs on Joshua's ASUS Zenbook Duo (two screens: the top one shows the hall, the lower one "the deck";
+It runs on the owner's ASUS Zenbook Duo (two screens: the top one shows the hall, the lower one "the deck";
 an optional third screen shows "the vista"). Three halls, each with its own assistant:
 `ironman` (JARVIS, the Armor Hall), `batcave` (ALFRED), `spiderman` (KAREN, the Web Lab).
 

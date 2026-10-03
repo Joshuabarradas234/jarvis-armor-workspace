@@ -48,5 +48,5 @@ assets. It excludes `node_modules` and `release`, which are rebuilt.
 
 ## Known gaps
 - Renaming a bay does not change its plate (names are baked into the label images)
-- Bay 4's plate in the Armor Hall is the one I generated (MARK V), not from Joshua's set
+- Bay 4's plate in the Armor Hall is the one I generated (MARK V), not from the owner's set
 - Ultron is blended by lightening; a fuller fix is transparency + normal blend

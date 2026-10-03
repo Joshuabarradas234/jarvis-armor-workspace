@@ -123,7 +123,7 @@ When you give the Tower a job, you can ask him to **WhatsApp** or **call** you w
 
 ### Waking the PC for calls (1.88)
 
-If the PC is asleep, JARVIS cannot call. So he keeps one Windows task, **JARVIS wake-up**, set two minutes before his next call, message or report. Windows wakes the PC for it, and JARVIS stays awake for a few minutes to do the job. The task is in your own account, he moves it as your schedule changes, and he removes it when you quit him. Switch it off in **Settings → JARVIS Core → Quiet hours and nights**.
+If the PC is asleep, JARVIS cannot call. So he keeps one Windows task, **JARVIS wake-up**, set two minutes before his next call or message (or plan steps you gave the agents for the night). Windows wakes the PC for it, and JARVIS stays awake for a few minutes to do the job. The task is in your own account, he moves it as your schedule changes, and he removes it when you quit him. Switch it off in **Settings → JARVIS Core → Quiet hours and nights**.
 
 Windows only does this when **Allow wake timers** is on in your power plan. The settings page shows whether it is and, if not, where to turn it on. Many laptops allow it only when plugged in.
 

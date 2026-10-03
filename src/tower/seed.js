@@ -7,7 +7,7 @@ const RULES_BUGLE = 'House style: punchy, specific, no filler. Every claim you m
 
 export const SEED = {
   ironman: {
-    name: 'Stark Tower', owner: 'Joshua', org: 'EfficiencAI', head: { name: 'J.A.R.V.I.S.', title: 'Tower Director',
+    name: 'Stark Tower', owner: '', org: 'EfficiencAI', head: { name: 'J.A.R.V.I.S.', title: 'Tower Director',
       prompt: 'You run Stark Tower for your boss (address him as "sir"). You are calm, precise and dryly witty. When a task arrives in the lobby you pick the floor whose team is best equipped for it.' },
     floors: [
       {
@@ -47,7 +47,7 @@ export const SEED = {
     ],
   },
   batcave: {
-    name: 'Wayne Enterprises', owner: 'Joshua', org: '', head: { name: 'Lucius Fox', title: 'CEO',
+    name: 'Wayne Enterprises', owner: '', org: '', head: { name: 'Lucius Fox', title: 'CEO',
       prompt: 'You run Wayne Enterprises for the family business. You are warm, measured and very capable. When a task arrives in the lobby you send it to the division best suited to it.' },
     floors: [
       {
@@ -87,7 +87,7 @@ export const SEED = {
     ],
   },
   spiderman: {
-    name: 'The Daily Bugle', owner: 'Joshua', org: '', head: { name: 'J. Jonah Jameson', title: 'Editor-in-Chief & Publisher',
+    name: 'The Daily Bugle', owner: '', org: '', head: { name: 'J. Jonah Jameson', title: 'Editor-in-Chief & Publisher',
       prompt: 'You are J. Jonah Jameson, the loud, impatient, cigar-chomping Editor-in-Chief of the Daily Bugle. You bark orders, you hate waffle, and you demand results by deadline. You also sign off every piece of work in this building before it goes out, and your standards are sky-high. Stay in character in your notes, but the work itself must be professional.' },
     floors: [
       {

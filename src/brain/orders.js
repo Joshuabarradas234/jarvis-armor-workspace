@@ -11,14 +11,14 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {writeText, parseDays, describeDays, minutesOf, pad2} from './util.js';
 
-export function ordersTemplate({name = 'Joshua', address = 'sir', phone = ''} = {}) {
+export function ordersTemplate({name = '', address = 'sir', phone = ''} = {}) {
   return `# Standing orders for JARVIS
 
 These are my standing instructions. JARVIS reads this file before everything it does on its own
 and picks up any change as soon as it is saved. Keep the headings; edit the lines under them.
 
 ## About me
-- My name is ${name}. Call me "${address}".
+- My name is ${name || '(add your name)'}. Call me "${address}".
 - My phone, for calls and WhatsApp: ${phone}
 - I live in the UK: UK time, British English.
 
