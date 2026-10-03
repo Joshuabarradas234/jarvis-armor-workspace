@@ -18,7 +18,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawn} from 'node:child_process';
 
-export const PROTECTED = ['src/main/boot.js', 'src/main/preload.cjs', 'src/brain/selfupdate.js', 'src/brain/approvals.js', 'package.json'];
+export const PROTECTED = ['src/main/boot.js', 'src/main/preload.cjs', 'src/brain/selfupdate.js', 'src/brain/approvals.js', 'src/brain/github.js', 'package.json'];
 const EDITABLE = ['src/', 'dist/', 'config/'];
 const FORBIDDEN = /(^|\/)\.|^dist\/vendor\/|^dist\/wallpaper\/|(^|\/)node_modules\/|[:<>"|?*\\]|[\u0000-\u001f]/i;   // hidden files, the big shared folders, anything Windows reads as a stream or device
 const SKIP_COPY = new Set(['dist/vendor', 'dist/wallpaper', 'node_modules', 'test-results', 'release', '.git']);
@@ -31,7 +31,7 @@ const NETWORK_WORDS = /create(?:Secure)?Server\s*\(|new\s+(?:[\w$]+\.)?Server\s*
 // text, and changes to window security. (Approved code runs with JARVIS's full rights, so these stay out entirely.)
 const RISKY = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"`](?:node:)?(?:net|http|https|http2|tls|dgram|cluster|worker_threads|child_process|inspector|vm|module|repl)(?:\/[\w/]*)?['"`]|\bcreateRequire\b|process\s*\.\s*(?:binding|_linkedBinding|dlopen)\b|\butilityProcess\b|\beval\s*\(|\bnew\s+Function\s*\(|\bnodeIntegration\w*|\bcontextIsolation\s*:\s*false|\bsandbox\s*:\s*false|\bwebSecurity\b|\bpreload\s*:|\bsetPermission(?:Request|Check)Handler\b|\bregisterSchemesAsPrivileged\b|\bapp\.asar\b|\bresourcesPath\b|\basarRoot\b|\bgetAppPath\b/;
 // the approval and self-update machinery, named from any file
-const GUARDED = /approvals\.js(?:on)?\b|selfupdate|boot\.js|__jarvisBoot|brain-secrets|preload\.cjs|\bUSER_CHANNELS\b|\bPROTECTED\b|\b(?:state|updates|manifest)\.json\b|['"`]self['"`]\s*[,)]|[\\/]self[\\/]|\b(?:core|brain)\s*\.\s*(?:approvals|updater|decide)\b|\bapprovals\s*\.\s*(?:decide|handleReply|markNotified|create|data|get|save|batch)\b|\bupdater\s*\.\s*\w/;
+const GUARDED = /approvals\.js(?:on)?\b|selfupdate|boot\.js|__jarvisBoot|brain-secrets|githubToken|github\.js|preload\.cjs|\bUSER_CHANNELS\b|\bPROTECTED\b|\b(?:state|updates|manifest)\.json\b|['"`]self['"`]\s*[,)]|[\\/]self[\\/]|\b(?:core|brain)\s*\.\s*(?:approvals|updater|decide)\b|\bapprovals\s*\.\s*(?:decide|handleReply|markNotified|create|data|get|save|batch)\b|\bupdater\s*\.\s*\w/;
 // code loaded from outside the checked files: a Windows file stream (name:stream), an absolute path, a URL or data:,
 // or a name worked out while running
 const OUTSIDE = /(?:\b(?:import|export)\b[^'"`;]*?\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"`](?!node:)(?:[^'"`]*:|\/|\\)|\bimport\s*\(\s*(?!['"][^'"`$]*['"]\s*\))|\brequire\s*\(\s*(?!['"][^'"`$]*['"]\s*\))/;

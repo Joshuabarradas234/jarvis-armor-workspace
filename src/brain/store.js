@@ -39,10 +39,11 @@ export const DEFAULTS = {
   workDesk: {folder:'',personalities:true,photoDrop:true,photoAnalysis:false,photoLimit:1},
   voiceNotes: {enabled: false, dailyLimit: 0.50},
   routines: {weekly: true, backup: true, releases: true, zone: Intl.DateTimeFormat().resolvedOptions().timeZone},
+  github: {repo: 'Joshuabarradas234/jarvis-armor-workspace', pullRequests: true},   // approved self-updates are proposed there as pull requests once a key is saved
   keepAwake: true,
   pcVoice: true,
 };
-const SECRET_KEYS = ['twilioToken', 'callmebotKey', 'emailPassword', 'openaiKey', 'higgsfieldKey'];
+const SECRET_KEYS = ['twilioToken', 'callmebotKey', 'emailPassword', 'openaiKey', 'higgsfieldKey', 'githubToken'];
 const merge = (base, over) => {
   const out = Array.isArray(base) ? [...base] : {...base};
   for (const [k, v] of Object.entries(over || {})) out[k] = v && typeof v === 'object' && !Array.isArray(v) && base?.[k] && typeof base[k] === 'object' && !Array.isArray(base[k]) ? merge(base[k], v) : v;
@@ -102,6 +103,7 @@ export class BrainStore {
     o.voiceNotes = {enabled: o.voiceNotes?.enabled === true, dailyLimit: Math.max(0, Math.min(10, num(o.voiceNotes?.dailyLimit, .5)))};
     let zone=String(o.routines?.zone||DEFAULTS.routines.zone);try{new Intl.DateTimeFormat('en-GB',{timeZone:zone}).format();}catch{zone=DEFAULTS.routines.zone;}
     o.routines={weekly:o.routines?.weekly!==false,backup:o.routines?.backup!==false,releases:o.routines?.releases!==false,zone};
+    o.github={repo:/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(String(o.github?.repo||'').trim())?String(o.github.repo).trim():DEFAULTS.github.repo,pullRequests:o.github?.pullRequests!==false};
     o.keepAwake = o.keepAwake !== false; o.pcVoice = o.pcVoice !== false;
     return o;
   }

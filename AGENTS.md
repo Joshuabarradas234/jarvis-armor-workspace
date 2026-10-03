@@ -22,7 +22,8 @@ JARVIS Armor Workspace is a Windows desktop app built on Electron 44. It uses ES
    data files, API keys, tokens and passwords. In tests, use `+447700900123` (a UK drama-range number) and
    `@example.com` or `@customer.com` addresses. The owner's details live only in their settings on their PC.
 2. **Approvals and self-updates stay safe.** `src/main/boot.js`, `src/main/preload.cjs`, `src/brain/selfupdate.js`,
-   `src/brain/approvals.js` and `package.json` are protected. Never weaken any of these:
+   `src/brain/approvals.js`, `src/brain/github.js` and `package.json` are protected. JARVIS proposes approved
+   self-updates on GitHub only as pull requests, and never writes to `main` himself. Never weaken any of these:
    - the 4-character approval codes, the wrong-code lockouts, and "a text message (SMS) can never answer a request";
    - `YES ALL` never covering emails or code updates, and code updates never being approved by voice alone;
    - the update validator (no servers, no process or network modules, no references to the approval machinery,

@@ -117,3 +117,28 @@ Under **Facts about my business**, list anything he should know. The overnight a
 
 - **Calls are one-way.** JARVIS speaks, then sends the same words to WhatsApp, and you answer there. To talk back on the call itself, the PC would have to accept connections from the internet, for example through a tunnel. That opening has not been made, and JARVIS may not add one himself.
 - **Voice notes and pictures sent on WhatsApp** are not read yet. Type your message instead.
+
+## Your approved updates on GitHub (1.86)
+
+When JARVIS installs a self-update that you approved, he can also upload the same change to your GitHub repository as a **pull request**: a proposed change that waits there. Here is what happens next:
+
+1. GitHub's **Tests** run on it, and it shows ✅ or ❌.
+2. You press **Merge** on GitHub when it shows ✅. Nothing reaches the main code before that.
+3. Merging raises the version number, so **Publish update** releases it automatically.
+
+JARVIS also WhatsApps you the link. In **JARVIS Core → My updates**, each installed self-update shows its pull request, with **Open** and **Try again** buttons.
+
+To switch it on, make a GitHub key. You only do this once:
+
+1. On github.com, open your picture → **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
+2. Name it JARVIS and choose an expiry date.
+3. Under **Repository access**, choose **Only select repositories**, then pick your JARVIS repository.
+4. Under **Repository permissions**, set **Contents** and **Pull requests** to **Read and write**.
+5. Generate the token, then paste it into **Settings → JARVIS Core → GitHub** and press **Save**. Press **Test GitHub** to check it.
+
+Safety:
+
+- The key is stored encrypted on your PC.
+- JARVIS's self-updates cannot change the GitHub code or read the key (`src/brain/github.js` is protected).
+- He never writes to the main code himself.
+- He refuses to upload a change if your GitHub code has changed the same files since the version he built on. In that case, install the latest release and he rebuilds the update.

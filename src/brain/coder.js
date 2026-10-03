@@ -108,7 +108,7 @@ export async function makeChange({dir, task, context = '', engine = 'auto', key,
   const brief = `You are improving JARVIS Armor Workspace, an Electron desktop app for Windows, by editing its source code in a sandbox copy (the current folder is the app root).\n\n${guide(dir)}\n\n${coderRules()}\n\nTASK\n${task}${context ? `\n\nBACKGROUND\n${context}` : ''}`;
   if (use === 'claude-code') {
     try {
-      const noWrite = ['./src/main/boot.js', './src/main/preload.cjs', './src/brain/selfupdate.js', './src/brain/approvals.js', './package.json', './dist/vendor/**', './dist/wallpaper/**', './dist/Vendor/**', './dist/Wallpaper/**', './**/.*', './**/.*/**', './**/*:*'];
+      const noWrite = ['./src/main/boot.js', './src/main/preload.cjs', './src/brain/selfupdate.js', './src/brain/approvals.js', './src/brain/github.js', './package.json', './dist/vendor/**', './dist/wallpaper/**', './dist/Vendor/**', './dist/Wallpaper/**', './**/.*', './**/.*/**', './**/*:*'];
       const flags = await isolation();
       if (!flags.args.length) { isolationFlags = null; throw Error('this Claude Code cannot be kept away from your own settings, hooks and MCP servers (update it with: claude update)'); }
       const r = await callClaudeCode({cwd: dir, prompt: brief, model: codeModel, maxTurns: 50, timeoutMin: 30, settingsDir: path.dirname(dir), onEvent, extraArgs: [...flags.args, ...(flags.budget ? ['--max-budget-usd', String(Math.max(0.3, Math.min(5, budget)).toFixed(2))] : [])],

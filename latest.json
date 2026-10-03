@@ -1,5 +1,5 @@
 {
-  "version": "1.85.3",
+  "version": "1.86.0",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "Voice listening uses the newer Windows speech engine again (it crashed before), plus the 1.85.1 and 1.85.2 fixes."
+  "notes": "Updates you approve in JARVIS can now be proposed on GitHub automatically; you press Merge there to publish them."
 }

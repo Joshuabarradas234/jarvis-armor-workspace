@@ -24,6 +24,7 @@ import {CallDesk} from './calls.js';
 import {MailDesk} from './maildesk.js';
 import {Numbers} from './numbers.js';
 import {SelfUpdater} from './selfupdate.js';
+import {GitHubSync} from './github.js';
 import {runAgent, ask} from './llm.js';
 import {makeTools} from './tools.js';
 import {runAudit} from './audit.js';
@@ -46,6 +47,7 @@ export function createJarvisCore(deps) {
   const mail = new MailDesk({store, approvals, key: deps.getKey, orders, log: deps.log});
   const numbers = new Numbers({store, key: deps.getKey, fetchImpl: deps.fetch, log: deps.log});
   const updater = new SelfUpdater({userDir: deps.userDir, boot: deps.boot, approvals, log: deps.log});
+  const github = new GitHubSync({store, selfDir: updater.selfDir, fetchImpl: deps.fetch, log: deps.log});
   const core = {deps, store, approvals, orders, phone, mail, numbers, updater};
 
   core.voiceNotes = new VoiceNotes({store, phone, fetchImpl: deps.fetch});
@@ -55,9 +57,24 @@ export function createJarvisCore(deps) {
   let pushTimer = null;
   function push() { clearTimeout(pushTimer); pushTimer = setTimeout(() => { try { deps.broadcast('core', {type: 'status', status: status()}); } catch (e) { log(e.message); } }, 250); }
   core.push = push;
+  /** After an approved self-update is installed: propose it on GitHub as a pull request, if you saved a GitHub key. */
+  function proposeOnGitHub(vid, {manual = false} = {}) {
+    if (!github.ready()) { if (manual) throw Error('Add your GitHub key in Settings → JARVIS Core → GitHub first.'); return null; }
+    const v = updater.state().versions[vid]; if (!v) throw Error('That self-update is not on record.');
+    const u = updater.update(v.updateId) || {};
+    const record = p => store.setState({github: {...(store.state.github || {}), [vid]: {...p, at: Date.now()}}});
+    record({status: 'uploading'}); push();
+    return github.propose({vid, base: v.base, title: v.title, why: u.why || '', deleted: (u.files || []).filter(f => f.status === 'deleted').map(f => f.path)})
+      .then(r => {
+        record(r.skipped ? {status: 'skipped', message: r.message} : {status: 'proposed', url: r.url, number: r.number, version: r.version});
+        if (!r.skipped) { store.act('github', `Self-update ${vid} proposed on GitHub as pull request #${r.number}; merging publishes ${r.version}.`); message(`🛠 *${v.title}* is on GitHub for your review: ${r.url}\nWhen the tests show ✅, press *Merge* to publish JARVIS ${r.version}.`, {kind: 'updates'}).catch(() => {}); }
+        push(); return r;
+      })
+      .catch(e => { record({status: 'failed', error: clip(e.message, 300)}); store.act('github', `Could not propose self-update ${vid} on GitHub: ${e.message}`); push(); if (manual) throw e; return null; });
+  }
   function status() {
     const c = store.get(), o = orders.parse();
-    return {enabled: c.enabled, config: c, secrets: store.secretFlags(), models: MODELS, key: !!deps.getKey(),
+    return {enabled: c.enabled, config: c, secrets: store.secretFlags(), models: MODELS, key: !!deps.getKey(), github: {ready: github.ready(), items: store.state.github || {}},
       phone: phone.ready(), whatsappWindowClosed: !!phone.windowClosedAt, whatsappSandbox: {...phone.sandbox(), renew: plain(phone.renewText({link: false}))},
       email: {ready: mail.ready(), lastCheck: store.state.emailChecked || 0, today: mail.since(new Date().setHours(0, 0, 0, 0)).length, lastError: store.state.emailError || ''},
       approvals: approvals.list({status: 'waiting'}), recent: approvals.list({limit: 25}).filter(a => a.status !== 'waiting'),
@@ -146,6 +163,7 @@ ${clip(store.notes() || '(none)', 5000)}${extra ? `\n${extra}` : ''}`;
       }
       if(store.get().routines.releases)try{const release=core.routines.export(r.version);store.act('self-release',`Update ZIP and release notes saved: ${release.file}`);}catch(e){store.act('self-release',`Installed, but release export needs attention: ${e.message}`);deps.notify('JARVIS release export',e.message);}
       store.setState({pendingRestart: {version: r.version, title: r.title, at: Date.now(), via: a.via}});
+      proposeOnGitHub(r.version);   // you approved it: propose the same change on GitHub, where it still waits for your Merge
       store.act('self-update', `Installed ${r.version}: ${r.title}. Restarting when you are not using me.`);
       setTimeout(() => maybeRestart(), 1500);
       return `Installed. I'll restart to switch it on ${deps.isIdle() ? 'now' : 'as soon as you step away'}.`;
@@ -746,6 +764,7 @@ ${JSON.stringify(facts, null, 1)}`});
     if (kind === 'call') { await calls.ring({purpose: 'test', text: `Hello ${store.get().owner.address}. This is JARVIS, testing your phone. Calls are working. Goodbye.`}); return 'Calling you now.'; }
     if (kind === 'email') { const r = await mail.test(); return `Connected: ${r.messages} messages in the inbox${r.gmail ? ' (Gmail)' : ''}.`; }
     if (kind === 'report') { const rep = await buildReport('overnight'); return `Report ready: ${rep.title}.`; }
+    if (kind === 'github') return github.test();
     throw Error('Unknown test.');
   }
   async function api(method, p = {}) {
@@ -756,6 +775,8 @@ ${JSON.stringify(facts, null, 1)}`});
       case 'meeting-work-request': return core.meetingWork.request(String(p.id));
       case 'meeting-work-skip': return core.meetingWork.skip(p);
       case 'meeting-work-retry': return core.meetingWork.retry(p);
+      case 'github-propose': return proposeOnGitHub(String(p.version || ''), {manual: true});
+      case 'github-open': { const g = (store.state.github || {})[String(p.version || '')]; if (!g?.url || !/^https:\/\/github\.com\//.test(g.url)) throw Error('There is no pull request for that update.'); deps.openUrl?.(g.url, 'GitHub pull request'); return true; }
       case 'studio-list': return core.studio.list();
       case 'studio-edit': return core.studio.edit(p);
       case 'studio-request': return core.studio.request(String(p.id));
