@@ -266,3 +266,7 @@ Fixed the dead ends and weak links found in the 1.85.0 review (docs: the review 
 - Backup restore reloads stores in place; Electron's default menu is removed and Ctrl+R / F5 reload the active tab.
 - Removed the unused non-SIMD MediaPipe build (6.2 MB) from dist/vendor/hands.
 - Tests: 203 frontend (13 new) and 121 core, on Windows.
+
+## Release 1.85.2: quieter start-up
+
+Suit hotkeys register Ctrl+Alt+1..7 only (Win+1..7 belong to the Windows taskbar). The live wallpaper stops retrying after "WorkerW not found": a window closed because attaching failed no longer counts as a screen change, and the attempt is skipped until the wallpaper setting is switched off and on. These replace JARVIS self-update proposals #7 and #8, which were staged on an older base and would have removed the tower-skills IPC cases.

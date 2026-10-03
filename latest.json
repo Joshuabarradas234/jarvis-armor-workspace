@@ -1,5 +1,5 @@
 {
-  "version": "1.85.1",
+  "version": "1.85.2",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "Fixes stuck meeting emails and tasks, better skill matching with a with/without comparison, cut-off AI answers caught, safer budgets, backup restores and Ctrl+R."
+  "notes": "Suit shortcuts stop asking for Win+1 to 7, and the live wallpaper stops retrying on desktops that cannot show it. Includes all 1.85.1 fixes."
 }

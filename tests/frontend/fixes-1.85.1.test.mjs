@@ -146,3 +146,16 @@ test('Electron\'s built-in menu is off; Ctrl+R and F5 reload the web page you ar
   for(const x of [k('r'),k('F5',{control:true}),k('F5',{type:'keyUp'}),k('F5',{alt:true}),k('r',{control:true,alt:true})])assert.equal(workspaceKey(x),null);
   const main=fs.readFileSync('src/main/main.js','utf8');assert.match(main,/Menu\.setApplicationMenu\(null\)/);assert.match(main,/command==='reload'\)tabs\.navigate\(id,'reload'\)/);
 });
+
+/* ---------- 1.85.2: suit shortcuts and the live wallpaper ---------- */
+test('suit shortcuts no longer ask Windows for Win+1 to 7, which its taskbar owns',()=>{
+  const main=fs.readFileSync('src/main/main.js','utf8');
+  assert.doesNotMatch(main,/Super\+\$\{n\}/);assert.match(main,/for\(const k of \[`Control\+Alt\+\$\{n\}`\]\)/);
+});
+test('a desktop with no place for the live wallpaper is not retried in a loop',()=>{
+  const w=fs.readFileSync('src/display/windows.js','utf8');
+  assert.match(w,/const noRoom=\/WorkerW not found\/i\.test\(e\.message\);if\(noRoom\)this\.wallpaperBlocked=true;/);
+  assert.match(w,/w\.on\('closed',\(\)=>\{if\(!this\.rebuilding&&!this\.stopped&&!w\.failed&&!this\.wallpaperBlocked/);
+  assert.match(w,/if\(!this\.settings\(\)\.wallpaper\)this\.wallpaperBlocked=false;/);
+  assert.match(w,/if\(this\.wallpaperBlocked\)break;/);
+});

@@ -153,9 +153,9 @@ function openSettings(){if(settingsWindow&&!settingsWindow.isDestroyed()){settin
 function registerHotkeys(values){
   globalShortcut.unregisterAll();const failed=[];
   for(const action of ['wake','home','standdown']){try{if(!globalShortcut.register(values[action],()=>dispatch(action)))failed.push(values[action]);}catch{failed.push(values[action]);}}
-  // v9.15: Win+1 to Win+7 (and Ctrl+Alt+1 to 7, in case Windows keeps Win+number for the taskbar) open that case's suit
+  // Ctrl+Alt+1 to 7 open that case's suit (Windows keeps Win+1 to 7 for its taskbar, so asking for them failed on every start)
   const suitKey=n=>()=>{const m=modules.filter(x=>!x.isVehicle).find(x=>x.index===n)||modules.filter(x=>!x.isVehicle)[n-1];if(m)dispatch('select',m.id);};
-  for(let n=1;n<=7;n++)for(const k of [`Super+${n}`,`Control+Alt+${n}`]){try{if(!globalShortcut.register(k,suitKey(n)))failed.push(k);}catch{failed.push(k);}}
+  for(let n=1;n<=7;n++)for(const k of [`Control+Alt+${n}`]){try{if(!globalShortcut.register(k,suitKey(n)))failed.push(k);}catch{failed.push(k);}}
   if(failed.length)log('hotkeys',`Unavailable: ${failed.join(', ')}. Use the tray menu or choose another shortcut.`);
 }
 function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate([

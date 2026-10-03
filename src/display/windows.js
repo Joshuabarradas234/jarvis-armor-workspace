@@ -27,16 +27,19 @@ export class DisplayManager {
     if(roles.third){if(!this.vista||this.vista.isDestroyed()){this.vista=this.create({role:'vista',...roles.third.bounds,show:false,frame:false,skipTaskbar:true,backgroundColor:'#05080a'});full(this.vista);await this.load(this.vista,'vista');}else position(this.vista,roles.third.bounds);}
     else if(this.vista&&!this.vista.isDestroyed()){this.vista.destroy();this.vista=null;}
     if(generation!==this.generation)return;
-    if(this.settings().wallpaper&&process.platform==='win32'){
+    if(!this.settings().wallpaper)this.wallpaperBlocked=false;   // switching the wallpaper off and on again tries once more
+    if(this.settings().wallpaper&&process.platform==='win32'&&this.wallpaperBlocked)this.wallpaperStatus='UNAVAILABLE · THIS DESKTOP SHOWS ITS OWN WALLPAPER';   // no place behind the icons on this Windows: leave it alone
+    else if(this.settings().wallpaper&&process.platform==='win32'){
       let successes=0;
       for(const d of (testing?[]:screen.getAllDisplays())){
-        const w=this.create({role:'wallpaper',...d.bounds,show:false,frame:false,focusable:false,skipTaskbar:true,backgroundColor:'#05080a'});this.wallpapers.push(w);w.on('closed',()=>{if(!this.rebuilding&&!this.stopped&&this.settings().wallpaper)this.changed?.();});w.setIgnoreMouseEvents(true);await this.load(w,'wallpaper');
+        if(this.wallpaperBlocked)break;
+        const w=this.create({role:'wallpaper',...d.bounds,show:false,frame:false,focusable:false,skipTaskbar:true,backgroundColor:'#05080a'});this.wallpapers.push(w);w.on('closed',()=>{if(!this.rebuilding&&!this.stopped&&!w.failed&&!this.wallpaperBlocked&&this.settings().wallpaper)this.changed?.();});w.setIgnoreMouseEvents(true);await this.load(w,'wallpaper');
         if(generation!==this.generation)return;
         if(w.isDestroyed())continue;   // one wallpaper window gone: carry on, or the build never finishes and 'rebuilding' stays stuck on
         const handle=w.getNativeWindowHandle();const number=handle.length===8?handle.readBigUInt64LE().toString():handle.readUInt32LE().toString();
-        try{await new Promise((resolve,reject)=>execFile('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(this.scripts,'wallpaper.ps1'),'-Handle',number],{windowsHide:true,timeout:15000},(e,out,err)=>e?reject(Error(err||e.message)):out.includes('"attached":true')?resolve():reject(Error('No desktop acknowledgement'))));successes++;}catch(e){this.log('wallpaper',e.message);if(!w.isDestroyed())w.destroy();}
+        try{await new Promise((resolve,reject)=>execFile('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(this.scripts,'wallpaper.ps1'),'-Handle',number],{windowsHide:true,timeout:15000},(e,out,err)=>e?reject(Error(err||e.message)):out.includes('"attached":true')?resolve():reject(Error('No desktop acknowledgement'))));successes++;}catch(e){const noRoom=/WorkerW not found/i.test(e.message);if(noRoom)this.wallpaperBlocked=true;this.log('wallpaper',noRoom?'Live wallpaper is not possible on this desktop (no WorkerW behind the icons); not retrying until the wallpaper setting is switched off and on.':e.message);w.failed=true;if(!w.isDestroyed())w.destroy();}
       }
-      this.wallpaperStatus=successes===allDisplays().length?'ACTIVE BEHIND DESKTOP ICONS':successes?'PARTIAL · CHECK DISPLAY SETTINGS':'UNAVAILABLE · LIVELY FALLBACK AVAILABLE';
+      this.wallpaperStatus=this.wallpaperBlocked?'UNAVAILABLE · THIS DESKTOP SHOWS ITS OWN WALLPAPER':successes===allDisplays().length?'ACTIVE BEHIND DESKTOP ICONS':successes?'PARTIAL · CHECK DISPLAY SETTINGS':'UNAVAILABLE · LIVELY FALLBACK AVAILABLE';
     }else this.wallpaperStatus=this.settings().wallpaper?'WINDOWS REQUIRED':'OFF';
     if(generation===this.generation){this.rebuilding=false;this.setActive(this.active);this.onChange();
       // screens changed while this build ran (the lower screen came on half-way through): build again
