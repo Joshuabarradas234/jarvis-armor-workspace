@@ -41,6 +41,9 @@ import {HallCalibrationStore} from '../services/hall-calibration.js';
 import {SelfUpdater} from '../brain/selfupdate.js';
 import {WakeTimer,WAKE_ARG} from './wake-timer.js';
 import {rangeResponse} from './ranges.js';
+import {ScreenLook,LOOK_SYSTEM,lookContent} from './screen-look.js';
+import {Recall,localItems,recallText} from '../brain/recall.js';
+import {buildScenes} from './briefing-cinema.js';
 
 protocol.registerSchemesAsPrivileged([{scheme:'jarvis',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true,corsEnabled:true}}]);
 /* The graphics chip's video decoder crawled through the H.264 transition and welcome videos (about 4 frames a second on the owner's
@@ -162,6 +165,8 @@ function registerHotkeys(values){
   // Ctrl+Alt+1 to 7 open that case's suit (Windows keeps Win+1 to 7 for its taskbar, so asking for them failed on every start)
   const suitKey=n=>()=>{const m=modules.filter(x=>!x.isVehicle).find(x=>x.index===n)||modules.filter(x=>!x.isVehicle)[n-1];if(m)dispatch('select',m.id);};
   for(let n=1;n<=7;n++)for(const k of [`Control+Alt+${n}`]){try{if(!globalShortcut.register(k,suitKey(n)))failed.push(k);}catch{failed.push(k);}}
+  try{if(!globalShortcut.register('Control+Alt+F',()=>openRecall()))failed.push('Control+Alt+F');}catch{failed.push('Control+Alt+F');}   // search everything
+  try{if(!globalShortcut.register('Control+Alt+L',()=>{look?.look('').catch(e=>log('look',e.message));}))failed.push('Control+Alt+L');}catch{failed.push('Control+Alt+L');}   // look at my screen
   if(failed.length)log('hotkeys',`Unavailable: ${failed.join(', ')}. Use the tray menu or choose another shortcut.`);
 }
 function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate([
@@ -232,7 +237,7 @@ function scheduleChatter(){
 }
 /** Spoken summary of where everything stands. */
 /* ---------- conversation: greetings, thanks, the daily briefing, maps ---------- */
-const TALK=['meeting-start','meeting-end','page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
+const TALK=['look','recall','meeting-start','meeting-end','page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
 function partOfDay(){const h=new Date().getHours();return h<12?'morning':h<18?'afternoon':'evening';}
 function addr(){return workstations.theme().voice?.address||'sir';}
 const pick=a=>a[Math.floor(Math.random()*a.length)];
@@ -244,7 +249,7 @@ async function briefWeather(){
     const w=settings.get().weather||{};const loc=w.enabled&&Number.isFinite(w.latitude)&&Number.isFinite(w.longitude)?{enabled:true,latitude:w.latitude,longitude:w.longitude,place:''}:{enabled:true,latitude:53.8008,longitude:-1.5491,place:'Leeds'};
     if(!briefWeather.cache||Date.now()-briefWeather.at>600000){briefWeather.cache=await weather(loc);briefWeather.at=Date.now();}
     const c=briefWeather.cache?.current;if(!c)return null;
-    return {temp:Math.round(c.temperature_2m),words:WMO[c.weather_code]||'',wind:Math.round(c.wind_speed_10m||0),place:loc.place};
+    return {temp:Math.round(c.temperature_2m),words:WMO[c.weather_code]||'',wind:Math.round(c.wind_speed_10m||0),place:loc.place,code:c.weather_code};
   }catch(e){log('weather',e.message);return null;}
 }
 /* ---------- the earth: place look-up and local weather for the globe ---------- */
@@ -306,17 +311,39 @@ function briefingData(mode='briefing'){
     date:now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'}),time:fmt(now),
     events,todos:open.slice(0,6).map(t=>t.text),todoCount:open.length,bays,ideas:ideaList,system:{cpu,ram},tower:{name:towerName(),today:towerToday},spoken:parts.join(' ')};
 }
+/** The cinematic morning briefing (briefing-cinema.js): the day in scenes, each on screen as JARVIS says its line. */
+let cinemaId=0,cinemaTalking=false;
+async function cinemaBrief(){
+  const b=briefingData('briefing'),w=await briefWeather(),now=Date.now(),since=now-14*3600e3,id=++cinemaId;
+  let mail=null,waiting=[];
+  try{if(core?.mail?.ready()){const rows=core.mail.since(since);mail={count:rows.length,reply:rows.filter(x=>x.needsReply).slice(-3).reverse().map(x=>({from:x.from,subject:x.subject})),unhappy:rows.filter(x=>['angry','unhappy'].includes(x.mood)).length};}}catch(e){log('briefing',e.message);}
+  try{waiting=(core?.approvals.waiting()||[]).map(a=>({title:a.title}));}catch{}
+  const projects=ideas.list().filter(i=>i.project?.phases?.length&&i.stage!=='done').map(i=>{const steps=i.project.phases.flatMap(p=>p.steps);return {title:i.title,progress:Math.round(100*steps.filter(x=>x.done).length/Math.max(1,steps.length)),next:steps.find(x=>!x.done)?.title||''};}).filter(p=>p.progress<100).sort((a,c)=>c.progress-a.progress).slice(0,3);
+  const scenes=buildScenes({who:addr(),part:partOfDay(),date:b.date,time:b.time,now,weather:w&&{...w,icon:WX_ICON[w.code]||''},mail,events:b.events,
+    night:{done:tower.runs.filter(r=>r.status==='done'&&!r.rehearsal&&(r.endedAt||0)>=since).slice(-4).reverse().map(r=>({floor:r.floorName,title:r.title})),waiting},
+    dates:(core?.dates?.list(now)||[]).filter(d=>d.daysLeft!==null&&d.daysLeft<=7).slice(0,4).map(d=>({name:d.name,kind:d.kind,daysLeft:d.daysLeft,amount:d.amount||''})),
+    todos:{count:b.todoCount,first:b.todos},projects,blocked:b.bays.filter(x=>x.status==='blocked').map(x=>x.name)});
+  const st=settings.get(),send=m=>broadcast('briefing',{mode:'cinema',id,...m});
+  const voiced=!!voice?.speakParts(scenes.map(x=>x.line),st,voiceProfile(),{onMark:i=>send({mark:i}),onEnd:()=>{if(id===cinemaId)cinemaTalking=false;send({end:true});}});
+  cinemaTalking=voiced;
+  send({start:true,scenes,voiced,assistant:workstations.theme().assistant,sound:st.animations===false?0:st.master*st.interface});   // the bookmarks come back a moment later, so the screen hears "start" first
+  try{core?.noteAwake(Date.now(),true);}catch{}
+}
 function talk(action,cmd={}){
   const who=addr();
   if(action==='attention'){say(pick([`Yes, ${who}?`,`${cap(who)}?`,`Go ahead, ${who}.`]),{listenThrough:true});return true;}   // keep listening while he answers, so the command can follow straight on
+  if(action==='greet'&&partOfDay()==='morning'&&visits.get('__','briefed').day!==new Date().toDateString()){visits.set('__','briefed',{day:new Date().toDateString()});return talk('briefing');}   // "good morning, Jarvis": the day's first briefing
   if(action==='greet'){say(`Good ${partOfDay()}, ${who}.`);try{core?.noteAwake(Date.now(),true);}catch{}return true;}
   if(action==='thanks'){say(pick([`You're welcome, ${who}.`,`Always a pleasure, ${who}.`,`Any time, ${who}.`]));return true;}
+  if(action==='briefing'&&!cmd.plain){cinemaBrief().catch(e=>{log('briefing',e.message);talk('briefing',{plain:true});});return true;}   // the plain card if the cinematic one fails
   if(action==='briefing'||action==='status'){
     (async()=>{const b=briefingData(action);
       if(action==='briefing'){const w=await briefWeather();if(w){b.weather=w;const line=`It's ${w.temp} degrees${w.words?' and '+w.words:''}${w.place?' in '+w.place:''}.`;b.spoken=b.spoken.replace(/^(Good \w+, [^.]+\.)/,`$1 ${line}`);}}
       broadcast('briefing',b);say(b.spoken);})().catch(e=>log('briefing',e.message));
     return true;
   }
+  if(action==='recall'){if(!recall)return false;if(!cmd.question){openRecall();say(`What shall I look for, ${who}?`);return true;}say(pick([`Searching everything, ${who}.`,`Let me check your records, ${who}.`,`Looking now, ${who}.`]));runRecall(cmd.question).catch(e=>log('recall',e.message));return true;}
+  if(action==='look'){if(!look)return false;say(pick([`Let me take a look, ${who}.`,`Looking now, ${who}.`,`One moment, ${who}.`]));look.look(cmd.question||'').catch(e=>log('look',e.message));return true;}
   if(action==='note'){
     const text=String(cmd.text||'').trim().replace(/\bi\b/g,'I').replace(/^./,c=>c.toUpperCase()).slice(0,200);if(!text)return false;
     if(cmd.kind==='idea'){const n=ideas.list().length;const a=-Math.PI/2+n*2.4;ideas.save({title:text.slice(0,120),stage:'spark',progress:0,notes:'Captured by voice.',x:Math.max(8,Math.min(80,50+Math.cos(a)*30)),y:Math.max(16,Math.min(80,50+Math.sin(a)*26))});say(`Saved as a new idea, ${who}.`);}
@@ -378,7 +405,7 @@ function endFocus(){
   dispatch('home');pendingModule=back;
 }
 /* ---------- meeting mode: record a call for a suit, transcribe it offline, email the notes ---------- */
-let meetings=null,meetingFlush=null,meetingWatch=null,assistant=null,planner=null;
+let meetings=null,meetingFlush=null,meetingWatch=null,assistant=null,planner=null,look=null,recall=null;
 function gmailFile(){return path.join(userDir,'gmail-app-password.enc');}
 function gmailPassword(){try{return fs.existsSync(gmailFile())?safeStorage.decryptString(fs.readFileSync(gmailFile())):'';}catch(e){log('meeting','Could not read the Gmail app password: '+e.message);return '';}}
 function meetingInfo(){
@@ -535,7 +562,8 @@ function towerUpdate(run){
   const send=()=>{towerThrottle.delete(run.id);const latest=towerLatest.get(run.id)||run;broadcast('tower',{type:'run',run:latest});if(['done','failed','stopped','budget','needs_changes','needs_brief'].includes(latest.status))towerLatest.delete(run.id);};
   if(final){clearTimeout(towerThrottle.get(run.id));send();if(run.ideaId){try{assistant?.towerFinished(run);}catch(e){log('ideas',e.message);}}if(run.planStep){try{planner?.runFinished(run);}catch(e){log('ideas',e.message);}}
     if(towerAnnounced.has(run.id))return;towerAnnounced.add(run.id);
-    if(run.notify&&!run.handedTo)core?.towerTell(run).catch(e=>log('tower',e.message));   // you asked to hear when it ends (an assembly line tells you at its last floor)if(towerAnnounced.size>200)towerAnnounced.delete(towerAnnounced.values().next().value);   // approving or commenting afterwards doesn't announce it again
+    if(towerAnnounced.size>200)towerAnnounced.delete(towerAnnounced.values().next().value);   // approving or commenting afterwards doesn't announce it again
+    if(run.notify&&!run.handedTo)core?.towerTell(run).catch(e=>log('tower',e.message));   // you asked to hear when it ends (an assembly line tells you at its last floor)
     if(run.status==='needs_changes'){observeWork('rework',{theme:run.theme,id:run.floorId,name:run.floorName});say(`${run.floorName} needs corrections. Nothing was handed on.`);}
     else if(run.status==='needs_brief')say(`${run.floorName} needs a complete brief before starting.`);
     else if(run.status==='done')say(`${run.floorName} has finished "${run.title}".${run.rehearsal?' That was a rehearsal.':''}`);
@@ -672,6 +700,28 @@ function workspaceShortcut(command,id=tabs?.active){
 }
 let pendingDirect=false;
 function directHall(){if(!mainReady){pendingDirect=true;displays?.setActive(true);return;}displays?.setActive(true);machine.dispatch('debug-hall');}
+/** The Claude key, if there is one and today's AI budget is not used up. */
+function aiKey(){
+  const key=readTowerKey();if(!key)throw Error('Add the Claude API key in Settings, JARVIS Core, first.');
+  if(core?.store&&core.store.budgetLeft()<0.1)throw Error("Today's AI budget is used up. Raise it in Settings, JARVIS Core, or try again tomorrow.");
+  return key;
+}
+/** Your second brain (src/brain/recall.js): the card shows the answer and its sources; he says the first part aloud. */
+async function runRecall(question,{speak=true}={}){
+  const show=card=>broadcast('core',{type:'recall',card});
+  show({busy:true,question});
+  try{const r=await recall.search(question);show(r);if(speak)say(r.spoken);return r;}
+  catch(e){show({question,error:e.message});if(speak)say(`I couldn't search that, ${addr()}. ${e.message}`);throw e;}
+}
+function openRecall(){const idle=machine?.value?.state==='IDLE';if(idle)dispatch('wake');setTimeout(()=>broadcast('core',{type:'recall',card:{open:true}}),idle?1800:0);}
+/** A picture of the screen under the mouse, for "look at my screen". Kept in memory only. */
+async function captureScreen(){
+  const d=screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),k=Math.min(1,1568/Math.max(d.size.width,d.size.height));
+  const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:Math.round(d.size.width*k),height:Math.round(d.size.height*k)}});
+  const src=sources.find(x=>String(x.display_id)===String(d.id))||sources[0];
+  if(!src||src.thumbnail.isEmpty())throw Error('Windows did not give me a picture of the screen.');
+  return {jpeg:src.thumbnail.toJPEG(82),display:d.id===screen.getPrimaryDisplay().id?'main':'other'};
+}
 function refreshModules(){modules=workstations.modules();if(machine)machine.modules=modules;}
 function setTheme(id,opts={}){
   const previous=workstations.activeTheme;
@@ -1053,6 +1103,7 @@ async function api(event,method,payload){
       await applySettings({deckBackdrops:{...(settings.get().deckBackdrops||{}),[t]:name}});const out=deckBackdrop(t);broadcast('deck',{type:'backdrop',theme:t,...out});return out;
     }
     case 'briefing':{if(role!=='main')return false;return talk(payload==='status'?'status':'briefing');}
+    case 'briefing-stop':{if(role!=='main')return false;if(cinemaTalking){cinemaTalking=false;voice?.hush();}return true;}
     case 'tower-get':return towerView(typeof payload?.theme==='string'?payload.theme:workstations.activeTheme);
     case 'tower-model-set':{
       const t=workstations.activeTheme;const kind=payload?.kind==='image'?'image':'glb';
@@ -1128,6 +1179,10 @@ async function api(event,method,payload){
     case 'idea-plan':return planner.plan(String(payload?.id||''),String(payload?.feedback||'').slice(0,2000));
     case 'idea-howto':return planner.howTo(String(payload?.id||''),String(payload?.step||''),{again:payload?.again===true});
     case 'idea-step':return planner.step(String(payload?.id||''),String(payload?.step||''),payload?.done===true);
+    case 'screen-look':return look?look.look(String(payload?.question||'').slice(0,600),{follow:payload?.follow===true}):null;
+    case 'screen-look-forget':look?.forget();return true;
+    case 'recall':return recall?runRecall(String(payload?.question||'').slice(0,600),{speak:false}):null;
+    case 'recall-open':if(!recall)return null;await recall.open(payload?.ref);return true;
     case 'idea-night-floors':return planner.floors(String(payload?.id||''));
     case 'idea-night':return planner.queueNight(String(payload?.id||''),String(payload?.step||''),{floorId:String(payload?.floorId||''),now:payload?.now===true});
     case 'idea-night-cancel':return planner.cancelNight(String(payload?.id||''),String(payload?.step||''));
@@ -1308,6 +1363,15 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     tower=new TowerStore({dir:userDir,docs:app.getPath('documents')});towerRunner=new TowerRunner({store:tower,getKey:readTowerKey,onUpdate:towerUpdate,onDone:towerDone,log});setInterval(towerNightShift,30000);setTimeout(towerNightShift,20000);
     assistant=new IdeaAssistant({ideas:()=>ideas,tower:()=>tower,runner:()=>towerRunner,workstations:()=>workstations,board:t=>boardFor(t),readKey:readTowerKey,settings:()=>settings.get(),
       dir:userDir,appRoot:root,desktop:app.getPath('desktop'),log,broadcast,say:t=>say(t),addr:()=>addr(),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},notify:(title,body)=>{try{if(Notification.isSupported()&&!focusActive()&&!meetings?.active)new Notification({title,body}).show();}catch{}}});
+    look=new ScreenLook({capture:captureScreen,log:m=>log('look',m),say:t=>say(t),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},
+      ask:({image,question,history})=>{const key=aiKey();return callApi({key,model:core?.store?.get()?.models?.brain||tower.settings().plannerModel,system:LOOK_SYSTEM,prompt:lookContent({image,question,history}),maxTokens:1600,retries:1});},
+      show:card=>{broadcast('core',{type:'screen-look',card});if(card.answer&&machine?.value?.state==='IDLE'){try{if(Notification.isSupported())new Notification({title:'JARVIS looked at your screen',body:card.spoken}).show();}catch{}}}});
+    recall=new Recall({log:m=>log('recall',m),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},
+      local:()=>localItems({meetings:meetings?.history||[],ideas:ideas.list(),brainstorms:planner?.sessions()||[],runs:tower.runs,todos:todos.list(),events:calendar.list(),
+        dates:core?.dates?.list()||[],notes:core?.store?.notes()||'',orders:core?.orders?.read()||'',read:file=>fs.promises.readFile(file,'utf8').then(t=>t.slice(0,80000)),opener:file=>file?()=>shell.openPath(file):null}),
+      mail:terms=>{if(!core?.mail?.ready())throw Error('Email is not connected.');return core.mail.recall(terms);},
+      docs:q=>core?.workDesk?core.workDesk.library.search(q,{limit:12000}).then(r=>r.sources.map(x=>({kind:'document',title:`${x.name}${x.location?`, ${x.location}`:''}`,text:x.excerpt,open:()=>core.workDesk.library.open(x.id)}))):[],
+      claude:({system,prompt})=>callApi({key:aiKey(),model:core?.store?.get()?.models?.brain||tower.settings().plannerModel,system,prompt,maxTokens:1500,retries:1})});
     planner=new IdeaPlanner({assistant,todos:()=>todos,dir:userDir,runner:()=>towerRunner,tower:()=>tower,activeTheme:()=>workstations.activeTheme});
     setInterval(()=>assistant.night(()=>visits.get('__','ideasNight').day,day=>visits.set('__','ideasNight',{day})).catch(e=>log('ideas',e.message)),10*60000);
     wake=new WakeTimer({dir:userDir});
@@ -1321,7 +1385,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       normalisePhoto:bytes=>{let im=nativeImage.createFromBuffer(bytes);if(im.isEmpty())throw Error('The photo could not be decoded.');const size=im.getSize();if(size.width*size.height>32e6)throw Error('Photo dimensions are too large.');im=im.resize(size.width>=size.height?{width:Math.min(1400,size.width)}:{height:Math.min(1400,size.height)});return im.toJPEG(85);},
       printDocument:async(file,out)=>{const w=new BrowserWindow({show:false,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,partition:'proposal-print-'+Date.now()}});w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());try{await w.loadFile(file);writeText(out,await w.webContents.printToPDF({printBackground:true,preferCSSPageSize:true}));}finally{w.destroy();}},openFile:async file=>{const error=await shell.openPath(file);if(error)throw Error(error);return true;},sendMeeting:async p=>{if(core?.mail.ready())return core.mail.sendNew(p);const cfg=settings.get().meeting||{},password=gmailPassword();if(!cfg.from||!password)throw Error('Connect email in JARVIS Core or Meeting settings first.');await sendGmail({user:cfg.from,password,to:p.to,subject:p.subject,text:p.text});},towerLobby:(text,hall,opts)=>towerLobby(text,hall&&workstations.themes.some(t=>t.id===hall)?hall:workstations.activeTheme,opts),
       briefing:()=>briefingData('briefing'),weather:briefWeather,health:()=>checkHealth(),openUrl:(url,title)=>broadcast('hologram',{kind:'link',url,title}),
-      wakeAt:at=>wake.set(at),upcomingExtra:()=>planner?.upcoming()||[],wakeTimers:()=>wake.timers(),keepAwake:on=>{try{if(on&&awakeBlock===null)awakeBlock=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awakeBlock!==null){powerSaveBlocker.stop(awakeBlock);awakeBlock=null;}}catch(e){log('brain',e.message);}},
+      wakeAt:at=>wake.set(at),lookAtScreen:q=>look?look.look(String(q||'')):Promise.resolve(null),recall:(q,{show=false}={})=>recall?(show?runRecall(String(q||''),{speak:false}):recall.search(String(q||''))).then(recallText):Promise.resolve('The second brain is not ready yet.'),upcomingExtra:()=>planner?.upcoming()||[],wakeTimers:()=>wake.timers(),keepAwake:on=>{try{if(on&&awakeBlock===null)awakeBlock=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awakeBlock!==null){powerSaveBlocker.stop(awakeBlock);awakeBlock=null;}}catch(e){log('brain',e.message);}},
       relaunch:()=>{app.relaunch();app.quit();},logFile:path.join(userDir,'jarvis.log')});core.start();}catch(e){core=null;coreError=String(e?.message||e);log('brain','JARVIS Core did not start: '+(e?.stack||e?.message));if(BOOT?.version&&!e?.code)BOOT.markBad?.(`JARVIS Core did not start: ${coreError.slice(0,200)}`);}   /* a code fault rolls the update back; a disk or permission problem (e.code) would fail on any version */
     panels=new PanelManager({window:()=>displays?.work,onChange:list=>broadcast('panels',list),log});
     deckPanels=new PanelManager({window:()=>displays?.console,onChange:list=>broadcast('deck',{type:'panels',list}),log});

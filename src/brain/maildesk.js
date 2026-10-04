@@ -165,6 +165,25 @@ export class MailDesk {
       return msgs.reverse().map(m => { const p = parseMessage(m.raw); return {uid: m.uid, date: new Date(p.date || m.date).toISOString(), from: p.from.name ? `${p.from.name} <${p.from.address}>` : p.from.address, subject: p.subject, preview: clip(oneLine(freshText(p.text)), 300)}; });
     } finally { await im.logout(); }
   }
+  /** Email for the second brain (recall.js): all mail on Gmail, not just the inbox, newest first, with more of each message. */
+  async recall(terms, {max = 25} = {}) {
+    const words = terms.map(t => String(t).replace(/["\\{}()]/g, '')).filter(Boolean).sort((a, b) => b.length - a.length).slice(0, 5);
+    if (!words.length) return [];
+    const im = await this.open();
+    try {
+      let uids = null, all = false;
+      if (im.gmail) try { await im.select(await im.specialBox('\\All', ['[Gmail]/All Mail', '[Google Mail]/All Mail']), true); all = true; } catch {}
+      if (!all) await im.select('INBOX', true);
+      if (im.gmail) try {
+        uids = await im.search(`X-GM-RAW ${JSON.stringify(words.join(' '))}`);
+        if (uids.length < 5 && words.length > 1) uids = [...new Set([...uids, ...await im.search(`X-GM-RAW ${JSON.stringify(`{${words.join(' ')}}`)}`)])].sort((a, b) => a - b);   // {a b} is "a or b"
+      } catch { uids = null; }
+      const any = ws => ws.length === 1 ? `TEXT ${JSON.stringify(ws[0])}` : `OR TEXT ${JSON.stringify(ws[0])} ${any(ws.slice(1))}`;
+      if (!uids) uids = await im.search(any(words.slice(0, 4)));
+      const msgs = uids.length ? await im.fetch(uids.slice(-max), {bytes: 30000}) : [];
+      return msgs.reverse().map(m => { const p = parseMessage(m.raw); return {kind: 'email', title: p.subject || '(no subject)', who: p.from.name || p.from.address, at: Date.parse(p.date || m.date) || null, text: clip(freshText(p.text), 6000)}; });
+    } finally { await im.logout(); }
+  }
   async read(uid) {
     const im = await this.open();
     try { await im.select('INBOX', true); const [m] = await im.fetch([Number(uid)], {bytes: 120000}); if (!m) throw Error('No email with that number.'); const p = parseMessage(m.raw);

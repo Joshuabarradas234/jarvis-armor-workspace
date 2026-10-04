@@ -30,6 +30,20 @@ export class WindowsVoice {
     child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({text,voice:settings.voiceName,prefer:profile?.prefer||[],rate:typeof profile?.rate==='number'?profile.rate:-1,volume:Math.round(100*settings.master*settings.voice),soundFile:candidate&&fs.existsSync(candidate)?candidate:null}));
     child.on('exit',()=>{if(this.speaker===child)this.speaker=null;});
   }
+  /** Several lines spoken as one, for the cinematic briefing: onMark(i) as line i starts, onEnd() when it stops. False when muted or not on Windows. */
+  speakParts(parts,settings,profile,{onMark=()=>{},onEnd=()=>{}}={}){
+    if(process.platform!=='win32'||settings.master*settings.voice===0||!parts.length)return false;
+    if(this.speaker)this.speaker.kill();
+    this.suppressedUntil=Date.now()+Math.max(2500,parts.join(' ').length*85+parts.length*450);
+    const child=spawn('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(this.scripts,'speak.ps1')],{windowsHide:true,stdio:['pipe','pipe','pipe']});this.speaker=child;
+    let buffer='';child.stdout.on('data',chunk=>{buffer+=chunk.toString();let i;while((i=buffer.indexOf('\n'))>=0){const m=/^MARK (\d+)/.exec(buffer.slice(0,i).trim());buffer=buffer.slice(i+1);if(m)onMark(Number(m[1]));}});
+    child.on('error',e=>this.log('speech',e.message));child.stderr.on('data',d=>this.log('speech',String(d).slice(0,400)));
+    child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({parts,voice:settings.voiceName,prefer:profile?.prefer||[],rate:typeof profile?.rate==='number'?profile.rate:-1,volume:Math.round(100*settings.master*settings.voice)}));
+    child.on('exit',()=>{if(this.speaker===child){this.speaker=null;this.suppressedUntil=Math.min(this.suppressedUntil,Date.now()+400);}onEnd();});   // finished early: listen again straight away
+    return true;
+  }
+  /** Stop talking now. */
+  hush(){if(this.speaker){this.speaker.kill();this.speaker=null;}this.suppressedUntil=Math.min(this.suppressedUntil,Date.now()+300);}
   diagnose(){
     if(process.platform!=='win32')return Promise.resolve({platform:process.platform,note:'Voice diagnostics only run on Windows.'});
     return new Promise(resolve=>{const child=spawn('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(this.scripts,'listen.ps1'),'-Diagnose'],{windowsHide:true,stdio:['ignore','pipe','pipe']});let out='',err='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>err+=d);const done=()=>{try{resolve({...JSON.parse(out.trim().split('\n').pop()),listener:this.listener?'running':'stopped',status:this.lastError||null,engine:this.engine||null});}catch{resolve({raw:out.slice(0,2000),stderr:err.slice(0,1000)});}};child.on('error',e=>resolve({error:e.message}));child.on('exit',done);setTimeout(()=>{try{child.kill();}catch{}},20000);});

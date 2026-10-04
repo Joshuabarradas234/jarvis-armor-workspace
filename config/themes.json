@@ -245,8 +245,8 @@
     },
     "overlay": {
       "video": "jarvis://asset/transitions/jarvis-ring.mp4",
-      "x": 50,
-      "y": 64,
+      "x": 50.7,
+      "y": 63.5,
       "w": 46,
       "h": 44,
       "blend": "screen",

@@ -32,5 +32,31 @@ try {
   $rate = -1
   if ($request.PSObject.Properties.Name -contains 'rate') { $rate = [Math]::Max(-10,[Math]::Min(10,[int]$request.rate)) }
   $speaker.Rate = $rate
+  if ($request.PSObject.Properties.Name -contains 'parts') {
+    # the cinematic briefing: one line per scene, with a bookmark before each so the screen can follow the voice
+    $prompt = New-Object System.Speech.Synthesis.PromptBuilder($speaker.Voice.Culture)
+    $i = 0
+    foreach ($part in @($request.parts)) {
+      $prompt.AppendBookmark([string]$i)
+      $prompt.AppendText([string]$part)
+      $prompt.AppendBreak([TimeSpan]::FromMilliseconds(450))
+      $i++
+    }
+    $null = Register-ObjectEvent -InputObject $speaker -EventName BookmarkReached -SourceIdentifier 'jarvis.mark'
+    $null = Register-ObjectEvent -InputObject $speaker -EventName SpeakCompleted -SourceIdentifier 'jarvis.done'
+    $null = $speaker.SpeakAsync($prompt)
+    $done = $false
+    while (-not $done) {
+      $e = Wait-Event -Timeout 5
+      if (-not $e) { if ([string]$speaker.State -eq 'Ready') { $done = $true }; continue }
+      if ($e.SourceIdentifier -eq 'jarvis.mark') { [Console]::Out.WriteLine('MARK ' + $e.SourceEventArgs.Bookmark); [Console]::Out.Flush() }
+      elseif ($e.SourceIdentifier -eq 'jarvis.done') { $done = $true }
+      Remove-Event -EventIdentifier $e.EventIdentifier
+    }
+    # without this, PowerShell waits several seconds on the open subscriptions before it exits
+    Unregister-Event -SourceIdentifier 'jarvis.mark'; Unregister-Event -SourceIdentifier 'jarvis.done'
+    $speaker.Dispose(); $speaker = $null
+    exit 0
+  }
   $speaker.Speak([string]$request.text)
 } catch { [Console]::Error.WriteLine($_.Exception.Message) } finally { if ($speaker) { $speaker.Dispose() } }
