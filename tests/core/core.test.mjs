@@ -84,6 +84,10 @@ core.start();
 ok(fs.existsSync(path.join(docs, 'JARVIS', 'Standing orders.md')), 'Standing orders.md created');
 let st = core.status();
 ok(st.schedule.jobs.length === 7 && st.schedule.problems.length === 0, `7 schedule lines understood (${st.schedule.jobs.map(j => j.label).join(' | ')})`);
+// Run in the small hours, the clock would start tonight's audit and self-review by itself and add proposals the later steps do not expect: move them eight hours away.
+{ const f = path.join(docs, 'JARVIS', 'Standing orders.md'), hh = String(new Date(Date.now() + 8 * 3600e3).getHours()).padStart(2, '0');
+  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('- 02:30 — Run the overnight audit', `- ${hh}:10 — Run the overnight audit`).replace('- 03:00 — Review yourself', `- ${hh}:40 — Review yourself`));
+  ok(core.orders.parse(true).jobs.length === 7, `the nightly audit and self-review moved to ${hh}:10 and ${hh}:40 for this test`); }
 ok(st.config.owner.phone === '', 'no phone number is built in (it is entered in Settings)');
 ok(!/\+44\d{9,}/.test(fs.readFileSync(path.join(docs, 'JARVIS', 'Standing orders.md'), 'utf8')), 'no phone number in the orders file');
 core.store.save({owner: {name: 'Alex', address: 'sir', phone: '+447700900123', email: ''}});

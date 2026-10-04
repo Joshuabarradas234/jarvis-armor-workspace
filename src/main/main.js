@@ -716,12 +716,43 @@ async function runRecall(question,{speak=true}={}){
 function openRecall(){const idle=machine?.value?.state==='IDLE';if(idle)dispatch('wake');setTimeout(()=>broadcast('core',{type:'recall',card:{open:true}}),idle?1800:0);}
 /** A picture of the screen under the mouse, for "look at my screen". Kept in memory only. */
 async function captureScreen(){
+  if(lookWin&&!lookWin.isDestroyed()&&lookWin.isVisible()){lookWin.hide();await new Promise(r=>setTimeout(r,250));}   // his own card stays out of the picture
   const d=screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),k=Math.min(1,1568/Math.max(d.size.width,d.size.height));
   const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:Math.round(d.size.width*k),height:Math.round(d.size.height*k)}});
   const src=sources.find(x=>String(x.display_id)===String(d.id))||sources[0];
   if(!src||src.thumbnail.isEmpty())throw Error('Windows did not give me a picture of the screen.');
-  return {jpeg:src.thumbnail.toJPEG(82),display:d.id===screen.getPrimaryDisplay().id?'main':'other'};
+  return {jpeg:src.thumbnail.toJPEG(82),display:d.id};
 }
+/** The look card's own window (dist/look.html): above every app, in the corner of the screen he looked at, so he can help in whatever you are using. */
+let lookWin=null,lookCard=null,lookMoved=false,lookH=200,lookSizing=false;
+function lookWindow(){
+  if(lookWin&&!lookWin.isDestroyed())return lookWin;
+  const w=lookWin=createWindow({role:'look',width:480,height:lookH,show:false,frame:false,transparent:true,backgroundColor:'#00000000',resizable:false,minimizable:false,maximizable:false,fullscreenable:false,skipTaskbar:true,alwaysOnTop:true,hasShadow:false});
+  w.setAlwaysOnTop(true,'screen-saver');   // above full-screen apps too
+  w.on('moved',()=>{if(!lookSizing)lookMoved=true;});   // you dragged it: it stays where you put it
+  w.webContents.on('did-finish-load',()=>{if(lookCard)w.webContents.send('jarvis:core',{type:'screen-look',card:lookCard});});
+  w.on('closed',()=>{if(lookWin===w)lookWin=null;});
+  w.loadURL('jarvis://app/look.html?view=look').catch(e=>log('look',e.message));
+  return w;
+}
+function placeLook(){
+  const w=lookWin;if(!w||w.isDestroyed())return;
+  const d=screen.getAllDisplays().find(x=>x.id===lookCard?.display)||screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),a=d.workArea,b=w.getBounds();
+  const height=Math.max(120,Math.min(Math.round(lookH),a.height-32));
+  const next=lookMoved?{x:b.x,y:Math.max(a.y,b.y+b.height-height),width:480,height}:{x:a.x+a.width-480-16,y:a.y+a.height-height-16,width:480,height};
+  if(Math.abs(next.x-b.x)+Math.abs(next.y-b.y)+Math.abs(next.width-b.width)+Math.abs(next.height-b.height)<2)return;
+  lookSizing=true;w.setBounds(next);setTimeout(()=>{lookSizing=false;},150);
+}
+function showLook(card){
+  if(card.busy&&!card.follow)lookMoved=false;   // a new look starts back in the corner of the screen he looked at
+  lookCard={...card,accent:workstations.theme()?.accent||''};
+  const w=lookWindow();
+  if(!w.webContents.isLoading())w.webContents.send('jarvis:core',{type:'screen-look',card:lookCard});
+  placeLook();
+  if(!w.isVisible())w.showInactive();   // on top, without taking the keyboard from what you are doing
+  if(card.answer)followUntil=Date.now()+25000;   // your next question can come without his name
+}
+const lookOpen=()=>!!(look?.last&&lookWin&&!lookWin.isDestroyed()&&lookWin.isVisible());
 function refreshModules(){modules=workstations.modules();if(machine)machine.modules=modules;}
 function setTheme(id,opts={}){
   const previous=workstations.activeTheme;
@@ -1181,6 +1212,8 @@ async function api(event,method,payload){
     case 'idea-step':return planner.step(String(payload?.id||''),String(payload?.step||''),payload?.done===true);
     case 'screen-look':return look?look.look(String(payload?.question||'').slice(0,600),{follow:payload?.follow===true}):null;
     case 'screen-look-forget':look?.forget();return true;
+    case 'screen-look-size':{if(role!=='look')return false;const h=Number(payload?.h);if(Number.isFinite(h)&&h>0){lookH=Math.min(900,h);placeLook();}return true;}
+    case 'screen-look-close':{if(role!=='look')return false;look?.forget();lookCard=null;if(lookWin&&!lookWin.isDestroyed())lookWin.hide();return true;}
     case 'recall':return recall?runRecall(String(payload?.question||'').slice(0,600),{speak:false}):null;
     case 'recall-open':if(!recall)return null;await recall.open(payload?.ref);return true;
     case 'idea-night-floors':return planner.floors(String(payload?.id||''));
@@ -1341,7 +1374,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       // a quieter, less certain match still counts when it starts or ends with the assistant's name (or JARVIS has just answered you)
       if(command&&meta.low){const ctx=voiceContext();const nm=clean(ctx.theme?.assistant||'');const t=clean(text);const named=!!nm&&[nm,...(NAME_ALIASES[nm]||[])].some(n=>t===n||t.startsWith(n+' ')||t.endsWith(' '+n));if(!named&&!(ctx.follow&&confidence>=0.25)){command=null;why='unsure';}}
       if(text&&!command&&!why)why='no-match';if(!text)why=meta.mine?'own-voice':meta.rejected?'unclear':'quiet';
-      if(!command&&text&&why==='no-match'){const ask=brainAsk(text,meta);if(ask){try{core?.recordMiss(text);}catch{}handled=!!core;why=core?'':'no-match';if(core){followUntil=Date.now()+20000;core.voice('core-chat',{text:ask}).catch(e=>{log('brain',e.message);say(e.message);});}}else if(core&&heardName(text))core.recordMiss(text);}
+      if(!command&&text&&why==='no-match'){const ask=brainAsk(text,meta);if(ask&&lookOpen()){handled=true;why='';followUntil=Date.now()+25000;look.look(ask,{follow:true}).catch(e=>log('look',e.message));}else if(ask){try{core?.recordMiss(text);}catch{}handled=!!core;why=core?'':'no-match';if(core){followUntil=Date.now()+20000;core.voice('core-chat',{text:ask}).catch(e=>{log('brain',e.message);say(e.message);});}}else if(core&&heardName(text))core.recordMiss(text);}
       if(command){if(command.theme&&command.theme!==workstations.activeTheme){try{workstations.setTheme(command.theme);refreshModules();broadcast('theme',themePayload());updateTray();scheduleChatter();scheduleHealth();setTimeout(()=>{if(settings.get().voiceEnabled)voice.listen(true);},0);}catch(e){log('voice',e.message);}}handled=!!dispatch(command.action,command.id,command);if(handled){followUntil=Date.now()+12000;if(!TALK.includes(command.action)&&!String(command.action).startsWith('core-'))setTimeout(()=>{try{acknowledge(command.action,command.id);}catch{}},260);}}broadcast('heard',{text:heard,confidence:Math.round((confidence||0)*100),handled,why:handled?'':why,name:voiceContext().theme?.assistant||'Jarvis'});status.commandHistory.unshift({time:Date.now(),text:heard,confidence:Math.round((confidence||0)*100),accepted:!!text,handled});status.commandHistory=status.commandHistory.slice(0,50);tray?.setToolTip(`JARVIS · heard: “${heard}” ${Math.round((confidence||0)*100)}%${handled?' ✓':''}`);broadcast('status',getStatus());},onStatus:text=>{voiceStatus=text;broadcast('status',getStatus());},log});
     machine=new WorkspaceMachine({modules,onChange:s=>{
       displays?.setActive(s.state!=='IDLE');broadcast('snapshot',s);
@@ -1365,7 +1398,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       dir:userDir,appRoot:root,desktop:app.getPath('desktop'),log,broadcast,say:t=>say(t),addr:()=>addr(),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},notify:(title,body)=>{try{if(Notification.isSupported()&&!focusActive()&&!meetings?.active)new Notification({title,body}).show();}catch{}}});
     look=new ScreenLook({capture:captureScreen,log:m=>log('look',m),say:t=>say(t),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},
       ask:({image,question,history})=>{const key=aiKey();return callApi({key,model:core?.store?.get()?.models?.brain||tower.settings().plannerModel,system:LOOK_SYSTEM,prompt:lookContent({image,question,history}),maxTokens:1600,retries:1});},
-      show:card=>{broadcast('core',{type:'screen-look',card});if(card.answer&&machine?.value?.state==='IDLE'){try{if(Notification.isSupported())new Notification({title:'JARVIS looked at your screen',body:card.spoken}).show();}catch{}}}});
+      show:card=>showLook(card)});
     recall=new Recall({log:m=>log('recall',m),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},
       local:()=>localItems({meetings:meetings?.history||[],ideas:ideas.list(),brainstorms:planner?.sessions()||[],runs:tower.runs,todos:todos.list(),events:calendar.list(),
         dates:core?.dates?.list()||[],notes:core?.store?.notes()||'',orders:core?.orders?.read()||'',read:file=>fs.promises.readFile(file,'utf8').then(t=>t.slice(0,80000)),opener:file=>file?()=>shell.openPath(file):null}),

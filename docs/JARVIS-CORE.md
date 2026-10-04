@@ -123,7 +123,7 @@ When you give the Tower a job, you can ask him to **WhatsApp** or **call** you w
 
 ### Your second brain (1.90)
 
-Ask him what is in your records, on WhatsApp or out loud: "what did we agree with the landlord?", "search everything for the boiler quote". He searches your email (all of Gmail), Work desk documents, meeting notes, ideas, plans, Tower results, his notes, standing orders, to-dos, calendar and dates, and answers with numbered sources. On the PC, **Ctrl+Alt+F** opens the search card. "Look at my screen" (**Ctrl+Alt+L**) works only on the PC, never from a message.
+Ask him what is in your records, on WhatsApp or out loud: "what did we agree with the landlord?", "search everything for the boiler quote". He searches your email (all of Gmail), Work desk documents, meeting notes, ideas, plans, Tower results, his notes, standing orders, to-dos, calendar and dates, and answers with numbered sources. On the PC, **Ctrl+Alt+F** opens the search card. "Look at my screen" (**Ctrl+Alt+L**) works in any app, even with JARVIS in the tray. His answer floats on top, and you can keep asking out loud. It works only on the PC, never from a message.
 
 ### Waking the PC for calls (1.88)
 

@@ -27,8 +27,9 @@ export class ScreenLook {
     try {
       const keep = follow && this.last && this.now() - this.last.at < 10 * 60000;
       if (!keep) this.history = [];
-      this.show({busy: true, question: q});
-      const shot = keep ? this.last.shot : await this.capture();
+      if (keep) this.show({busy: true, question: q, display: this.last.shot.display, follow: true});
+      const shot = keep ? this.last.shot : await this.capture();   // the picture first, so his card is not in it
+      if (!keep) this.show({busy: true, question: q, display: shot.display, follow: false});
       const res = await this.ask({image: shot.jpeg.toString('base64'), question: q, history: this.history});
       const text = String(res.text || '').trim(); if (!text) throw Error('Claude did not answer.');
       try { if (res.cost > 0) this.spent(res.cost, 'screen look'); } catch {}
