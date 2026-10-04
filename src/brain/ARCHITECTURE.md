@@ -15,7 +15,7 @@ an optional third screen shows "the vista"). Three halls, each with its own assi
   `src/main/preload.cjs`, which is PROTECTED — reuse an existing channel such as `core` or `status`).
   `say(text)` speaks through the PC. `log(kind, message)` writes to `jarvis.log`.
 - `src/main/panels.js`, `src/main/tabs.js` — web pages shown inside the hall (floating panels, suit tabs).
-- `src/main/screen-look.js` — "look at my screen": a picture of the screen under the mouse goes to Claude with the question (memory only, ten minutes for follow-ups). `src/main/briefing-cinema.js` — the scenes of the cinematic morning briefing; `speak.ps1` reports a bookmark as each line starts.
+- `src/main/screen-look.js` — "look at my screen": a picture of the screen under the mouse goes to Claude with the question (memory only, ten minutes for follow-ups). The answer shows in its own always-on-top window (`dist/look.html`) on that screen, so it works in any app and from the tray. `src/main/briefing-cinema.js` — the scenes of the cinematic morning briefing; `speak.ps1` reports a bookmark as each line starts.
 - `src/main/wake-timer.js` — the Windows task "JARVIS wake-up" that wakes the PC two minutes before the next call,
   message or report (JARVIS Core moves it; `--jarvis-wake` only nudges the running clock).
 - `src/display/` — which window goes on which screen (`roles.js`, `windows.js`).

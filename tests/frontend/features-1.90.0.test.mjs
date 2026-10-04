@@ -130,10 +130,10 @@ test('the briefing speaks its lines with bookmarks so the screen follows his voi
 });
 
 test('wiring: the cards load on the top screen, use channels the preload already allows, and keep Tower announcements tidy',()=>{
-  const html=fs.readFileSync('dist/index.html','utf8');for(const f of ['screen-look.js','recall.js','briefing-cinema.js'])assert.ok(html.includes(`<script type="module" src="./assets/${f}"></script>`),f);
+  const html=fs.readFileSync('dist/index.html','utf8');for(const f of ['recall.js','briefing-cinema.js'])assert.ok(html.includes(`<script type="module" src="./assets/${f}"></script>`),f);
   const pre=fs.readFileSync('src/main/preload.cjs','utf8');assert.ok(pre.includes("'core'")&&pre.includes("'briefing'"));
   const main=fs.readFileSync('src/main/main.js','utf8');
-  for(const s of ["globalShortcut.register('Control+Alt+L'","globalShortcut.register('Control+Alt+F'","broadcast('core',{type:'screen-look',card})","broadcast('core',{type:'recall',card})","case 'briefing-stop':","if(action==='briefing'&&!cmd.plain){cinemaBrief()"])assert.ok(main.includes(s),s);
+  for(const s of ["globalShortcut.register('Control+Alt+L'","globalShortcut.register('Control+Alt+F'","show:card=>showLook(card)","broadcast('core',{type:'recall',card})","case 'briefing-stop':","if(action==='briefing'&&!cmd.plain){cinemaBrief()"])assert.ok(main.includes(s),s);
   assert.match(main,/\n\s*if\(towerAnnounced\.size>200\)towerAnnounced\.delete\(towerAnnounced\.values\(\)\.next\(\)\.value\);/);
   {const ov=JSON.parse(fs.readFileSync('config/themes.json','utf8')).find(x=>x.id==='ironman').overlay;assert.deepEqual([ov.x,ov.y],[50.7,63.5]);}   // the hologram's feet on the pad's centre (measured from the video and the hall picture)
   assert.ok(fs.readFileSync('dist/assets/hands-ideas.js','utf8').includes("if (d.mode === 'cinema') { if (d.start && Brief.el) Brief.close(true); return; }"));

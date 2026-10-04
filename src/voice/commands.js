@@ -57,6 +57,11 @@ const EMAIL=['check my email','check my emails','check my inbox','sort my email'
 const LOOK=['look at my screen','look at the screen','look at this','what am i looking at','whats on my screen','whats on the screen','read my screen','read the screen','read this','check my screen','can you see this','can you see my screen',
   'help me with this','explain this','explain my screen','what does this say','what does this mean','what does this error mean','whats this error','what is this error','summarise this','summarize this','summarise this page','summarize this page','summarise my screen','summarize my screen'];
 const LOOKQ=/^(?:look at (?:my|the) screen|look at this|check my screen|read my screen|have a look)(?: and| then)? (?:tell me |and tell me )?(.+)$/;
+/** "Look at my screen" and its questions. Also heard while JARVIS is closed to the tray, so he can help in any app. */
+function lookCommand(rest){
+  if(LOOK.includes(rest))return /^(what|explain|summari|help|read this|can you)/.test(rest)?{action:'look',question:rest}:{action:'look'};   // a question is passed on as it was asked
+  const lq=LOOKQ.exec(rest);return lq&&lq[1].trim()?{action:'look',question:lq[1].trim()}:null;
+}
 // your second brain: search everything he keeps (src/brain/recall.js)
 const RECALL=['open my second brain','second brain','search everything','search my records','search all my stuff'];
 const RECALLQ=/^(?:search (?:everything|my records|my second brain|my brain|all my stuff) (?:for|about) |find everything (?:about|on) |what do (?:i|we) know about |check my records (?:for|about) |recall )(.+)$|^((?:what|when|where|who|how much) did (?:i|we|they) (?:agree|decide|say|send|pay|book|order|promise|quote|plan)\b.*)$/;
@@ -112,6 +117,7 @@ export function parseCommand(text,context){
         if(normal===n)r='';else if(normal.startsWith(n+' '))r=normal.slice(n.length).trim();else if(normal.endsWith(' '+n))r=normal.slice(0,-n.length).trim();
         if(r===null)continue;
         if(WAKE.includes(r)||GREET.test(r))return {action:'wake',theme:t.id};
+        {const l=lookCommand(r);if(l)return l;}   // he looks without opening the hall
       }
     }
     return null;
@@ -121,8 +127,7 @@ export function parseCommand(text,context){
   if(!rest)return {action:'attention'};   // "Hey Jarvis." -> "Yes, sir?" and he listens without the name for a moment
   if(['open product studio','show product studio','create a product ad'].includes(rest))return {action:'product-studio'};
   if(WAKE.includes(rest))return {action:'wake'};
-  if(LOOK.includes(rest))return /^(what|explain|summari|help|read this|can you)/.test(rest)?{action:'look',question:rest}:{action:'look'};   // a question is passed on as it was asked
-  {const lq=LOOKQ.exec(rest);if(lq&&lq[1].trim())return {action:'look',question:lq[1].trim()};}
+  {const l=lookCommand(rest);if(l)return l;}
   if(RECALL.includes(rest))return {action:'recall'};
   {const rq=RECALLQ.exec(rest),q=rq&&(rq[1]||rq[2]||'').trim();if(q)return {action:'recall',question:q};}
   if(STATUS.includes(rest))return {action:'status'};

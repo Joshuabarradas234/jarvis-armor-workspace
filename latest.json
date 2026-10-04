@@ -1,5 +1,5 @@
 {
-  "version": "1.90.0",
+  "version": "1.90.1",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "JARVIS can look at your screen, search everything he keeps for you with sources, and give a cinematic morning briefing."
+  "notes": "\"Look at my screen\" works in any app, even with JARVIS in the tray, and his answer floats on top."
 }

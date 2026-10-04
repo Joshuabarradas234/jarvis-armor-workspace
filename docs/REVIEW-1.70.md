@@ -337,3 +337,16 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - with no key, screen look and recall both showed the key message.
 
   The answer card with sources was checked in a test page with sample data, since the test copy has no Claude key. Not tested: a real Claude answer for screen look or recall, and Gmail's All Mail on a real account.
+
+## Release 1.90.1: look at my screen, in any app
+
+- The look card moved out of the hall into its own window: `dist/look.html?view=look`, made with `createWindow({role:'look'})`, so it is trusted and uses the same preload. The window is frameless, transparent, `setAlwaysOnTop(true,'screen-saver')`, has no taskbar entry and is shown with `showInactive()`, so the app you are using keeps the keyboard. It sits bottom-right of the work area of the display that was captured (`display` is now the display id), sized to the card (`screen-look-size`), and stays where you drag it until the next new look. Only the `look` role may call `screen-look-size` and `screen-look-close`. The hall no longer loads `screen-look.js`, and the tray notification is gone, because the card shows instead.
+- `captureScreen()` hides the card for 250 ms before taking the picture. `ScreenLook.look()` now captures before it shows the busy card for a new look.
+- Voice: in the tray, `parseCommand` returned only wake commands. It now also returns look commands (`lookCommand()`, shared with the normal path), so "Jarvis, look at my screen" works without opening the hall. While the card is open, unmatched dictation goes to `look.look(…, {follow:true})` instead of Core chat, and `followUntil` is set for 25 s after each answer, so the name is not needed.
+- Tested on Windows: 264 frontend (3 new in `fixes-1.90.1.test.mjs`; the 1.90.0 wiring test was updated). In the test copy, with JARVIS closed to the tray:
+  - the card window opened 480×221 at the bottom-right of a 1440×852 work area;
+  - it showed the no-key message, and closing it hid the window;
+  - during "Look again" it went hidden and then visible again, with no page errors.
+
+  The wake task was untouched. Not tested: speech in the tray (no microphone in the test), dragging, and a real Claude answer.
+- Core tests: run between 02:30 and about 06:00, the clock started the default nightly audit (02:30) and self-review (03:00) by itself, inside their 180-minute catch-up windows. That added an extra proposal, and two checks failed ("mail box 2", and YES ALL not applying the settings proposal). The test now moves those two lines eight hours away right after start-up; there are still 7 schedule lines. 124 of 124, twice, at 03:20.
