@@ -379,3 +379,10 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - The co-pilot panel was checked in a test page with a sample meeting: ask, live lines, a gap re-fetch, the End confirmation, ENDED and Close.
 - **Mistake during testing:** the first live run aimed the ring wrongly (a clamped calibration point). It picked up the owner's Claude window on the top screen and threw it to the lower screen. I moved it back and maximised it. The test now aims step by step and refuses to make a fist unless `winctl` reports the test form under the ring. A before-and-after window snapshot showed no change.
 - Not tested: the real camera (it would have filmed the owner) and a real meeting (it would have recorded the microphone).
+
+## Release 1.92.0: a Bible verse in every hall
+
+- `dist/assets/verse-card.js` (main view): a button fixed bottom-left (126×28, 50% opacity until hover) showing "✝ 1 Cor 13:4–8". A click toggles a 3D flip to a 352×262 card with the full verse in the World English Bible (public domain; the KJV is under Crown copyright in the UK and modern translations are copyrighted). It shows only in ARMOR_HALL and SUIT_HOVER (from `snapshot`/`bootstrap`) and closes when leaving the hall.
+- It blurs itself after any click except a real keyboard press, so a later Enter or Space can't flip it.
+- Tested on Windows: 275 frontend (2 new in `verse-1.92.0.test.mjs`). In the test copy, all three halls opened and closed in turn, with only the scripted clicks recorded. A test page with a mocked bridge confirmed the verse fits the open card.
+- Note: the test copy goes full screen on the owner's real displays, and scripted hall switching looked to him like JARVIS acting by itself. Visual checks of renderer modules now use the test page in the built-in browser; the test copy runs only after warning him.
