@@ -15,6 +15,7 @@ an optional third screen shows "the vista"). Three halls, each with its own assi
   `src/main/preload.cjs`, which is PROTECTED — reuse an existing channel such as `core` or `status`).
   `say(text)` speaks through the PC. `log(kind, message)` writes to `jarvis.log`.
 - `src/main/panels.js`, `src/main/tabs.js` — web pages shown inside the hall (floating panels, suit tabs).
+- `src/main/screen-look.js` — "look at my screen": a picture of the screen under the mouse goes to Claude with the question (memory only, ten minutes for follow-ups). `src/main/briefing-cinema.js` — the scenes of the cinematic morning briefing; `speak.ps1` reports a bookmark as each line starts.
 - `src/main/wake-timer.js` — the Windows task "JARVIS wake-up" that wakes the PC two minutes before the next call,
   message or report (JARVIS Core moves it; `--jarvis-wake` only nudges the running clock).
 - `src/display/` — which window goes on which screen (`roles.js`, `windows.js`).
@@ -33,6 +34,7 @@ an optional third screen shows "the vista"). Three halls, each with its own assi
 - `src/brain/` — **JARVIS Core**: the part that works on its own.
   - `index.js` `createJarvisCore(deps)`: the scheduler (every 20 s), reports, phone, approvals, chat, voice actions.
   - `orders.js`: `Documents\JARVIS\Standing orders.md` (Remember and its call rules, schedule, watch list, rules, business facts).
+  - `recall.js`: the second brain. It searches email (Gmail All Mail), Work desk documents, meetings, ideas, plans, Tower results, notes, to-dos, calendar and dates where they are, and Claude answers with numbered sources.
   - `dates.js`: bills, birthdays and other dates, reminded on WhatsApp a few days ahead and on the day (`dates.json`).
   - `llm.js` (Claude API + tool loop), `tools.js` (what JARVIS can do; levels read/auto/user/ask).
   - `phone.js` (Twilio WhatsApp/SMS/calls, CallMeBot) and `calls.js` (one-way calls). Everything phone-related is

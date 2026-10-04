@@ -53,7 +53,14 @@ const UNDO=['undo the last update','undo that update','undo the update','undo yo
 const INSTALL=['install the update','restart and update','finish the update','switch on the update','restart to update'];
 const CALLME=['call me','call my phone','ring me','ring my phone','give me a call','call me now','phone me','test my phone'];
 const EMAIL=['check my email','check my emails','check my inbox','sort my email','sort my emails','sort my inbox','any new emails','any emails','any new email','whats in my inbox','do i have any emails','check email'];
-export const CORE_PHRASES=[...BEDTIME.filter(p=>p!=='night'),...OVERNIGHT,...APPROVALS,...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME,...EMAIL];
+/* "look at my screen": a picture of the screen under the mouse goes to Claude with the question */
+const LOOK=['look at my screen','look at the screen','look at this','what am i looking at','whats on my screen','whats on the screen','read my screen','read the screen','read this','check my screen','can you see this','can you see my screen',
+  'help me with this','explain this','explain my screen','what does this say','what does this mean','what does this error mean','whats this error','what is this error','summarise this','summarize this','summarise this page','summarize this page','summarise my screen','summarize my screen'];
+const LOOKQ=/^(?:look at (?:my|the) screen|look at this|check my screen|read my screen|have a look)(?: and| then)? (?:tell me |and tell me )?(.+)$/;
+// your second brain: search everything he keeps (src/brain/recall.js)
+const RECALL=['open my second brain','second brain','search everything','search my records','search all my stuff'];
+const RECALLQ=/^(?:search (?:everything|my records|my second brain|my brain|all my stuff) (?:for|about) |find everything (?:about|on) |what do (?:i|we) know about |check my records (?:for|about) |recall )(.+)$|^((?:what|when|where|who|how much) did (?:i|we|they) (?:agree|decide|say|send|pay|book|order|promise|quote|plan)\b.*)$/;
+export const CORE_PHRASES=[...BEDTIME.filter(p=>p!=='night'),...LOOK,...RECALL,...OVERNIGHT,...APPROVALS,...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME,...EMAIL];
 /* these change things, cost money or ring your phone: they always need the name, never just "roll back" in the moment after he speaks */
 const NAME_REQUIRED=new Set(['core-undo','core-install','core-call','core-audit','core-improve','core-feature','core-message']);
 const NEEDS_NAME=new Set([...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME]);
@@ -114,6 +121,10 @@ export function parseCommand(text,context){
   if(!rest)return {action:'attention'};   // "Hey Jarvis." -> "Yes, sir?" and he listens without the name for a moment
   if(['open product studio','show product studio','create a product ad'].includes(rest))return {action:'product-studio'};
   if(WAKE.includes(rest))return {action:'wake'};
+  if(LOOK.includes(rest))return /^(what|explain|summari|help|read this|can you)/.test(rest)?{action:'look',question:rest}:{action:'look'};   // a question is passed on as it was asked
+  {const lq=LOOKQ.exec(rest);if(lq&&lq[1].trim())return {action:'look',question:lq[1].trim()};}
+  if(RECALL.includes(rest))return {action:'recall'};
+  {const rq=RECALLQ.exec(rest),q=rq&&(rq[1]||rq[2]||'').trim();if(q)return {action:'recall',question:q};}
   if(STATUS.includes(rest))return {action:'status'};
   if(BRIEFING.includes(rest))return {action:'briefing'};
   if(GREET.test(rest)){const m=/morning|afternoon|evening/.exec(rest);return {action:'greet',part:m?m[0]:''};}

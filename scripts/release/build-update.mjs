@@ -43,6 +43,8 @@ const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-asar-'));
 const excluded = new Set((pkg.build?.files || []).filter(f => f.startsWith('!')).map(f => f.slice(1)));   // e.g. !src/settings/view.js
 const files = git('ls-files', '-z', '--', 'src', 'dist', 'config').split('\0').filter(Boolean).filter(f => !excluded.has(f));
 if (!files.includes('src/main/main.js') || !files.includes(pkg.main)) fail(`The app's entry files are missing (${pkg.main}).`);
+{ const untracked = git('ls-files', '-z', '--others', '--exclude-standard', '--', 'src', 'dist', 'config').split('\0').filter(Boolean);   // a new file nobody has added to git is left out, and the app may not start without it
+  if (untracked.length) console.warn(`\n  Warning: not packed, because git does not know them yet (git add them): ${untracked.join(', ')}\n`); }
 for (const f of files) {
   const from = path.join(ROOT, f); if (!fs.existsSync(from)) continue;   // deleted but not yet committed
   fs.mkdirSync(path.dirname(path.join(stage, f)), {recursive: true}); fs.copyFileSync(from, path.join(stage, f));

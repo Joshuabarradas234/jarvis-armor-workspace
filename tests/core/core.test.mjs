@@ -423,6 +423,10 @@ ok(JSON.stringify(st).indexOf(TOKEN) < 0 && JSON.stringify(st).indexOf('abcdefgh
 ok(smtp465 ? true : true, smtp465 ? 'implicit-TLS SMTP server also running on 465' : '(port 465 not available here)');
 if (smtp465) { core.store.save({email: {smtpPort: 465}}); const s465 = sent.length; await core.mail.sendNew({to: 'x@y.com', subject: 'TLS', text: 'hi'}); ok(sent.length === s465 + 1, 'sent over implicit TLS (port 465)'); }
 
+console.log('\n15. Second brain: email');
+{ const found = await core.mail.recall(['invoice', 'overdue']); ok(found.some(m => m.kind === 'email' && /Invoice 2231/.test(m.title) && /overdue/.test(m.text)), `the second brain finds the overdue invoice email (${found.length} found)`);
+  ok((await core.mail.recall(['zzqxj'])).length === 0, 'and nothing for a word no email has'); }
+
 core.dispose();
 console.log(`\n${pass} passed, ${fail} failed. Claude calls: ${claude.log.length}. Twilio: ${tw.state.messages.length} messages, ${tw.state.calls.length} calls.`);
 process.exit(fail ? 1 : 0);

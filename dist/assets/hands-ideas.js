@@ -928,7 +928,7 @@
       if (quick) el.remove(); else { el.classList.remove('in'); setTimeout(() => el.remove(), 300); }
     },
   };
-  try { J.on('briefing', d => MAIN && d && Brief.show(d)); } catch {}
+  try { J.on('briefing', d => { if (!MAIN || !d) return; if (d.mode === 'cinema') { if (d.start && Brief.el) Brief.close(true); return; } Brief.show(d); }); } catch {}   // the cinematic briefing has its own screen (briefing-cinema.js)
   addEventListener('keydown', e => { if (e.key === 'Escape' && Brief.el) Brief.close(); });
 
   /* =================================================================== FOCUS MODE */
