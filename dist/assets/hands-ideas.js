@@ -888,6 +888,7 @@
       if (m.kind === 'gone') return Holo.forget(m.id);
       if (m.kind === 'adopted') return Holo.open({ id: m.id, url: m.url, title: m.title, scope: Room.open ? 'ideas' : 'hall' });
       if (m.kind === 'calibrate') return Calib.start();
+      if (m.kind === 'hands-start') return startHands();   // opened from the desktop with a pinch: the hall's hand tracking carries on
       const scope = Room.open ? 'ideas' : 'hall';
       Holo.open({ id: 'holo-' + m.kind, url: m.url, title: m.title, scope });
     });

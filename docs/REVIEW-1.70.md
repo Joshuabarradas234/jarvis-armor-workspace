@@ -350,3 +350,32 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
 
   The wake task was untouched. Not tested: speech in the tray (no microphone in the test), dragging, and a real Claude answer.
 - Core tests: run between 02:30 and about 06:00, the clock started the default nightly audit (02:30) and self-review (03:00) by itself, inside their 180-minute catch-up windows. That added an extra proposal, and two checks failed ("mail box 2", and YES ALL not applying the settings proposal). The test now moves those two lines eight hours away right after start-up; there are still 7 schedule lines. 124 of 124, twice, at 03:20.
+
+## Release 1.91.0: meeting co-pilot and hand control
+
+- **Meeting co-pilot** (`src/meeting/copilot.js`, panel `dist/assets/meeting-copilot.js`, console view only).
+  - On each MeetingManager update, `copilotFeed()` in main.js sends the new transcript lines to the deck as `{type:'transcript', id, from, lines}`; `state()` only carries the last 8. It then calls `copilot.feed()`.
+  - The notes are updated when at least 900 new characters have arrived and 30 s have passed, or 250 characters and 75 s. This uses the fast model (`models.fast`) through `callApi`/`aiKey()`.
+  - The reply is JSON: summary, decisions, actions (owner and due only if said), questions and suggestions. It is cleaned up by `cleanNotes`, and a bad reply keeps the old notes. Spend is recorded as 'meeting co-pilot', with a $1 cap per meeting.
+  - The panel can call `meeting-copilot`, `meeting-copilot-ask` and `meeting-copilot-refresh`, and End calls `meeting-end` (it asks to confirm first). If the panel sees a gap in `from`, it fetches the whole transcript again.
+  - `deck.js` `slots()` takes `window.__jarvisCopilot.inset()` off the width, so pages on the deck sit beside the panel.
+  - Voice: "meeting notes", "recap the meeting" and "what have we agreed" give `meeting-recap`. That forces an update and flashes the panel; it is shown, not spoken. "Catch me up" stays the overnight report.
+  - Nothing is sent or saved from here: the end-of-meeting summary is unchanged.
+- **Desktop hand control** (`src/main/desk-hands.js`, `src/main/win-control.js`, `scripts/windows/winctl.ps1`, `dist/hands.html`, `dist/assets/desk-hands.js`, `dist/assets/desk-gestures.js`).
+  - Hand tracking only ran in the main window, which is hidden (so the camera stops) in the tray. JARVIS also covers both screens when open. So this mode runs only in the tray (IDLE) and only when it has been turned on (`desk-hands.json`). It stops on wake, on lock-screen and on quit.
+  - The ring is a 96 px window with role `hands`. It is transparent, click-through (`setIgnoreMouseEvents`), always on top at screen-saver level, and has `backgroundThrottling:false`. It runs the camera and `handtrack.worker.js` (one hand) on a 33 ms timer and reports `{visible, nx, ny, grab, hold}` through `desk-hand`, which only this role may call.
+  - `camOK` now also allows the camera (never the microphone) for this role.
+  - Gestures use the hall's thresholds. A grab needs a fist on 2 frames within 1.5 s of an open hand; it lets go after an open hand on 2 frames. Holding a pinch for 1 s wakes JARVIS, and the hall then gets `hologram {kind:'hands-start'}` to start its own tracking. The reach box is the hall's `jv.handBox`, from the same origin.
+  - `DeskHands` maps the hand across all the screens and keeps the ring on one of them. `winctl.ps1` is a persistent PowerShell process: `EnumWindows` from front to back, skipping JARVIS's own process, tool, owned, cloaked and shell windows.
+  - Carrying sends one `SetWindowPos` at a time (NOZORDER|NOACTIVATE), with the newest point winning. A maximised window is restored under the hand.
+  - A throw is a speed of at least 1300 DIP/s, judged from the screen the window was picked up on (it may already be halfway across), lined up within cos 0.6 with another screen's centre. `placeOn` keeps the relative place and shrinks the window to fit, and a maximised window is maximised again.
+  - A window that cannot be moved (running as administrator) shows 'denied' and is let go. A test checks that the helper has no SendInput, mouse or keyboard events, Post/SendMessage, Close/Destroy or SetForegroundWindow calls.
+- Tested on Windows: 273 frontend (`features-1.91.0.test.mjs` and `desk-hands-1.91.0.test.mjs`, 9 new), and Core again.
+  - `winctl.ps1` against a throwaway form: ready in 0.9 s, 20 moves in 21 ms, maximise and restore, and a closed window reported.
+  - In the test copy with `JARVIS_HANDS_NOCAM=1` (three displays: two 1440×900 stacked, one 1280×720 to the right):
+    - the ring opened in the tray;
+    - fed hand points picked up a test form, carried it 100×103 for a ring move of 99×103, and threw it from (200,150) to (200,1050) on the lower screen;
+    - turning it off closed the ring and the helper.
+  - The co-pilot panel was checked in a test page with a sample meeting: ask, live lines, a gap re-fetch, the End confirmation, ENDED and Close.
+- **Mistake during testing:** the first live run aimed the ring wrongly (a clamped calibration point). It picked up the owner's Claude window on the top screen and threw it to the lower screen. I moved it back and maximised it. The test now aims step by step and refuses to make a fist unless `winctl` reports the test form under the ring. A before-and-after window snapshot showed no change.
+- Not tested: the real camera (it would have filmed the owner) and a real meeting (it would have recorded the microphone).

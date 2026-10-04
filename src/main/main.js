@@ -20,9 +20,12 @@ import {WindowLayout} from '../layout/windows.js';
 import {CallWatcher} from '../meeting/call-watch.js';
 import {meetingWorkPrompt} from '../meeting/work.js';
 import {MeetingFollowups,MEETING_PROMPT,meetingNotes} from '../meeting/followups.js';
-import {writeText} from '../brain/util.js';
+import {writeText,readJson,writeJson} from '../brain/util.js';
+import {DeskHands} from './desk-hands.js';
+import {WinControl} from './win-control.js';
 import {extractJson} from '../brain/util.js';
 import {MeetingManager,clock} from '../meeting/manager.js';
+import {MeetingCopilot,clock as minSec} from '../meeting/copilot.js';
 import {sendGmail,validEmail} from '../meeting/mailer.js';
 import {callApi,callClaudeCode,detectClaudeCode} from '../tower/engines.js';
 import {MissionStore} from '../control/missions.js';
@@ -140,7 +143,7 @@ function getStatus(){return {...status,voice:voiceStatus,wallpaper:displays?.wal
 function broadcast(channel,data){for(const [id]of trusted){const contents=BrowserWindow.getAllWindows().map(w=>w.webContents).find(w=>w.id===id);if(contents&&!contents.isDestroyed())contents.send('jarvis:'+channel,data);}}
 function createWindow({role,...options}){
   if(role==='main')mainReady=false;
-  const w=new BrowserWindow({...options,title:'JARVIS // ARMOR WORKSPACE',autoHideMenuBar:true,icon:path.join(assets,'icons','app.png'),webPreferences:{preload:path.join(root,'src','main','preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,backgroundThrottling:role==='wallpaper'?false:true,...(['main','console'].includes(role)?{autoplayPolicy:'no-user-gesture-required'}:{})}});
+  const w=new BrowserWindow({...options,title:'JARVIS // ARMOR WORKSPACE',autoHideMenuBar:true,icon:path.join(assets,'icons','app.png'),webPreferences:{preload:path.join(root,'src','main','preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,backgroundThrottling:['wallpaper','hands'].includes(role)?false:true,...(['main','console'].includes(role)?{autoplayPolicy:'no-user-gesture-required'}:{})}});
   const contentsId=w.webContents.id;trusted.set(contentsId,{role});
   w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());w.webContents.on('will-attach-webview',e=>e.preventDefault());
   w.webContents.on('render-process-gone',(_e,d)=>{log('renderer',`${role}: ${d.reason}`);if(!quitting&&['main','console'].includes(role)){if(role==='main'){if(meetings?.active)endMeeting().catch(e=>log('meeting',e.message));machine?.dispatch('standdown');try{tabs?.closeAll();panels?.closeAll?.();}catch{}}else{try{deckGone();}catch{}}if(!w.isDestroyed())w.destroy();setTimeout(()=>displays.rebuild().catch(e=>log('recovery',e.message)),1000);}});
@@ -171,7 +174,7 @@ function registerHotkeys(values){
 }
 function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate([
   {label:'OPEN JARVIS',click:()=>dispatch('wake')},{label:'ENTER WORK MODE',click:()=>dispatch('wake')},{label:'ARMOR HALL',click:()=>dispatch('home')},{label:'THEME',submenu:workstations.themes.map(t=>({label:`${t.name.toUpperCase()} · ${t.assistant.toUpperCase()}`,type:'radio',checked:t.id===workstations.activeTheme,click:()=>setTheme(t.id)}))},
-  {type:'separator'},{label:'MICROPHONE',type:'checkbox',checked:settings.get().voiceEnabled,click:item=>applySettings({voiceEnabled:item.checked})},
+  {type:'separator'},{label:'HAND CONTROL WHEN CLOSED',type:'checkbox',checked:deskOn,click:item=>setDeskHands(item.checked)},{label:'MICROPHONE',type:'checkbox',checked:settings.get().voiceEnabled,click:item=>applySettings({voiceEnabled:item.checked})},
   {label:'WALLPAPER',type:'checkbox',checked:settings.get().wallpaper,click:item=>applySettings({wallpaper:item.checked})},
   {label:'THIRD SCREEN VIEW',type:'checkbox',checked:settings.get().thirdScreen!==false,click:item=>applySettings({thirdScreen:item.checked})},
   {label:'JARVIS CORE',click:()=>{dispatch('wake');setTimeout(()=>broadcast('core',{type:'open'}),1500);}},{label:'SETTINGS',click:openSettings},
@@ -237,7 +240,7 @@ function scheduleChatter(){
 }
 /** Spoken summary of where everything stands. */
 /* ---------- conversation: greetings, thanks, the daily briefing, maps ---------- */
-const TALK=['look','recall','meeting-start','meeting-end','page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
+const TALK=['look','recall','meeting-recap','desk-hands','meeting-start','meeting-end','page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
 function partOfDay(){const h=new Date().getHours();return h<12?'morning':h<18?'afternoon':'evening';}
 function addr(){return workstations.theme().voice?.address||'sir';}
 const pick=a=>a[Math.floor(Math.random()*a.length)];
@@ -369,6 +372,8 @@ function talk(action,cmd={}){
     say(action==='map'?`Opening a map for ${cap(q)}.`:`Searching for ${q}.`);return true;
   }
   if(action==='meeting-start'){try{startMeeting(cmd.id);}catch(e){say(e.message);}return true;}
+  if(action==='desk-hands'){setDeskHands(cmd.on);say(cmd.on?`Hand control is on, ${who}. When I'm in the tray, make a fist over a window to pick it up, and throw it to the other screen. Pinch and hold to bring me back.`:`Hand control is off, ${who}.`);return true;}
+  if(action==='meeting-recap'){if(!meetings?.active){say(`There's no meeting running, ${who}.`);return true;}copilot?.feed(meetings.m.lines,{force:true});broadcast('meeting',{type:'copilot-focus'});broadcast('caption',{text:'Meeting notes are on the lower screen.'});return true;}   // shown, not said: you are on a call
   if(action==='meeting-end'){if(!meetings?.active){say(`There's no meeting running, ${who}.`);return true;}endMeeting().catch(e=>log('meeting',e.message));return true;}
   if(action==='panel-close-all'){broadcast('hologram',{kind:'close-all'});broadcast('globe',{cmd:'close'});say(pick(['All clear.',`Cleared, ${who}.`]));return true;}
   if(action==='page-close'){   // "close this page": the tab in front inside a suit, otherwise the floating panel
@@ -429,9 +434,19 @@ function startMeeting(id,{autoEnd=true}={}){
   return true;
 }
 /** End: flush audio, write decisions and actions, then save the follow-up for review. */
+/** The lower screen's co-pilot (src/meeting/copilot.js): the new transcript lines go to it, and the notes catch up when there is enough new talk. */
+let copilot=null,linesSent=0;
+const meetingLines=()=>(meetings?.m?.lines||[]).map(l=>({at:minSec(l.at),text:l.text}));
+function copilotFeed(){
+  const m=meetings?.m;if(!m||!copilot)return;
+  if(copilot.id!==m.id){copilot.start(m.id);linesSent=0;}
+  if(m.lines.length!==linesSent){broadcast('meeting',{type:'transcript',id:m.id,from:linesSent,lines:m.lines.slice(linesSent).map(l=>({at:minSec(l.at),text:l.text}))});linesSent=m.lines.length;}
+  if(m.ending){copilot.stop();return;}
+  copilot.feed(m.lines);
+}
 async function endMeeting(){
   if(!meetings?.active||meetingFlush)return false;
-  const id=meetings.m.id;callWatcher?.stop();
+  const id=meetings.m.id;callWatcher?.stop();copilot?.stop();
   await new Promise(resolve=>{meetingFlush={id,resolve};broadcast('meeting',{type:'stop',id});setTimeout(resolve,8000);});
   meetingFlush=null;
   say(`Wrapping up the meeting, ${addr()}. I'll save the notes and prepare a follow-up for your approval.`);
@@ -723,6 +738,27 @@ async function captureScreen(){
   if(!src||src.thumbnail.isEmpty())throw Error('Windows did not give me a picture of the screen.');
   return {jpeg:src.thumbnail.toJPEG(82),display:d.id};
 }
+/** Desktop hand control (src/main/desk-hands.js): with JARVIS closed to the tray and this on, your hand moves windows. Off until you turn it on: the camera stays on while it runs. */
+const deskFile=()=>path.join(userDir,'desk-hands.json');
+let deskOn=false,deskWin=null,desk=null,winctl=null,screenLocked=false,deskLook='';
+const deskWanted=()=>deskOn&&process.platform==='win32'&&machine?.value?.state==='IDLE'&&!screenLocked&&!quitting;
+function syncDeskHands(){if(deskWanted()){if(!deskWin||deskWin.isDestroyed())openDeskHands();}else closeDeskHands();}
+function openDeskHands(){
+  winctl||=new WinControl({scripts,log:m=>log('hands',m)});
+  desk||=new DeskHands({log:m=>log('hands',m),win:winctl,displays:()=>screen.getAllDisplays().map(d=>({id:d.id,bounds:d.bounds,workArea:d.workArea})),
+    toPhysical:p=>screen.dipToScreenPoint({x:Math.round(p.x),y:Math.round(p.y)}),rectToPhysical:r=>screen.dipToScreenRect(null,r),rectToDip:r=>screen.screenToDipRect(null,r),
+    cursor:(p,look)=>{const w=deskWin;if(!w||w.isDestroyed()||!p)return;w.setBounds({x:Math.round(p.x)-48,y:Math.round(p.y)-48,width:96,height:96});},
+    feedback:kind=>{if(deskWin&&!deskWin.isDestroyed())deskWin.webContents.send('jarvis:hands-remote',{desk:kind});},
+    wake:()=>{log('hands','pinch held: opening JARVIS');dispatch('wake');setTimeout(()=>broadcast('hologram',{kind:'hands-start'}),2500);}});   // the hall's own hand tracking takes over
+  const a=screen.getPrimaryDisplay().workArea;
+  const w=deskWin=createWindow({role:'hands',x:Math.round(a.x+a.width/2-48),y:Math.round(a.y+a.height/2-48),width:96,height:96,show:false,frame:false,transparent:true,backgroundColor:'#00000000',focusable:false,resizable:false,minimizable:false,maximizable:false,fullscreenable:false,skipTaskbar:true,alwaysOnTop:true,hasShadow:false});
+  w.setIgnoreMouseEvents(true);w.setAlwaysOnTop(true,'screen-saver');   // clicks go straight through to your apps
+  w.on('closed',()=>{if(deskWin===w)deskWin=null;});
+  w.loadURL(`jarvis://app/hands.html?view=hands${process.env.JARVIS_HANDS_NOCAM==='1'?'&cam=0':''}`).catch(e=>log('hands',e.message));
+  w.showInactive();
+}
+function closeDeskHands(){desk?.cancel();const w=deskWin;deskWin=null;if(w&&!w.isDestroyed())w.destroy();winctl?.stop();}
+function setDeskHands(on){deskOn=!!on;try{writeJson(deskFile(),{on:deskOn});}catch(e){log('hands',e.message);}syncDeskHands();updateTray();}
 /** The look card's own window (dist/look.html): above every app, in the corner of the screen he looked at, so he can help in whatever you are using. */
 let lookWin=null,lookCard=null,lookMoved=false,lookH=200,lookSizing=false;
 function lookWindow(){
@@ -1212,6 +1248,8 @@ async function api(event,method,payload){
     case 'idea-step':return planner.step(String(payload?.id||''),String(payload?.step||''),payload?.done===true);
     case 'screen-look':return look?look.look(String(payload?.question||'').slice(0,600),{follow:payload?.follow===true}):null;
     case 'screen-look-forget':look?.forget();return true;
+    case 'desk-hand':{if(role!=='hands')return false;if(payload?.error){log('hands',payload.error);if(deskWin){closeDeskHands();try{if(Notification.isSupported())new Notification({title:'Hand control stopped',body:String(payload.error).slice(0,200)}).show();}catch{}}return true;}desk?.hand(payload);return true;}
+    case 'desk-hands-set':{setDeskHands(payload?.on===true);return {on:deskOn};}
     case 'screen-look-size':{if(role!=='look')return false;const h=Number(payload?.h);if(Number.isFinite(h)&&h>0){lookH=Math.min(900,h);placeLook();}return true;}
     case 'screen-look-close':{if(role!=='look')return false;look?.forget();lookCard=null;if(lookWin&&!lookWin.isDestroyed())lookWin.hide();return true;}
     case 'recall':return recall?runRecall(String(payload?.question||'').slice(0,600),{speak:false}):null;
@@ -1315,6 +1353,9 @@ async function api(event,method,payload){
     case 'clear-cache':await session.defaultSession.clearCache();return true;
     case 'reset-settings':{const response=await dialog.showMessageBox({type:'question',buttons:['Cancel','Reset settings'],defaultId:0,cancelId:0,message:'Reset JARVIS settings?',detail:'Your local calendar and imported assets are kept.'});if(response.response===1){await applySettings(structuredClone(defaults));openSettings();}return true;}
     case 'meeting-state':return meetingInfo();
+    case 'meeting-copilot':return meetings?.m&&copilot?.id===meetings.m.id?{id:meetings.m.id,lines:meetingLines(),copilot:copilot.view()}:null;
+    case 'meeting-copilot-ask':{if(!meetings?.m)throw Error('No meeting is being recorded.');return {answer:await copilot.question(String(payload?.question||''),meetings.m.lines)};}
+    case 'meeting-copilot-refresh':{if(!meetings?.m)return false;return copilot.feed(meetings.m.lines,{force:true});}
     case 'meeting-start':return startMeeting(typeof payload?.id==='string'?payload.id:null,{autoEnd:payload?.autoEnd!==false});
     case 'meeting-end':{if(!meetings.active)return false;endMeeting().catch(e=>log('meeting',e.message));return true;}
     case 'meeting-source':{if(role!=='main')throw Error('Meetings record from the main window.');const src=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:0,height:0}});return src[0]?.id||null;}
@@ -1359,10 +1400,10 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       const range=request.headers.get('range');if(range&&target){const r=rangeResponse(target,range,{'Access-Control-Allow-Origin':'*'});if(r)return r;}   /* videos and sounds: a proper 206, or transitions stall */
       return net.fetch(pathToFileURL(target).toString(),{headers:request.headers}).then(res=>{const headers=new Headers(res.headers);headers.set('Access-Control-Allow-Origin','*');return new Response(res.body,{status:res.status,statusText:res.statusText,headers});}).catch(()=>new Response('Not found',{status:404}));
     });
-    const camOK=(wc,perm,details)=>{if(perm!=='media')return false;const t=wc&&trusted.get(wc.id);if(!t||t.role!=='main')return false;const types=details?.mediaTypes||[];return !types.includes('audio')||!!meetings?.m;};   /* audio only for a meeting */
+    const camOK=(wc,perm,details)=>{if(perm!=='media')return false;const t=wc&&trusted.get(wc.id);if(!t||!['main','hands'].includes(t.role))return false;if(t.role==='hands'&&(details?.mediaTypes||[]).includes('audio'))return false;const types=details?.mediaTypes||[];return !types.includes('audio')||!!meetings?.m;};   /* audio only for a meeting */
     session.defaultSession.setPermissionRequestHandler((wc,perm,callback,details)=>callback(camOK(wc,perm,details)));
     session.defaultSession.setPermissionCheckHandler((wc,perm,_origin,details)=>perm==='media'&&camOK(wc,perm,{mediaTypes:details?.mediaType==='audio'?['audio']:['video']}));
-    settings=new SettingsStore(userDir,log);visits.load();try{if(!visits.get('__','startup19').done){visits.set('__','startup19',{done:true});const st=settings.get().startup;if(st&&/startup\/welcome\.mp4$/.test(st.video||'')&&st.seconds===15)settings.update({startup:{...st,seconds:19.2}});}}catch(e){log('settings',e.message);}   /*once only, so choosing 15 s again sticks */calendar=new CalendarStore(userDir);todos=new TodoStore(userDir);ideas=new IdeaStore(userDir);
+    settings=new SettingsStore(userDir,log);deskOn=readJson(deskFile(),{})?.on===true;visits.load();try{if(!visits.get('__','startup19').done){visits.set('__','startup19',{done:true});const st=settings.get().startup;if(st&&/startup\/welcome\.mp4$/.test(st.video||'')&&st.seconds===15)settings.update({startup:{...st,seconds:19.2}});}}catch(e){log('settings',e.message);}   /*once only, so choosing 15 s again sticks */calendar=new CalendarStore(userDir);todos=new TodoStore(userDir);ideas=new IdeaStore(userDir);
     workSuggestions=new WorkSuggestions(userDir,()=>ideas,()=>assistant?.changed());
     workstations=new WorkstationStore({configFile:path.join(root,'config','themes.json'),dir:userDir,log});try{const s3=workstations.suit('im3','ironman');if(s3&&/^\s*(bay\s*0?3|mark\s*(16|xvi)|mk[\s-]*16)\s*$/i.test(s3.name||''))workstations.saveSuit('im3',{name:'Mark XXXIX'},'ironman');}catch(e){log('suits',e.message);}try{const s4=workstations.suit('bc8','batcave');if(s4&&/^\s*(cowl\s*0?4|doomsday(\s*bat)?)\s*$/i.test(s4.name||''))workstations.saveSuit('bc8',{name:'Absolute Batman'},'batcave');}catch(e){log('suits',e.message);}   /* v9.16: the fourth Batcave case is Absolute Batman */   /* v9.14: the third chamber is the Mark XXXIX now */
     modules=workstations.modules();
@@ -1377,7 +1418,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       if(!command&&text&&why==='no-match'){const ask=brainAsk(text,meta);if(ask&&lookOpen()){handled=true;why='';followUntil=Date.now()+25000;look.look(ask,{follow:true}).catch(e=>log('look',e.message));}else if(ask){try{core?.recordMiss(text);}catch{}handled=!!core;why=core?'':'no-match';if(core){followUntil=Date.now()+20000;core.voice('core-chat',{text:ask}).catch(e=>{log('brain',e.message);say(e.message);});}}else if(core&&heardName(text))core.recordMiss(text);}
       if(command){if(command.theme&&command.theme!==workstations.activeTheme){try{workstations.setTheme(command.theme);refreshModules();broadcast('theme',themePayload());updateTray();scheduleChatter();scheduleHealth();setTimeout(()=>{if(settings.get().voiceEnabled)voice.listen(true);},0);}catch(e){log('voice',e.message);}}handled=!!dispatch(command.action,command.id,command);if(handled){followUntil=Date.now()+12000;if(!TALK.includes(command.action)&&!String(command.action).startsWith('core-'))setTimeout(()=>{try{acknowledge(command.action,command.id);}catch{}},260);}}broadcast('heard',{text:heard,confidence:Math.round((confidence||0)*100),handled,why:handled?'':why,name:voiceContext().theme?.assistant||'Jarvis'});status.commandHistory.unshift({time:Date.now(),text:heard,confidence:Math.round((confidence||0)*100),accepted:!!text,handled});status.commandHistory=status.commandHistory.slice(0,50);tray?.setToolTip(`JARVIS · heard: “${heard}” ${Math.round((confidence||0)*100)}%${handled?' ✓':''}`);broadcast('status',getStatus());},onStatus:text=>{voiceStatus=text;broadcast('status',getStatus());},log});
     machine=new WorkspaceMachine({modules,onChange:s=>{
-      displays?.setActive(s.state!=='IDLE');broadcast('snapshot',s);
+      displays?.setActive(s.state!=='IDLE');syncDeskHands();broadcast('snapshot',s);
       if(s.state==='WAKE'){const st=settings.get().startup||{};introVoiced=!!(st.enabled&&st.sound);if(introVoiced)broadcast('caption',{text:'System starting up.'});else say('System starting up.');}   // with a welcome recording, that recording is JARVIS's voice: nothing is spoken over it
       if(s.state==='ARMOR_HALL'&&s.selected===null){if(pendingModule){const id=pendingModule;pendingModule=null;queueMicrotask(()=>dispatch('select',id));}else if(pendingShow){const id=pendingShow;pendingShow=null;setTimeout(()=>dispatch('suit-show',id),600);}}
       if(s.state==='SUIT_SELECTED'&&s.selected&&machine?.previous!=='SUIT_SELECTED')suitUp(s.selected);
@@ -1390,7 +1431,9 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       if(machine)machine.previous=s.state;
     }});
     layout=new WindowLayout({scripts,log});
-    meetings=new MeetingManager({dir:userDir,docs:app.getPath('documents'),scripts,log,onUpdate:st=>{if(!st.active)callWatcher?.stop();broadcast('meeting',{type:'state',state:st});}});
+    copilot=new MeetingCopilot({log:m=>log('co-pilot',m),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},onUpdate:v=>broadcast('meeting',{type:'copilot',copilot:v}),
+      ask:({system,prompt,maxTokens})=>callApi({key:aiKey(),model:core?.store?.get()?.models?.fast||'claude-haiku-4-5-20251001',system,prompt,maxTokens,retries:1})});
+    meetings=new MeetingManager({dir:userDir,docs:app.getPath('documents'),scripts,log,onUpdate:st=>{if(!st.active)callWatcher?.stop();broadcast('meeting',{type:'state',state:st});copilotFeed();}});
     meetingFollowups=new MeetingFollowups({dir:userDir,todos,core:()=>core});
     callWatcher=new CallWatcher({scripts,tabs:()=>tabs,onEnd:()=>endMeeting(),log});
     tower=new TowerStore({dir:userDir,docs:app.getPath('documents')});towerRunner=new TowerRunner({store:tower,getKey:readTowerKey,onUpdate:towerUpdate,onDone:towerDone,log});setInterval(towerNightShift,30000);setTimeout(towerNightShift,20000);
@@ -1434,6 +1477,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     tray=new Tray(icon);tray.setToolTip('JARVIS // ARMOR WORKSPACE');tray.on('double-click',()=>dispatch('wake'));updateTray();registerHotkeys(settings.get().hotkeys);
     {let relayoutTimer;const relayout=()=>{clearTimeout(relayoutTimer);relayoutTimer=setTimeout(()=>{if(machine?.value?.state!=='MODULE'||!machine.value.selected)return;const id=machine.value.selected;applyLayout(id,{links:false}).then(r=>{if(r&&(r.placed||r.error))broadcast('layout-result',{id,...r});}).catch(e=>log('layout',e.message));},1500);};for(const e of ['display-added','display-removed','display-metrics-changed'])screen.on(e,relayout);}
     onBattery=powerMonitor.isOnBatteryPower();powerMonitor.on('on-battery',()=>{onBattery=true;broadcast('status',getStatus());});powerMonitor.on('on-ac',()=>{onBattery=false;broadcast('status',getStatus());});
+    powerMonitor.on('lock-screen',()=>{screenLocked=true;syncDeskHands();});powerMonitor.on('unlock-screen',()=>{screenLocked=false;syncDeskHands();});   // no camera on a locked PC
     powerMonitor.on('resume',()=>{core?.woke?.('resume');if(settings.get().voiceEnabled)voice.listen(true);displays.rebuild().catch(e=>log('resume',e.message));});
     monitor=new SystemMonitor(data=>{telemetry=data;broadcast('telemetry',data);},()=>machine.value.state!=='IDLE');monitor.start().catch(e=>log('monitor',e.message));voice.listen(settings.get().voiceEnabled);
     const reminded=new Set();reminderTimer=setInterval(()=>{for(const event of calendar.list()){const delta=Date.parse(event.start)-Date.now();if(event.reminder&&delta>=0&&delta<=300000&&!reminded.has(event.id)&&!focusActive()&&Notification.isSupported()){reminded.add(event.id);new Notification({title:event.title,body:'Starting in '+Math.ceil(delta/60000)+' minutes.'}).show();}}},30000);
@@ -1443,7 +1487,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
 }
 app.on('window-all-closed',()=>{});
 app.on('before-quit',()=>{
-  if(quitting)return;quitting=true;try{meetings?.saveNow();}catch{}try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}try{core?.dispose();}catch{}try{wake?.clearNow();}catch{}
+  if(quitting)return;quitting=true;try{closeDeskHands();}catch{}try{meetings?.saveNow();}catch{}try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}try{core?.dispose();}catch{}try{wake?.clearNow();}catch{}
   clearInterval(reminderTimer);clearTimeout(chatterTimer);clearTimeout(healthTimer);clearTimeout(focus.timer);try{deck?.close();}catch{}
   tabs?.dispose();machine?.dispose();monitor?.stop();voice?.dispose();globalShortcut.unregisterAll();
   // Let Electron close windows in its normal quit sequence, so renderer

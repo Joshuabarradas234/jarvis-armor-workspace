@@ -95,7 +95,7 @@ if (J && VIEW === 'console') {
     panels() { const H = window.__jarvisHolo; return H ? [...H.panels.values()].filter(p => p.scope === 'deck') : []; },
     /** lay the pages out: one big, two side by side, then a grid */
     slots(n) {
-      const W = innerWidth, Hh = innerHeight, top = 96, bottom = 118, side = 36, gap = 22;
+      const W = innerWidth - (window.__jarvisCopilot?.inset?.() || 0), Hh = innerHeight, top = 96, bottom = 118, side = 36, gap = 22;   /* room for the meeting co-pilot on the right */
       const aw = W - side * 2, ah = Hh - top - bottom;
       if (n <= 1) { const w = Math.min(aw, Math.round(ah * 1.62)), h = ah; return [{ x: Math.round((W - w) / 2), y: top, w, h }]; }
       const cols = n <= 2 ? 2 : n <= 4 ? 2 : 3, rows = Math.ceil(n / cols);
