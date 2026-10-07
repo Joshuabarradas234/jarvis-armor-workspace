@@ -58,5 +58,6 @@ jobs:
           notes="docs/release-notes/$V.md"
           if [ ! -f "$notes" ]; then printf 'JARVIS %s\n\nInstall: download the zip below, extract it and run INSTALL-UPDATE.bat.\n' "$V" > "$RUNNER_TEMP/notes.md"; notes="$RUNNER_TEMP/notes.md"; fi
           title=$(sed -n 's/^## *//p' "$notes" | head -1); [ -n "$title" ] || title="JARVIS $V"
-          gh release create "v$V" "release/JARVIS-Armor-Workspace-$V-update.zip" --title "$title" --notes-file "$notes" --target "$GITHUB_SHA"
+          (cd release && sha256sum "JARVIS-Armor-Workspace-$V-update.zip" > SHA256SUMS.txt)   # the fingerprint JARVIS checks before a one-click install
+          gh release create "v$V" "release/JARVIS-Armor-Workspace-$V-update.zip" "release/SHA256SUMS.txt" --title "$title" --notes-file "$notes" --target "$GITHUB_SHA"
           echo "Published v$V."

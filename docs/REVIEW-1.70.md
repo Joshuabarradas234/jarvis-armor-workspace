@@ -386,3 +386,37 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
 - It blurs itself after any click except a real keyboard press, so a later Enter or Space can't flip it.
 - Tested on Windows: 275 frontend (2 new in `verse-1.92.0.test.mjs`). In the test copy, all three halls opened and closed in turn, with only the scripted clicks recorded. A test page with a mocked bridge confirmed the verse fits the open card.
 - Note: the test copy goes full screen on the owner's real displays, and scripted hall switching looked to him like JARVIS acting by itself. Visual checks of renderer modules now use the test page in the built-in browser; the test copy runs only after warning him.
+
+## Release 1.93.0: weekly review, call recording and one-click updates
+
+- **Weekly review** (`src/main/weekly-review.js`).
+  - `weekFacts()` reads to-dos (`doneAt`), meetings history, Tower runs (done, not rehearsals, with `cost`), idea plan steps (`doneAt`), `store.spendHistory` (local day keys) plus the Tower costs, the calendar and dates for the next 7 days.
+  - `buildWeekScenes()` leaves out empty parts.
+  - `playCinema(id, scenes, kind)` is now shared with the morning briefing. The film (`dist/assets/briefing-cinema.js`) gained seven scene cases and a "WEEKLY REVIEW" title (`run.kind`).
+  - `morningBrief()` plays the review instead of the briefing on Sundays from 17:00, once per Sunday (`visits.__.weekly`). Voice: `WEEKLY` gives `weekly-review`.
+  - The Core WhatsApp Sunday report (`routines.weekly`) is unchanged.
+- **Noticing calls** (`src/meeting/mic-watch.js`). Every 4 s, `reg query` reads `HKCU\…\CapabilityAccessManager\ConsentStore\microphone` (0.13 s on this PC). `LastUsedTimeStop` is 0 while an app uses the microphone.
+  - Only known call apps count (Teams, Zoom, WhatsApp, Skype, Discord, Slack, Webex, Telegram, Signal, Phone Link, browsers). powershell/SpeechRuntime/JARVIS are skipped, because that's JARVIS listening.
+  - An app must be seen on two reads before the offer appears, and a call already on when JARVIS starts gets no offer.
+  - The followed app must stay off the microphone for 20 s before `onHangUp` ends the meeting.
+  - The offer is a role `offer` window (`dist/offer.html`, `dist/assets/call-offer.js`), shown inactive in the top right and gone after 30 s. It answers through `call-offer-answer` (offer role only). Record calls `startMeeting(meetingSuit(), {autoEnd: true, quiet: true})`, which shows a notification instead of speaking, and follows that app.
+  - A meeting you start yourself follows the call app on the microphone when there is exactly one.
+  - Settings live in `call-offer.json` (`on`, `never`) and a tray checkbox.
+  - Checked against this PC's real record: the WhatsApp call on 29 September from 20:24 to 20:56 and the Teams call from 13:14 to 13:52 parse as call apps. Not observed: a live "in use" value, because my own test listen did not register (the default input seems to be a Bluetooth phone link).
+- **Recording in the tray.** While a meeting records, the main window gets `webContents.setBackgroundThrottling(false)` (`meetingKeepAlive`). Going to IDLE mid-meeting shows a "Still recording" notification, the tray menu shows END THE MEETING, and `MEETEND` phrases are heard in the tray. `meeting.js` has no visibility handling, so capture continues while the window is hidden. That was not tested with real audio.
+- **AssemblyAI** (`src/meeting/cloud-transcript.js`).
+  - EU base URL `api.eu.assemblyai.com` (EU files are not used for training).
+  - Raw upload, then `speaker_labels: true`, `language_code: 'en_uk'`, `speech_models: ['universal-3-5-pro', 'universal-2']`. On a 400 it retries once with the default model.
+  - It polls every 3 s for up to 30 minutes and always sends `DELETE /v2/transcript/{id}`.
+  - In `endMeeting`, if `assemblyaiKey` is set (new entry in `SECRET_KEYS`, with a field in Core settings) and the recording is over 2 KB, the transcript replaces the offline one. The summary prompt is told about the speaker labels. Spend is recorded as 'meeting transcript' at US$0.23 per hour, and any failure keeps the offline transcript with a warning.
+  - Prices checked on assemblyai.com/pricing (Universal-3.5 Pro $0.21/hr, Universal-2 $0.15/hr, speaker labels +$0.02/hr, $50 free credit).
+  - Not tested against the real API (no key).
+- **One-click updates** (`src/main/one-click-update.js`).
+  - `checkForUpdate()` replaces the inline `update-check`, switching from `https.get` to `net.fetch`. It runs 60 s after start and every 6 h.
+  - When an update is newer, it broadcasts `core {type:'update-ready'}`: the hall banner (`dist/assets/update-ready.js`) and a tray item INSTALL JARVIS x.y.z appear.
+  - `update-install` is allowed from the main and settings roles only, never from voice, Core tools or messages, and refuses during a meeting.
+  - `prepareUpdate` only uses `https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/download/v<ver>/`. It requires `SHA256SUMS.txt` and a matching SHA-256, unpacks with `%SystemRoot%\System32\tar.exe` (Git's tar on the PATH read `C:` as a host), and checks the layout.
+  - It writes `run-update.cmd`, which waits 5 s so JARVIS can quit gracefully before INSTALL-UPDATE.bat's taskkill, and runs it detached. JARVIS then quits.
+  - `release.yml` now publishes `SHA256SUMS.txt` with each zip, so one-click works from 1.93.0 to the next version.
+  - Tested on Windows: unpacking the real 1.92.0 zip took 0.6 s. Not tested: a full install, because there is no newer release yet.
+- Tests: 285 frontend (`features-1.93.0.test.mjs`, `update-calls-1.93.0.test.mjs`, 10 new) and Core again. The weekly review film and the scene contents were checked in a browser test page, not the test copy, which would take over the owner's screens.
