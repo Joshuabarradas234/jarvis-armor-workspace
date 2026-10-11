@@ -125,6 +125,10 @@ When you give the Tower a job, you can ask him to **WhatsApp** or **call** you w
 
 Ask him what is in your records, on WhatsApp or out loud: "what did we agree with the landlord?", "search everything for the boiler quote". He searches your email (all of Gmail), Work desk documents, meeting notes, ideas, plans, Tower results, his notes, standing orders, to-dos, calendar and dates, and answers with numbered sources. On the PC, **Ctrl+Alt+F** opens the search card. "Look at my screen" (**Ctrl+Alt+L**) works in any app, even with JARVIS in the tray. His answer floats on top, and you can keep asking out loud. It works only on the PC, never from a message.
 
+### Meeting transcripts (1.93)
+
+Add an AssemblyAI key in **JARVIS Core → Meeting transcripts** and each meeting is transcribed accurately afterwards, with who said what, on AssemblyAI's European servers (about US$0.23 an hour). JARVIS deletes it from their servers as soon as the transcript is back. Without a key, the offline Windows transcript is used. Make the key at assemblyai.com and paste it in yourself.
+
 ### Waking the PC for calls (1.88)
 
 If the PC is asleep, JARVIS cannot call. So he keeps one Windows task, **JARVIS wake-up**, set two minutes before his next call or message (or plan steps you gave the agents for the night). Windows wakes the PC for it, and JARVIS stays awake for a few minutes to do the job. The task is in your own account, he moves it as your schedule changes, and he removes it when you quit him. Switch it off in **Settings → JARVIS Core → Quiet hours and nights**.

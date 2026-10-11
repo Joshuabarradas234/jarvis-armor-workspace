@@ -66,12 +66,25 @@ function lookCommand(rest){
 const HANDS_ON=['hand control on','turn on hand control','turn hand control on','start hand control','switch on hand control','enable hand control'];
 const HANDS_OFF=['hand control off','turn off hand control','turn hand control off','stop hand control','switch off hand control','disable hand control'];
 const handsCommand=rest=>HANDS_ON.includes(rest)?{action:'desk-hands',on:true}:HANDS_OFF.includes(rest)?{action:'desk-hands',on:false}:null;
+// ending a recorded meeting: heard in the tray too, since a meeting keeps recording there
+const MEETEND=['end the meeting','end meeting','stop the meeting','stop meeting','stop recording','stop recording the meeting','end the call','finish the meeting','wrap up the meeting','the meeting is over','meeting over','close the meeting'];
+// which screen shows the hall and suits: "swap screens", "put it on the TV", "move to screen 2", "back to my laptop"
+const SCREEN_SWAP=['swap screens','swap the screens','switch screens','switch the screens','flip the screens','swap my screens'];
+const SCREEN_TV=['move to the tv','put it on the tv','show it on the tv','put the hall on the tv','put the suit on the tv','move the hall to the tv','move it to the tv','tv mode','on the tv'];
+const SCREEN_HOME=['back to my laptop','move back to my laptop','put it back on my laptop','back to the laptop','move it back'];
+const SCREENQ=/^(?:move|put|show)(?: (?:it|the hall|the suit|jarvis))?(?: on| to) (?:screen|display|monitor) (one|two|three|four|1|2|3|4)$/;
+const screenCommand=rest=>SCREEN_SWAP.includes(rest)?{action:'screen-swap'}:SCREEN_TV.includes(rest)?{action:'screen-tv'}:SCREEN_HOME.includes(rest)?{action:'screen-home'}:
+  (m=>m?{action:'screen-to',n:{one:1,two:2,three:3,four:4}[m[1]]||Number(m[1])}:null)(SCREENQ.exec(rest));
+// heard from the tray like Siri: "Jarvis" -> "Yes, sir?", then one of these (with or without the name)
+const TRAY_OK=['attention','meeting-start','meeting-end','select','look','desk-hands','screen-swap','screen-tv','screen-home','screen-to'];
+// the weekly review on the full-screen film (src/main/weekly-review.js)
+const WEEKLY=['weekly review','the weekly review','week in review','review my week','how was my week','show me my week','my week','give me my weekly review'];
 // the meeting co-pilot on the lower screen: bring its notes up to date now
 const MEETNOTES=['meeting notes','show the meeting notes','update the meeting notes','recap the meeting','meeting recap','what have we agreed','what have we agreed so far','summarise the meeting so far'];
 // your second brain: search everything he keeps (src/brain/recall.js)
 const RECALL=['open my second brain','second brain','search everything','search my records','search all my stuff'];
 const RECALLQ=/^(?:search (?:everything|my records|my second brain|my brain|all my stuff) (?:for|about) |find everything (?:about|on) |what do (?:i|we) know about |check my records (?:for|about) |recall )(.+)$|^((?:what|when|where|who|how much) did (?:i|we|they) (?:agree|decide|say|send|pay|book|order|promise|quote|plan)\b.*)$/;
-export const CORE_PHRASES=[...BEDTIME.filter(p=>p!=='night'),...LOOK,...MEETNOTES,...HANDS_ON,...HANDS_OFF,...RECALL,...OVERNIGHT,...APPROVALS,...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME,...EMAIL];
+export const CORE_PHRASES=['start recording','record this call','record the call','record my meeting','record the meeting',...BEDTIME.filter(p=>p!=='night'),...LOOK,...SCREEN_SWAP,...SCREEN_TV,...SCREEN_HOME,...MEETNOTES,...WEEKLY,...HANDS_ON,...HANDS_OFF,...RECALL,...OVERNIGHT,...APPROVALS,...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME,...EMAIL];
 /* these change things, cost money or ring your phone: they always need the name, never just "roll back" in the moment after he speaks */
 const NAME_REQUIRED=new Set(['core-undo','core-install','core-call','core-audit','core-improve','core-feature','core-message']);
 const NEEDS_NAME=new Set([...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME]);
@@ -123,9 +136,10 @@ export function parseCommand(text,context){
         if(normal===n)r='';else if(normal.startsWith(n+' '))r=normal.slice(n.length).trim();else if(normal.endsWith(' '+n))r=normal.slice(0,-n.length).trim();
         if(r===null)continue;
         if(WAKE.includes(r)||GREET.test(r))return {action:'wake',theme:t.id};
-        {const l=lookCommand(r)||handsCommand(r);if(l)return l;}   // he looks, or switches hand control, without opening the hall
+        {const l=lookCommand(r)||handsCommand(r)||(MEETEND.includes(r)?{action:'meeting-end'}:null);if(l)return l;}   // he looks, or switches hand control, without opening the hall
       }
     }
+    if(heard||ctx.follow){const c=parseCommand(text,{...ctx,idle:false});if(c&&TRAY_OK.includes(c.action))return c;}   // this hall's name, or right after "Yes, sir?"
     return null;
   }
   if(!heard&&ctx.follow){heard='(follow)';rest=normal;}
@@ -174,8 +188,11 @@ export function parseCommand(text,context){
   if(['close the map','close map','close that','close it','close the window','close the panel','hide the map','get rid of that','close the search','close this'].includes(rest))return {action:'panel-close'};
   // meeting mode: "start a meeting for Mark 5", "starting a meeting for Mark 5", "end the meeting"
   if(MEETNOTES.includes(rest))return {action:'meeting-recap'};
+  if(WEEKLY.includes(rest))return {action:'weekly-review'};
+  {const sc=screenCommand(rest);if(sc)return sc;}
   {const h=handsCommand(rest);if(h)return h;}
-  if(['end the meeting','end meeting','stop the meeting','stop meeting','stop recording','stop recording the meeting','end the call','finish the meeting','wrap up the meeting','the meeting is over','meeting over','close the meeting'].includes(rest))return {action:'meeting-end'};
+  if(MEETEND.includes(rest))return {action:'meeting-end'};
+  if(['start recording','record this','record this call','record the call','record my meeting','record the meeting','record this meeting','start recording the call','start recording the meeting'].includes(rest))return {action:'meeting-start'};
   const MEET=/^(?:start|starting|begin|beginning|open|record|recording|kick off|lets start|lets have|im starting|im in|join)(?: a| the| my| new)? (?:meeting|call|meeting mode)(?: (?:for|on|in|about|with) (.+))?$|^(?:meeting mode|meeting)(?: (?:for|on) (.+))$/;
   const mt=MEET.exec(rest);
   if(mt){const want=clean(mt[1]||mt[2]||'');if(!want)return {action:'meeting-start'};

@@ -44,7 +44,7 @@ export const DEFAULTS = {
   wakePc: true,   // Windows wakes the PC from sleep for the next call, message or report
   pcVoice: true,
 };
-const SECRET_KEYS = ['twilioToken', 'callmebotKey', 'emailPassword', 'openaiKey', 'higgsfieldKey', 'githubToken'];
+const SECRET_KEYS = ['twilioToken', 'callmebotKey', 'emailPassword', 'openaiKey', 'higgsfieldKey', 'githubToken', 'assemblyaiKey'];
 const merge = (base, over) => {
   const out = Array.isArray(base) ? [...base] : {...base};
   for (const [k, v] of Object.entries(over || {})) out[k] = v && typeof v === 'object' && !Array.isArray(v) && base?.[k] && typeof base[k] === 'object' && !Array.isArray(base[k]) ? merge(base[k], v) : v;

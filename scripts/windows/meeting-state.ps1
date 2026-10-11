@@ -19,7 +19,7 @@ try {
         }
       } catch { $ended = $false }
     }
-    $results += @{ id = "desktop:$($proc.Id)"; active = $active; ended = $ended }
+    $results += @{ id = "desktop:$($proc.Id)"; name = $(if ($proc.ProcessName -match 'zoom') { 'Zoom' } else { 'Teams' }); active = $active; ended = $ended }
   }
 } catch { $results = @() }
 ConvertTo-Json -InputObject @($results) -Compress
