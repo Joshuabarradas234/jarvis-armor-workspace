@@ -42,7 +42,7 @@ test('updates: installed only from a click in JARVIS, the tray or Settings; chec
 
 test('calls and the tray: the offer card, recording kept going in the tray, and "end the meeting" heard from the tray', () => {
   const main = fs.readFileSync('src/main/main.js', 'utf8');
-  for (const s of ["case 'call-offer-answer':{if(role!=='offer')return false;", "const ok=startMeeting(meetingSuit(),{autoEnd:true,quiet:true});if(ok)micWatch?.follow(c.app);",
+  for (const s of ["case 'call-offer-answer':{if(role!=='offer')return false;", "const ok=startMeeting(meetingSuit(),{autoEnd:true,quiet:true});if(ok&&!String(c.app).startsWith('desktop:'))micWatch?.follow(c.app);",
     "if(autoEnd&&micWatch&&!micWatch.followed&&micWatch.live.length===1)micWatch.follow(micWatch.live[0].app);", "try{displays?.work?.webContents.setBackgroundThrottling(!on);}",
     "if(s.state==='IDLE'&&meetings?.active)meetingToTray();", "{label:'END THE MEETING',", "{label:'OFFER TO RECORD CALLS',type:'checkbox',checked:callOffer.on,",
     "micWatch?.follow(null);", "if(!callOffer.on||meetings?.m||callOffer.never.includes(c.name))return;", "offerTimer=setTimeout(hideOffer,30000);"]) assert.ok(main.includes(s), s);

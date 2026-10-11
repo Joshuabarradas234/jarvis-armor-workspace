@@ -28,7 +28,7 @@ import {MeetingCopilot,clock as minSec} from '../meeting/copilot.js';
 import {cloudTranscript,transcriptText} from '../meeting/cloud-transcript.js';
 import {MicWatch} from '../meeting/mic-watch.js';
 import {prepareUpdate,newer as newerVersion,validVersion} from './one-click-update.js';
-import {spawn} from 'node:child_process';
+import {spawn,execFile} from 'node:child_process';
 import {sendGmail,validEmail} from '../meeting/mailer.js';
 import {callApi,callClaudeCode,detectClaudeCode} from '../tower/engines.js';
 import {MissionStore} from '../control/missions.js';
@@ -180,6 +180,7 @@ function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate
   {label:'OPEN JARVIS',click:()=>dispatch('wake')},{label:'ENTER WORK MODE',click:()=>dispatch('wake')},{label:'ARMOR HALL',click:()=>dispatch('home')},{label:'THEME',submenu:workstations.themes.map(t=>({label:`${t.name.toUpperCase()} · ${t.assistant.toUpperCase()}`,type:'radio',checked:t.id===workstations.activeTheme,click:()=>setTheme(t.id)}))},
   ...(pendingUpdate?[{type:'separator'},{label:`INSTALL JARVIS ${pendingUpdate.latest}`,click:()=>installUpdate(pendingUpdate.latest).catch(e=>{try{if(Notification.isSupported())new Notification({title:'The update was not installed',body:e.message}).show();}catch{}})}]:[]),
   ...(meetings?.active?[{type:'separator'},{label:'END THE MEETING',click:()=>endMeeting().catch(e=>log('meeting',e.message))}]:[]),
+  {type:'separator'},{label:'HALL SCREEN',submenu:[...screenList().map(d=>({label:`${d.n}. ${d.label} (${d.size})${d.internal?' · laptop':''}`,type:'radio',checked:d.main,click:()=>hallTo(d.id,d.label).catch(e=>log('screens',e.message))})),{type:'separator'},{label:'SWAP SCREENS',enabled:!!displays?.roles?.control,click:()=>swapScreens().catch(e=>log('screens',e.message))}]},
   {type:'separator'},{label:'OFFER TO RECORD CALLS',type:'checkbox',checked:callOffer.on,click:item=>{callOffer.on=item.checked;if(!item.checked)hideOffer();saveOffer();}},{label:'HAND CONTROL WHEN CLOSED',type:'checkbox',checked:deskOn,click:item=>setDeskHands(item.checked)},{label:'MICROPHONE',type:'checkbox',checked:settings.get().voiceEnabled,click:item=>applySettings({voiceEnabled:item.checked})},
   {label:'WALLPAPER',type:'checkbox',checked:settings.get().wallpaper,click:item=>applySettings({wallpaper:item.checked})},
   {label:'THIRD SCREEN VIEW',type:'checkbox',checked:settings.get().thirdScreen!==false,click:item=>applySettings({thirdScreen:item.checked})},
@@ -246,7 +247,7 @@ function scheduleChatter(){
 }
 /** Spoken summary of where everything stands. */
 /* ---------- conversation: greetings, thanks, the daily briefing, maps ---------- */
-const TALK=['look','recall','meeting-recap','desk-hands','weekly-review','meeting-start','meeting-end','page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
+const TALK=['look','recall','meeting-recap','desk-hands','weekly-review','screen-swap','screen-tv','screen-home','screen-to','meeting-start','meeting-end','page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
 function partOfDay(){const h=new Date().getHours();return h<12?'morning':h<18?'afternoon':'evening';}
 function addr(){return workstations.theme().voice?.address||'sir';}
 const pick=a=>a[Math.floor(Math.random()*a.length)];
@@ -390,6 +391,8 @@ function talk(action,cmd={}){
     say(action==='map'?`Opening a map for ${cap(q)}.`:`Searching for ${q}.`);return true;
   }
   if(action==='meeting-start'){try{startMeeting(cmd.id);}catch(e){say(e.message);}return true;}
+  if(action.startsWith('screen-')){(action==='screen-swap'?swapScreens():action==='screen-tv'?hallTo(tvScreen()?.id,'the TV'):action==='screen-home'?hallTo(screenList().find(d=>d.internal)?.id,'your laptop'):hallTo(screenList()[(cmd.n||0)-1]?.id,`screen ${cmd.n}`))
+    .then(t=>say(t)).catch(e=>say(`${e.message}`));return true;}
   if(action==='weekly-review'){try{weeklyReview();}catch(e){log('weekly',e.message);say(`I couldn't put your week together, ${who}. ${e.message}`);}return true;}
   if(action==='desk-hands'){setDeskHands(cmd.on);say(cmd.on?`Hand control is on, ${who}. When I'm in the tray, make a fist over a window to pick it up, and throw it to the other screen. Pinch and hold to bring me back.`:`Hand control is off, ${who}.`);return true;}
   if(action==='meeting-recap'){if(!meetings?.active){say(`There's no meeting running, ${who}.`);return true;}copilot?.feed(meetings.m.lines,{force:true});broadcast('meeting',{type:'copilot-focus'});broadcast('caption',{text:'Meeting notes are on the lower screen.'});return true;}   // shown, not said: you are on a call
@@ -441,7 +444,7 @@ function meetingInfo(){
 /** Start recording for a suit in this hall (the one named, else the suit you are in, else ask). */
 function startMeeting(id,{autoEnd=true,quiet=false}={}){
   if(meetings.m)throw Error(meetings.m.ending?'The last meeting is still being written up. Give it a moment.':`Already recording the ${meetings.m.suitName} meeting, ${addr()}.`);
-  const theme=workstations.activeTheme;const suitId=id||(machine?.value?.state==='MODULE'?machine.value.selected:null);
+  const theme=workstations.activeTheme;const suitId=id||(machine?.value?.state==='MODULE'?machine.value.selected:null)||(machine?.value?.state==='IDLE'?meetingSuit():null);
   if(!suitId){broadcast('meeting',{type:'ask',info:meetingInfo()});say(`Which suit is the meeting for, ${addr()}?`);return false;}
   const suit=workstations.suit(String(suitId),theme);
   const mt=meetings.start({theme,hallName:workstations.theme(theme).name,suitId:suit.id,suitName:suit.name,suitFolder:suit.folder});
@@ -455,6 +458,16 @@ function startMeeting(id,{autoEnd=true,quiet=false}={}){
   return true;
 }
 /** End: flush audio, write decisions and actions, then save the follow-up for review. */
+/** Which screen shows the hall and suits (settings.mainDisplay): the tray's Hall screen menu, Swap screens, and "Jarvis, put it on the TV". The deck moves to the screen the hall left. */
+function screenList(){const r=displays?.roles;return screen.getAllDisplays().sort((a,b)=>a.bounds.x-b.bounds.x||a.bounds.y-b.bounds.y).map((d,i)=>({id:d.id,n:i+1,label:d.label||`Screen ${i+1}`,size:`${d.size.width}×${d.size.height}`,area:d.size.width*d.size.height,internal:!!d.internal,main:r?.main?.id===d.id,control:r?.control?.id===d.id}));}
+function tvScreen(){const outside=screenList().filter(d=>!d.internal);return outside.find(d=>/\btv\b|samsung|\blg\b|sony|bravia|hisense|tcl|philips|panasonic|toshiba|vizio/i.test(d.label))||outside.sort((a,b)=>b.area-a.area)[0]||null;}
+async function hallTo(id,name){
+  const r=displays?.roles,d=screenList().find(x=>x.id===id);if(!d)throw Error(`I can't see ${name||'that screen'}. Is it plugged in and switched on?`);
+  if(d.main)return `The hall is already on ${name||d.label}, ${addr()}.`;
+  const patch={mainDisplay:d.id};if(r?.control?.id===d.id&&r?.main)patch.controlDisplay=r.main.id;   // the deck takes the screen the hall left
+  await applySettings(patch);updateTray();return `Moving the hall to ${name||d.label}, ${addr()}.`;
+}
+async function swapScreens(){const r=displays?.roles;if(!r?.main||!r?.control)throw Error(`There's only one screen in use, ${addr()}.`);await applySettings({mainDisplay:r.control.id,controlDisplay:r.main.id});updateTray();return `Swapped, ${addr()}.`;}
 /** Updates (one-click-update.js): checked when JARVIS starts and every six hours; when a newer one is out, the hall and the tray offer it, and it installs only when you click. */
 let pendingUpdate=null,installing=false;
 async function checkForUpdate(){
@@ -495,6 +508,18 @@ function startMicWatch(){
   micWatch=new MicWatch({log:m=>log('calls',m),onCall:c=>offerCall(c),onHangUp:c=>{if(!meetings?.active)return;log('calls',`${c.name} let go of the microphone: ending the meeting`);
     try{if(Notification.isSupported())new Notification({title:'The call has ended',body:`${c.name} hung up, so I've stopped recording and I'm writing the notes.`}).show();}catch{}endMeeting().catch(e=>log('meeting',e.message));}});
   micWatch.start();
+  setInterval(()=>uiaCheck().catch(e=>log('calls',e.message)),15000);uiaCheck(true).catch(()=>{});
+}
+/** Teams and Zoom also show a live call by their Leave button (meeting-state.ps1): checked every 15 s while nothing is recording, in case the microphone record is not updated. */
+let uiaSeen=new Set(),uiaBusy=false;
+async function uiaCheck(first=false){
+  if(uiaBusy||!callOffer.on||meetings?.m)return;uiaBusy=true;
+  try{
+    const rows=await new Promise(resolve=>execFile('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(scripts,'meeting-state.ps1')],{windowsHide:true,timeout:8000,maxBuffer:65536},(e,out)=>{try{resolve(e?[]:[].concat(JSON.parse(String(out).trim()||'[]')));}catch{resolve([]);}}));
+    const live=rows.filter(r=>r&&r.active),ids=new Set(live.map(r=>r.id));
+    for(const r of live)if(!uiaSeen.has(r.id)){uiaSeen.add(r.id);if(!first&&!(micWatch?.live||[]).some(c=>c.name===r.name))offerCall({app:r.id,name:r.name||'Teams'});}   // already on when JARVIS started: no offer
+    for(const id of [...uiaSeen])if(!ids.has(id))uiaSeen.delete(id);
+  }finally{uiaBusy=false;}
 }
 function saveOffer(){try{writeJson(offerFile(),callOffer);}catch(e){log('calls',e.message);}updateTray();}
 function offerCall(c){
@@ -1338,7 +1363,7 @@ async function api(event,method,payload){
     case 'screen-look':return look?look.look(String(payload?.question||'').slice(0,600),{follow:payload?.follow===true}):null;
     case 'screen-look-forget':look?.forget();return true;
     case 'call-offer-answer':{if(role!=='offer')return false;const c=offerCard,answer=payload?.answer;hideOffer();if(!c)return false;
-      if(answer==='record'){const ok=startMeeting(meetingSuit(),{autoEnd:true,quiet:true});if(ok)micWatch?.follow(c.app);return !!ok;}
+      if(answer==='record'){const ok=startMeeting(meetingSuit(),{autoEnd:true,quiet:true});if(ok&&!String(c.app).startsWith('desktop:'))micWatch?.follow(c.app);return !!ok;}   // a call seen in the Teams or Zoom window ends with its call-ended screen
       if(answer==='never'){callOffer.never=[...new Set([...callOffer.never,c.name])];saveOffer();}
       return true;}
     case 'desk-hand':{if(role!=='hands')return false;if(payload?.error){log('hands',payload.error);if(deskWin){closeDeskHands();try{if(Notification.isSupported())new Notification({title:'Hand control stopped',body:String(payload.error).slice(0,200)}).show();}catch{}}return true;}desk?.hand(payload);return true;}
