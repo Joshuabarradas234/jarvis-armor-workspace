@@ -88,13 +88,14 @@ footer{flex:none;padding:8px 16px 12px;border-top:1px solid #ffffff10;background
 .aj-hint button{border:0;background:none;color:#9fb6c4;text-decoration:underline;cursor:pointer;font:inherit;padding:0}
 ::-webkit-scrollbar{width:8px;height:6px}::-webkit-scrollbar-thumb{background:#ffffff1f;border-radius:8px}`;
   const ICON = {pin: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2h4l-.5 4 2.5 2.5H4L6.5 6z"/><path d="M8 8.5V14"/></svg>',
+    room: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="3" width="6" height="5" rx="1"/><rect x="8.5" y="3" width="6" height="5" rx="1"/><rect x="5" y="9.5" width="6" height="4" rx="1"/></svg>',
     close: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 3.5l9 9m0-9l-9 9"/></svg>'};
   let projects = [], key = 'all', mode = 'ask', thread = {summary: '', messages: []}, busy = false, hotkey = 'Control+Alt+Space', owner = 'sir', pinned = false;
   const style = document.createElement('style'); style.textContent = CSS; document.head.appendChild(style);
   const root = document.createElement('div'); root.className = 'aj';
   root.innerHTML = `<header class="aj-top"><div class="aj-orb" aria-hidden="true"><i></i><i></i><i></i></div><div class="aj-title"><b>JARVIS</b><span data-sub>Everything</span></div>
     <div class="aj-mode" role="tablist" aria-label="How to answer"><button type="button" role="tab" data-mode="ask">Ask</button><button type="button" role="tab" data-mode="think">Think together</button></div>
-    <button type="button" class="aj-ic" data-act="pin" aria-pressed="false" title="Keep on top of other windows">${ICON.pin}</button><button type="button" class="aj-ic" data-act="hide" title="Close (Esc)">${ICON.close}</button></header>
+    <button type="button" class="aj-ic" data-act="room" title="Open the think room on all your screens">${ICON.room}</button><button type="button" class="aj-ic" data-act="pin" aria-pressed="false" title="Keep on top of other windows">${ICON.pin}</button><button type="button" class="aj-ic" data-act="hide" title="Close (Esc)">${ICON.close}</button></header>
     <nav class="aj-projects" data-projects aria-label="Projects"></nav><main class="aj-log" data-log aria-live="polite"></main>
     <footer><div class="aj-tools"><button type="button" data-act="notes">Save to project notes</button><button type="button" class="build" data-act="build">Start building</button><button type="button" data-act="new">New conversation</button></div>
     <form class="aj-ask" data-form><textarea rows="1" data-input aria-label="Your message"></textarea><button type="submit" data-send>Send</button></form><p class="aj-hint" data-hint></p></footer>`;
@@ -163,6 +164,7 @@ footer{flex:none;padding:8px 16px 12px;border-top:1px solid #ffffff10;background
     if (b.dataset.copy) { await J.call('ask-copy', {text: thread.messages[Number(b.dataset.copy)]?.content || ''}).catch(() => {}); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1500); return; }
     const act = b.dataset.act;
     if (act === 'hide') return J.call('ask-hide').catch(() => {});
+    if (act === 'room') return J.call('room-open', {key}).catch(err => note(esc(plain(err)), 'bad'));
     if (act === 'pin') { pinned = !pinned; b.setAttribute('aria-pressed', String(pinned)); return J.call('ask-pin', {on: pinned}).catch(() => {}); }
     if (act === 'new') { await J.call('ask-clear', {key}).catch(() => {}); thread = {summary: '', messages: []}; render(); idleHint(); input.focus(); return; }
     if (act === 'notes' || act === 'build') {

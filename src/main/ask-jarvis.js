@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {readJson, writeJson, writeText} from '../brain/util.js';
 
-export const NOTES = 'JARVIS notes.md';
+export const NOTES = 'JARVIS notes.md', BOARD_FILE = 'JARVIS board.md';
 const KEEP = 16, FOLD_AT = 24;   // messages kept word for word; when there are more, the oldest are folded into the summary
 const IGNORE = /^(node_modules|\.git|\.next|\.cache|dist|build|out|coverage|__pycache__|\.venv|venv|bin|obj)$/i;
 const clip = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
@@ -32,9 +32,9 @@ export function folderFacts(folder, {deep = false, fsImpl = fs} = {}) {
   const read = (name, n) => { try { return fsImpl.readFileSync(path.join(folder, name), 'utf8'); } catch { return ''; } };
   const readme = ['README.md', 'Readme.md', 'readme.md', 'README.txt', 'README'].map(n => read(n)).find(Boolean) || '';
   let pkg = ''; try { const p = JSON.parse(read('package.json')); pkg = [p.name, p.description, p.scripts ? `scripts: ${Object.keys(p.scripts).slice(0, 12).join(', ')}` : ''].filter(Boolean).join(' · '); } catch {}
-  const notes = read(NOTES);
+  const notes = read(NOTES), board = read(BOARD_FILE);
   return [`Files${lines.length >= max ? ` (first ${max})` : ''}:\n${lines.join('\n') || '(empty)'}`, pkg && `package.json: ${pkg}`,
-    readme && `README:\n${clip(readme, deep ? 5000 : 1200)}`, notes && `${NOTES} (what you and JARVIS decided before):\n${tail(notes, deep ? 8000 : 2000)}`].filter(Boolean).join('\n\n');
+    readme && `README:\n${clip(readme, deep ? 5000 : 1200)}`, notes && `${NOTES} (what you and JARVIS decided before):\n${tail(notes, deep ? 8000 : 2000)}`, board && `${BOARD_FILE} (the think room's board):\n${clip(board, deep ? 4000 : 1200)}`].filter(Boolean).join('\n\n');
 }
 
 export const MODES = {
@@ -54,14 +54,14 @@ export class AskJarvis {
   system(key, mode) {
     const o = this.d.owner?.() || {}, p = this.project(key), list = this.d.projects();
     const facts = p ? `The project in front of you: ${p.name} (${p.area}; it lives in the suit ${p.suit||p.name}, in the ${p.hall}).\n${folderFacts(p.folder, {deep: true})}${p.tasks ? `\n\nIts tasks on the control deck:\n${p.tasks}` : ''}`
-      : `Projects, one per suit:\n${list.map(x => `- ${x.name} (${x.area}; suit ${x.suit || x.name}, ${x.hall})${x.tasks ? ` · ${clip(x.tasks.replace(/\n/g, '; '), 160)}` : ''}`).join('\n') || '(none yet)'}`;
+      : `Projects, one per suit:\n${list.filter(x => x.folder || x.tasks).map(x => `- ${x.name} (${x.area}; suit ${x.suit || x.name}, ${x.hall})${x.tasks ? ` · ${clip(x.tasks.replace(/\n/g, '; '), 160)}` : ''}`).join('\n') || '(none yet)'}`;
     return [`You are JARVIS, ${o.name ? `${o.name}'s` : 'the owner\'s'} assistant inside their desktop workspace. Address them as "${o.address || 'sir'}". British English, calm, warm and precise. Never invent facts about their projects; you only know what is below.`,
       MODES[mode] || MODES.ask, `Write plain text with light Markdown (short headings, bullets, **bold**). No tables.`,
       facts, `How things stand right now:\n${this.d.status?.() || '(nothing to report)'}`].join('\n\n');
   }
 
   /** One question in, one answer out; the conversation is kept for next time. */
-  async send({key = 'all', mode = 'ask', text}) {
+  async send({key = 'all', mode = 'ask', text, extra = ''}) {
     text = String(text || '').trim().slice(0, 6000); if (!text) throw Error('Ask me something first.');
     if (key !== 'all' && !this.project(key)) throw Error('That project is no longer in a suit.');
     if (this.busy.has(key)) throw Error('Still thinking about the last one.');
@@ -70,7 +70,7 @@ export class AskJarvis {
       const th = this.thread(key);
       const talk = [...th.messages.slice(-KEEP).map(m => `${m.role === 'user' ? 'OWNER' : 'JARVIS'}: ${m.content}`), `OWNER: ${text}`].join('\n\n');
       const prompt = `${th.summary ? `What you two said earlier, in short:\n${th.summary}\n\n` : ''}The conversation so far:\n\n${talk}\n\nReply as JARVIS to the last message.`;
-      const answer = String(await this.d.ask(this.system(key, mode), prompt, {maxTokens: mode === 'think' ? 2200 : 1200, kind: 'ask jarvis'}) || '').trim() || 'I have nothing useful to add yet, sir.';
+      const answer = String(await this.d.ask(this.system(key, mode) + (extra ? `\n\nThe board on the wall of the think room right now:\n${extra}` : ''), prompt, {maxTokens: mode === 'think' ? 2200 : 1200, kind: 'ask jarvis'}) || '').trim() || 'I have nothing useful to add yet, sir.';
       const now = Date.now(), next = {...th, messages: [...th.messages, {role: 'user', content: text, at: now}, {role: 'assistant', content: answer, at: now, mode}]};
       this.put(key, next);
       if (next.messages.length > FOLD_AT) this.fold(key).catch(() => {});   // never holds up the answer
@@ -102,6 +102,16 @@ export class AskJarvis {
     writeText(file, `${before ? before.replace(/\s*$/, '\n\n') : `# ${p.name}: notes with JARVIS\n\nJARVIS reads this file whenever you ask about this project. Edit it freely.\n\n`}## ${date}\n\n${text}\n`);
     this.put(key, {...this.thread(key), saved: Date.now()});
     return {file, text};
+  }
+
+  /** Cards for the think room's board from the conversation: {col, text}, leaving out what is already there. */
+  async cards(key, board = '') {
+    const th = this.thread(key); if (!th.messages.length && !th.summary) throw Error('Think out loud with me first.');
+    const raw = String(await this.d.ask('Turn this conversation into cards for a brainstorm board. Reply as JSON only: {"ideas": [], "questions": [], "decisions": [], "next": []}, each card at most 120 characters, at most 8 per list. Leave out anything already on the board.',
+      `${board ? `Already on the board:\n${board}\n\n` : ''}${th.summary ? `Earlier:\n${th.summary}\n\n` : ''}${th.messages.slice(-12).map(m => `${m.role === 'user' ? 'OWNER' : 'JARVIS'}: ${clip(m.content, 3000)}`).join('\n\n')}`, {maxTokens: 900, kind: 'ask jarvis'}) || '');
+    let j = null; try { j = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)); } catch {}
+    if (!j) throw Error('I could not sort that onto the board just now. Try again.');
+    return ['ideas', 'questions', 'decisions', 'next'].flatMap(col => (Array.isArray(j[col]) ? j[col] : []).slice(0, 8).map(text => ({col, text: clip(String(text), 120), by: 'jarvis'})));
   }
 
   /** A short title and the thinking so far, for an idea card ("Start building"). */

@@ -450,3 +450,23 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - All `desk-project-*` requests come from the main role only.
 - Not tested on the real app: pinning to the taskbar, the jump list and the global hotkey. They need the installed exe and a desktop session; the test copy was not run, because it takes over the owner's screens. The window and the card were checked on a browser test page with sample data.
 - Tests: frontend (`ask-desk-1.94.0.test.mjs`, 7 new; 296 in total) and Core (124).
+
+## Release 1.95.0: the think room
+
+- **`src/main/think-room.js`** (`ThinkRoom`) opens one `role:'room'` window per display: frameless, sized to the work area, so the taskbars stay. It loads `room.html?view=room&screen=<n>`, where screens are numbered left to right as in the tray.
+  - The display under the mouse gets the board. On a suit's first room, the suit's last session tabs and in-app links go to the other screens.
+  - State per project key lives in `rooms.json`: cards, tabs with their screen, the board's screen, and screens switched off.
+  - The board and JARVIS use the Ask JARVIS thread for the key. `AskJarvis.send({extra})` adds the board to the system prompt; `AskJarvis.cards()` asks for JSON cards. `cardsFromAnswer` files bullets by the heading above them, so pinning needs no Claude call.
+  - `leave()` writes `<folder>/JARVIS board.md`, which `folderFacts` now reads. `leave` is also called from `before-quit`.
+- **`src/main/room-tabs.js`** (`RoomTabs`) is one manager across all room windows, so pop-ups and events never go to the wrong manager. The suit `TabManager` was left alone.
+  - A move is `removeChildView` / `addChildView` of the same `WebContentsView`, so the page is live and nothing reloads.
+  - The board is the pseudo-tab `'board'`. `evacuate()` moves a leaving screen's tabs elsewhere.
+  - `View` and `openExternal` are passed in, so tests can run without Electron.
+- **Renderer** (`dist/assets/think-room.js`).
+  - Drag-to-screen uses pointer capture. A release outside the window sends `room-tab-drop {x, y}` (screen DIPs), and main picks the room window under that point.
+  - The page area is reported with `room-layout`, which is zero while the board shows.
+  - There are no overlays over the native view: the project switcher is a native `<select>`, and the screen toggles sit in the top bar.
+- **Entry points:** the `room-*` requests (all refused from any role but `room`, apart from `room-open` from main and ask), the tray THINK ROOM / LEAVE THE THINK ROOM item, a Ctrl+K tool, the room button in the Ask window, and the voice commands `room-open` and `room-leave` (also allowed from the tray).
+- `askProjects` now includes suits without a folder, so any suit can have a room. The Ask window still lists only suits with folders.
+- Not tested in the real app (it would take over the owner's screens): real windows across displays, dragging between physical screens, and web views. The page was checked on a browser test page with sample data, and the managers have tests with fake windows and views.
+- Tests: `think-room-1.95.0.test.mjs` (4 new; 300 frontend in total) and Core.

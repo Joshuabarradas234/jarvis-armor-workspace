@@ -104,7 +104,7 @@ test('Ask JARVIS is opened by Ctrl+Alt+Space, its own taskbar icon, the taskbar 
   for (const s of ["{const k=values.ask||'Control+Alt+Space';try{if(!globalShortcut.register(k,()=>toggleAsk()))failed.push(k);}",
     "w.setAppDetails({appId:ASK_ID,appIconPath:process.execPath,appIconIndex:0,relaunchCommand:askCommand(),relaunchDisplayName:'Ask JARVIS'});",
     "app.setUserTasks([{program:process.execPath,arguments:ASK_ARG,", "if((argv||[]).includes(ASK_ARG)){openAsk();return;}", "else if(process.argv.includes(ASK_ARG))openAsk();",
-    "{label:'ASK JARVIS',click:()=>openAsk()},{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},", "w.loadURL('jarvis://app/ask.html?view=ask')",
+    "{label:'ASK JARVIS',click:()=>openAsk()},", "{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},", "w.loadURL('jarvis://app/ask.html?view=ask')",
     "case 'ask-send':{if(role!=='ask')return false;", "case 'ask-notes':{if(role!=='ask')return false;", "case 'ask-build':{if(role!=='ask')return false;",
     "case 'desk-project-file':{if(role!=='main')return false;", "case 'desk-project-undo':{if(role!=='main')return false;", "isWorkshop:p=>IdeaAssistant.isRepo(p)",
     "if(machine?.value?.state==='ARMOR_HALL'&&deskProjects?.dueAuto())broadcast('core',{type:'desk-projects'});"]) assert.ok(main.includes(s), s);
