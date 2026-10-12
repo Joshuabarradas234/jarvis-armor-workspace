@@ -101,17 +101,17 @@ test('Ask JARVIS: Save to project notes adds a dated section to JARVIS notes.md;
 
 test('Ask JARVIS is opened by Ctrl+Alt+Space, its own taskbar icon, the taskbar jump list, the tray and by voice; only its own window can use it', () => {
   const main = fs.readFileSync('src/main/main.js', 'utf8');
-  for (const s of ["{const k=values.ask||'Control+Alt+Space';try{if(!globalShortcut.register(k,()=>toggleAsk()))failed.push(k);}",
+  for (const s of ["askKey='';for(const k of askKeys(values.ask)){try{if(globalShortcut.register(k,()=>toggleAsk())){askKey=k;break;}}catch{}}",
     "w.setAppDetails({appId:ASK_ID,appIconPath:process.execPath,appIconIndex:0,relaunchCommand:askCommand(),relaunchDisplayName:'Ask JARVIS'});",
     "app.setUserTasks([{program:process.execPath,arguments:ASK_ARG,", "if((argv||[]).includes(ASK_ARG)){openAsk();return;}", "else if(process.argv.includes(ASK_ARG))openAsk();",
-    "{label:'ASK JARVIS',click:()=>openAsk()},", "{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},", "w.loadURL('jarvis://app/ask.html?view=ask')",
+    "click:()=>openAsk()},", "{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},", "w.loadURL('jarvis://app/ask.html?view=ask')",
     "case 'ask-send':{if(role!=='ask')return false;", "case 'ask-notes':{if(role!=='ask')return false;", "case 'ask-build':{if(role!=='ask')return false;",
     "case 'desk-project-file':{if(role!=='main')return false;", "case 'desk-project-undo':{if(role!=='main')return false;", "isWorkshop:p=>IdeaAssistant.isRepo(p)",
     "if(machine?.value?.state==='ARMOR_HALL'&&deskProjects?.dueAuto())broadcast('core',{type:'desk-projects'});"]) assert.ok(main.includes(s), s);
   assert.ok(fs.readFileSync('dist/ask.html', 'utf8').includes('<script type="module" src="./assets/ask-jarvis.js"></script>'));
   assert.ok(fs.readFileSync('dist/index.html', 'utf8').includes('<script type="module" src="./assets/desk-projects.js"></script>'));
   assert.ok(fs.readFileSync('dist/assets/ask-jarvis.js', 'utf8').includes("VIEW === 'ask'")); assert.ok(fs.readFileSync('dist/assets/desk-projects.js', 'utf8').includes("J.call('desk-project-file'"));
-  assert.equal(defaults.hotkeys.ask, 'Control+Alt+Space');
+  assert.equal(defaults.hotkeys.ask, 'Control+Alt+Q');   // 1.95.1: Ctrl+Alt+Space is the Claude app's quick entry
   assert.equal(validateSettings({hotkeys: {ask: 'F13'}}, structuredClone(defaults)).hotkeys.ask, 'F13');
   assert.throws(() => validateSettings({hotkeys: {ask: defaults.hotkeys.wake}}, structuredClone(defaults)), /different/);
   const heard = (p, idle, follow) => parseCommand(p, {theme: {assistant: 'Jarvis'}, themes: [{id: 'ironman', assistant: 'Jarvis'}], modules: [], idle, follow});

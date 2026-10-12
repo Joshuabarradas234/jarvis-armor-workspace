@@ -35,5 +35,6 @@ if (J && VIEW === 'main') {
       if (m?.type === 'update-progress' && el && update) { if (m.text) render({busy: m.text}); }
     });
   } catch {}
+  J.call('update-pending').then(u => { if (u?.update && !el && hiddenFor !== u.latest) { update = u; render(); } }).catch(() => {});   // an update found while the hall was closed
   window.__jarvisUpdate = {get shown() { return !!el; }};
 }

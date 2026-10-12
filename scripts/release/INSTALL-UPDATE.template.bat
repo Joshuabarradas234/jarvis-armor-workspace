@@ -46,17 +46,20 @@ rem ---- close JARVIS completely (it keeps running in the tray) ----
 echo   Closing JARVIS...
 taskkill /im "JARVIS Armor Workspace.exe" /f /t >nul 2>&1
 set /a WAITED=0
+rem a file, not a pipe: started by JARVIS, a pipe here waited for ever; CSV keeps the long name whole
 :waitclose
-tasklist /fi "imagename eq JARVIS Armor Workspace.exe" 2>nul | find /i "JARVIS Armor Workspace.exe" >nul
+"%SystemRoot%\System32\tasklist.exe" /fi "imagename eq JARVIS Armor Workspace.exe" /fo csv /nh > "%TEMP%\jarvis-running.txt" 2>nul
+"%SystemRoot%\System32\find.exe" /i "JARVIS Armor Workspace.exe" "%TEMP%\jarvis-running.txt" >nul 2>&1
 if not errorlevel 1 (
   if !WAITED! geq 15 goto closed
-  timeout /t 1 /nobreak >nul
+  ping -n 2 127.0.0.1 >nul
   set /a WAITED+=1
   taskkill /im "JARVIS Armor Workspace.exe" /f /t >nul 2>&1
   goto waitclose
 )
 :closed
-timeout /t 2 /nobreak >nul
+del "%TEMP%\jarvis-running.txt" >nul 2>&1
+ping -n 3 127.0.0.1 >nul
 
 rem ---- keep a copy of the old version ----
 if not exist "%TARGET%\resources\backup-before-{{VERSION_U}}" mkdir "%TARGET%\resources\backup-before-{{VERSION_U}}" >nul 2>&1
@@ -89,5 +92,5 @@ echo   Your old version is kept in resources\backup-before-{{VERSION_U}} if you 
 echo.
 echo   Starting JARVIS...
 start "" "%TARGET%\JARVIS Armor Workspace.exe"
-timeout /t 4 /nobreak >nul
+ping -n 5 127.0.0.1 >nul
 exit /b 0

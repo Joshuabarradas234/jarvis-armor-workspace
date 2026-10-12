@@ -178,14 +178,15 @@ function registerHotkeys(values){
   for(let n=1;n<=7;n++)for(const k of [`Control+Alt+${n}`]){try{if(!globalShortcut.register(k,suitKey(n)))failed.push(k);}catch{failed.push(k);}}
   try{if(!globalShortcut.register('Control+Alt+F',()=>openRecall()))failed.push('Control+Alt+F');}catch{failed.push('Control+Alt+F');}   // search everything
   try{if(!globalShortcut.register('Control+Alt+L',()=>{look?.look('').catch(e=>log('look',e.message));}))failed.push('Control+Alt+L');}catch{failed.push('Control+Alt+L');}   // look at my screen
-  {const k=values.ask||'Control+Alt+Space';try{if(!globalShortcut.register(k,()=>toggleAsk()))failed.push(k);}catch{failed.push(k);}}   // Ask JARVIS, from anywhere
+  askKey='';for(const k of askKeys(values.ask)){try{if(globalShortcut.register(k,()=>toggleAsk())){askKey=k;break;}}catch{}}   // Ask JARVIS, from anywhere: yours, else the first free one
+  if(!askKey)failed.push(values.ask||ASK_KEYS[0]);else if(values.ask&&values.ask!==askKey&&values.ask!=='Control+Alt+Space')log('hotkeys',`${values.ask} is taken by another app, so Ask JARVIS is on ${askKey}.`);
   if(failed.length)log('hotkeys',`Unavailable: ${failed.join(', ')}. Use the tray menu or choose another shortcut.`);
 }
 function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate([
   {label:'OPEN JARVIS',click:()=>dispatch('wake')},{label:'ENTER WORK MODE',click:()=>dispatch('wake')},{label:'ARMOR HALL',click:()=>dispatch('home')},{label:'THEME',submenu:workstations.themes.map(t=>({label:`${t.name.toUpperCase()} · ${t.assistant.toUpperCase()}`,type:'radio',checked:t.id===workstations.activeTheme,click:()=>setTheme(t.id)}))},
   ...(pendingUpdate?[{type:'separator'},{label:`INSTALL JARVIS ${pendingUpdate.latest}`,click:()=>installUpdate(pendingUpdate.latest).catch(e=>{try{if(Notification.isSupported())new Notification({title:'The update was not installed',body:e.message}).show();}catch{}})}]:[]),
   ...(meetings?.active?[{type:'separator'},{label:'END THE MEETING',click:()=>endMeeting().catch(e=>log('meeting',e.message))}]:[]),
-  {type:'separator'},{label:'ASK JARVIS',click:()=>openAsk()},room?.isOpen?{label:'LEAVE THE THINK ROOM',click:()=>{room.leave();updateTray();}}:{label:'THINK ROOM',click:()=>{try{openRoom();}catch(e){log('room',e.message);}}},{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},
+  {type:'separator'},{label:askKey?`ASK JARVIS  (${keyName(askKey)})`:'ASK JARVIS',click:()=>openAsk()},room?.isOpen?{label:'LEAVE THE THINK ROOM',click:()=>{room.leave();updateTray();}}:{label:'THINK ROOM',click:()=>{try{openRoom();}catch(e){log('room',e.message);}}},{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},
   {type:'separator'},{label:'HALL SCREEN',submenu:[...screenList().map(d=>({label:`${d.n}. ${d.label} (${d.size})${d.internal?' · laptop':''}`,type:'radio',checked:d.main,click:()=>hallTo(d.id,d.label).catch(e=>log('screens',e.message))})),{type:'separator'},{label:'SWAP SCREENS',enabled:!!displays?.roles?.control,click:()=>swapScreens().catch(e=>log('screens',e.message))}]},
   {type:'separator'},{label:'OFFER TO RECORD CALLS',type:'checkbox',checked:callOffer.on,click:item=>{callOffer.on=item.checked;if(!item.checked)hideOffer();saveOffer();}},{label:'HAND CONTROL WHEN CLOSED',type:'checkbox',checked:deskOn,click:item=>setDeskHands(item.checked)},{label:'MICROPHONE',type:'checkbox',checked:settings.get().voiceEnabled,click:item=>applySettings({voiceEnabled:item.checked})},
   {label:'WALLPAPER',type:'checkbox',checked:settings.get().wallpaper,click:item=>applySettings({wallpaper:item.checked})},
@@ -500,7 +501,7 @@ async function installUpdate(version){
   try{
     const dir=await prepareUpdate({version,current:app.getVersion(),dir:path.join(app.getPath('temp'),`JARVIS-update-${version}`),fetchImpl:(u,o)=>net.fetch(u,o),onStatus:say2});
     say2('Installing. JARVIS will close and open again in a minute.');log('update',`installing ${version} from ${dir}`);
-    const child=spawn('cmd.exe',['/c',path.join(dir,'run-update.cmd')],{cwd:dir,detached:true,stdio:'ignore'});child.unref();   // its own window: the installer shows its progress there
+    const child=spawn('cmd.exe',['/d','/c',`start "Installing JARVIS" /d "${dir}" cmd.exe /c "${path.join(dir,'run-update.cmd')}"`],{cwd:dir,detached:true,stdio:'ignore',windowsVerbatimArguments:true,windowsHide:true});child.unref();   // its own window with a real console, outside JARVIS's process tree
     setTimeout(()=>app.quit(),1200);
     return {ok:true};
   }catch(e){installing=false;say2('');throw e;}
@@ -886,6 +887,10 @@ function setDeskHands(on){deskOn=!!on;try{writeJson(deskFile(),{on:deskOn});}cat
 /** Ask JARVIS (src/main/ask-jarvis.js, dist/ask.html): its own window and its own taskbar button, so it can be pinned there and opened with one click. */
 let askWin=null,askJ=null,deskProjects=null,room=null;
 const ASK_ARG='--ask',ASK_ID='JARVIS.AskJarvis';
+/** Ask JARVIS's key: the one you chose, else the first of these that no other app holds. Ctrl+Alt+Space (1.94's choice) is the Claude app's quick entry. */
+const ASK_KEYS=['Control+Alt+Q','Control+Alt+K','Control+Shift+Alt+J'];let askKey='';
+function askKeys(chosen){return [...new Set([...(chosen&&chosen!=='Control+Alt+Space'?[chosen]:[]),...ASK_KEYS])];}
+const keyName=k=>String(k||'').replace(/CommandOrControl|Control/g,'Ctrl').replace(/\+/g,' + ');
 function askCommand(){return app.isPackaged?`"${process.execPath}" ${ASK_ARG}`:`"${process.execPath}" "${process.argv[1]||root}" ${ASK_ARG}`;}
 function askWindow(){
   if(askWin&&!askWin.isDestroyed())return askWin;
@@ -1427,7 +1432,7 @@ async function api(event,method,payload){
     case 'idea-step':return planner.step(String(payload?.id||''),String(payload?.step||''),payload?.done===true);
     case 'screen-look':return look?look.look(String(payload?.question||'').slice(0,600),{follow:payload?.follow===true}):null;
     case 'screen-look-forget':look?.forget();return true;
-    case 'ask-init':return {projects:askProjects().filter(p=>p.folder).map(p=>({key:p.key,theme:p.theme,name:p.name,suit:p.suit,hall:p.hall,area:p.area})),hotkey:settings.get().hotkeys?.ask||'Control+Alt+Space',address:addr()};
+    case 'ask-init':return {projects:askProjects().filter(p=>p.folder).map(p=>({key:p.key,theme:p.theme,name:p.name,suit:p.suit,hall:p.hall,area:p.area})),hotkey:askKey||'',address:addr()};
     case 'ask-thread':return askJ.thread(String(payload?.key||'all'));
     case 'ask-send':{if(role!=='ask')return false;lastUserAction=Date.now();return askJ.send({key:String(payload?.key||'all'),mode:payload?.mode==='think'?'think':'ask',text:payload?.text});}
     case 'ask-clear':{if(role!=='ask')return false;return askJ.clear(String(payload?.key||'all'));}
@@ -1545,6 +1550,7 @@ async function api(event,method,payload){
       return {restored:true,live:true,savedAt:data.savedAt||null,fromVersion:data.version||null,skipped:dropped};
     }
     case 'update-check':return checkForUpdate();
+    case 'update-pending':return pendingUpdate||null;
     case 'update-install':{if(!['main','settings'].includes(role))throw Error('Updates are installed from JARVIS itself.');return installUpdate(String(payload?.version||''));}
     case 'core':{if(!['main','console','settings'].includes(role))throw Error('JARVIS Core is not available here.');if(!core)throw Error(coreError?`JARVIS Core could not start: ${coreError}`:'JARVIS Core is still starting.');if(typeof payload?.method!=='string')throw Error('Invalid request.');return core.api(payload.method,payload.data&&typeof payload.data==='object'?payload.data:{});}
     case 'diagnostics':return {status:getStatus(),displays:displays.describe(),version:app.getVersion(),running:BOOT?.label||app.getVersion(),platform:process.platform,gpu:app.getGPUFeatureStatus(),settingsPath:path.join(userDir,'settings.json')};
@@ -1689,7 +1695,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     const reminded=new Set();reminderTimer=setInterval(()=>{for(const event of calendar.list()){const delta=Date.parse(event.start)-Date.now();if(event.reminder&&delta>=0&&delta<=300000&&!reminded.has(event.id)&&!focusActive()&&Notification.isSupported()){reminded.add(event.id);new Notification({title:event.title,body:'Starting in '+Math.ceil(delta/60000)+' minutes.'}).show();}}},30000);
     if(!settings.get().setupComplete)openSettings();else if(process.argv.includes(WAKE_ARG))core?.woke?.('wake timer');else if(process.argv.includes(ASK_ARG))openAsk();else if(settings.get().autoStart||(!process.argv.includes('--startup')&&!settings.get().startMinimized))dispatch('wake');
     app.on('activate',()=>{if(machine)dispatch('wake');});
-  }).catch(e=>{console.error(e);app.quit();});
+  }).catch(e=>{try{log('crash',`JARVIS could not start: ${e?.stack||e?.message||e}`);}catch{}console.error(e);app.quit();});
 }
 app.on('window-all-closed',()=>{});
 app.on('before-quit',()=>{

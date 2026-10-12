@@ -1,5 +1,5 @@
 {
-  "version": "1.95.0",
+  "version": "1.95.1",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "The think room: all your screens become one room for a project, with a board, JARVIS to think with, and tabs you can drag from screen to screen."
+  "notes": "Install now finishes by itself, the update banner shows whenever you open the hall, and Ask JARVIS moves to Ctrl+Alt+Q."
 }
