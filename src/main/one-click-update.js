@@ -50,6 +50,6 @@ export async function prepareUpdate({version: v, current, dir, fetchImpl = fetch
   await extract(zip, dir);
   if (!fs.existsSync(path.join(dir, 'INSTALL-UPDATE.bat')) || !fs.existsSync(path.join(dir, 'update', 'app.asar'))) throw Error('The update zip is not laid out as expected, so it was not installed.');
   // waits for JARVIS to close by himself (saving what is open) before the installer, which would otherwise end him at once
-  fs.writeFileSync(path.join(dir, 'run-update.cmd'), '@echo off\r\ntitle Installing JARVIS ' + v + '\r\ntimeout /t 5 /nobreak >nul\r\ncall "%~dp0INSTALL-UPDATE.bat"\r\n');
+  fs.writeFileSync(path.join(dir, 'run-update.cmd'), '@echo off\r\ntitle Installing JARVIS ' + v + '\r\nping -n 6 127.0.0.1 >nul\r\ncall "%~dp0INSTALL-UPDATE.bat"\r\n');
   return dir;
 }

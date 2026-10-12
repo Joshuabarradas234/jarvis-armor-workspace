@@ -470,3 +470,20 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
 - `askProjects` now includes suits without a folder, so any suit can have a room. The Ask window still lists only suits with folders.
 - Not tested in the real app (it would take over the owner's screens): real windows across displays, dragging between physical screens, and web views. The page was checked on a browser test page with sample data, and the managers have tests with fake windows and views.
 - Tests: `think-room-1.95.0.test.mjs` (4 new; 300 frontend in total) and Core.
+
+## Release 1.95.1: Install now finishes by itself
+
+- **The one-click installer hung on the owner's PC.** JARVIS started `run-update.cmd` with `spawn('cmd.exe',['/c',file],{detached:true,stdio:'ignore'})`.
+  - In that console, the wait loop's `tasklist … | find …` left `find.exe` blocked for ever, with 0 CPU and no `tasklist` running: its input was not the pipe. The window was blank, because stdout was NUL.
+  - The check could never have matched anyway: table-format `tasklist` cuts "JARVIS Armor Workspace.exe" short.
+- **Fixes.**
+  - The template's wait loop writes `tasklist /fo csv /nh` to `%TEMP%\jarvis-running.txt` and runs `"%SystemRoot%\System32\find.exe"` on the file. There is no pipe, the name is whole, and Git's `find` on the PATH is never picked.
+  - Pauses use `ping -n`, because `timeout` fails without console input.
+  - JARVIS now starts the installer through `start "Installing JARVIS" /d "<dir>" cmd.exe /c "<dir>\run-update.cmd"`, so it gets a fresh console that shows its progress. It is also no longer in JARVIS's process tree, which the installer's `taskkill /t` could otherwise end.
+  - Tested on Windows with a stand-in script: the window shows, a pipeline completes, and the CSV check sees JARVIS running and an unknown name not running, even with Git's `find` first on the PATH and no keyboard. The real one-click install from 1.95.1 onwards was not run.
+- **The update banner on load:** `update-pending` returns `pendingUpdate`, and `update-ready.js` asks for it when the hall loads.
+- **The Ask JARVIS key.** Ctrl+Alt+Space is the Claude desktop app's quick entry; the owner saw it open Claude.
+  - The new default is `Control+Alt+Q`.
+  - `registerHotkeys` tries the chosen key (skipping the old default), then `Control+Alt+Q`, `Control+Alt+K` and `Control+Shift+Alt+J`, and keeps the first that registers in `askKey`, which the Ask window and the tray label show.
+- **Start-up failures** in the `whenReady` chain are now logged as 'crash' before `app.quit()`. Before, they closed JARVIS without a word.
+- Tests: `fixes-1.95.1.test.mjs` (2 new; 302 frontend in total) and Core.

@@ -4,7 +4,7 @@ export const defaults = {
   mainDisplay:null, controlDisplay:null, singleScreen:false, thirdScreen:true, scale:1,
   quality:'auto', fps:30, reduceOnBattery:true,
   master:0.65, voice:0.8, interface:0.35, mechanical:0.45, ambience:0.12, music:0.65,
-  hotkeys:{wake:'CommandOrControl+Alt+J',home:'CommandOrControl+Alt+H',standdown:'CommandOrControl+Alt+X',back:'Escape',ask:'Control+Alt+Space'},
+  hotkeys:{wake:'CommandOrControl+Alt+J',home:'CommandOrControl+Alt+H',standdown:'CommandOrControl+Alt+X',back:'Escape',ask:'Control+Alt+Q'},
   weather:{latitude:null,longitude:null,enabled:false},
   ai:{endpoint:'',model:'',enabled:false},
   jaeAsset:'', shortcuts:[], favorites:[], updateFeed:'', deckBackdrops:{},

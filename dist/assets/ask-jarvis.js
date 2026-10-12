@@ -90,7 +90,7 @@ footer{flex:none;padding:8px 16px 12px;border-top:1px solid #ffffff10;background
   const ICON = {pin: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2h4l-.5 4 2.5 2.5H4L6.5 6z"/><path d="M8 8.5V14"/></svg>',
     room: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="3" width="6" height="5" rx="1"/><rect x="8.5" y="3" width="6" height="5" rx="1"/><rect x="5" y="9.5" width="6" height="4" rx="1"/></svg>',
     close: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 3.5l9 9m0-9l-9 9"/></svg>'};
-  let projects = [], key = 'all', mode = 'ask', thread = {summary: '', messages: []}, busy = false, hotkey = 'Control+Alt+Space', owner = 'sir', pinned = false;
+  let projects = [], key = 'all', mode = 'ask', thread = {summary: '', messages: []}, busy = false, hotkey = '', owner = 'sir', pinned = false;
   const style = document.createElement('style'); style.textContent = CSS; document.head.appendChild(style);
   const root = document.createElement('div'); root.className = 'aj';
   root.innerHTML = `<header class="aj-top"><div class="aj-orb" aria-hidden="true"><i></i><i></i><i></i></div><div class="aj-title"><b>JARVIS</b><span data-sub>Everything</span></div>
@@ -104,7 +104,7 @@ footer{flex:none;padding:8px 16px 12px;border-top:1px solid #ffffff10;background
   const current = () => projects.find(p => p.key === key) || null;
   const hello = () => { const h = new Date().getHours(); return `Good ${h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'}, ${owner}.`; };
   function note(text, kind = '') { hint.className = `aj-hint ${kind}`; hint.innerHTML = text; }
-  function idleHint() { note(`${esc(hotkey.replace(/CommandOrControl/g, 'Ctrl').replace(/Control/g, 'Ctrl').replace(/\+/g, ' + '))} opens me from anywhere. To keep me on the taskbar, right-click my icon there and choose Pin to taskbar.`); }
+  function idleHint() { note(`${hotkey ? `${esc(hotkey.replace(/CommandOrControl/g, 'Ctrl').replace(/Control/g, 'Ctrl').replace(/\+/g, ' + '))} opens me from anywhere. ` : ''}To keep me on the taskbar, right-click my icon there and choose Pin to taskbar.`); }
   function tint() { const t = TINT[current()?.theme || 'all'] || TINT.all; document.documentElement.style.setProperty('--c1', t[0]); document.documentElement.style.setProperty('--c2', t[1]); }
   function suggestions() {
     const p = current(), n = p?.name;
@@ -182,7 +182,7 @@ footer{flex:none;padding:8px 16px 12px;border-top:1px solid #ffffff10;background
   input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(input.value); } });
   addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); J.call('ask-hide').catch(() => {}); } });
   async function init(open = {}) {
-    try { const r = await J.call('ask-init'); projects = r.projects || []; hotkey = r.hotkey || hotkey; owner = r.address || owner; } catch {}
+    try { const r = await J.call('ask-init'); projects = r.projects || []; hotkey = r.hotkey || ''; owner = r.address || owner; } catch {}
     if (open.mode) mode = open.mode === 'think' ? 'think' : 'ask';
     await choose(open.key || key);
     if (open.text) { if (open.send) send(open.text); else { input.value = open.text; fit(); } }

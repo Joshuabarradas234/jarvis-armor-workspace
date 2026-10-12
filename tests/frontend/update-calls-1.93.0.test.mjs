@@ -19,7 +19,7 @@ test('updates: a matching download is unpacked with its installer; a wrong finge
   const dir = path.join(tmp(t), 'u'), status = [];
   await prepareUpdate({version: '1.94.0', current: '1.93.0', dir, fetchImpl: fetchImpl(`${sum}  ${zipName('1.94.0')}`), extract, onStatus: x => status.push(x)});
   assert.ok(asked.every(u => u.startsWith(`https://github.com/${REPO}/releases/download/v1.94.0/`)));
-  assert.match(fs.readFileSync(path.join(dir, 'run-update.cmd'), 'utf8'), /timeout \/t 5 \/nobreak >nul\r\ncall "%~dp0INSTALL-UPDATE\.bat"/);
+  assert.match(fs.readFileSync(path.join(dir, 'run-update.cmd'), 'utf8'), /ping -n 6 127\.0\.0\.1 >nul\r\ncall "%~dp0INSTALL-UPDATE\.bat"/);
   assert.deepEqual(status, ['Downloading JARVIS 1.94.0…', 'Checking the download…', 'Unpacking…']);
   await assert.rejects(prepareUpdate({version: '1.94.0', current: '1.93.0', dir, fetchImpl: fetchImpl(`${'b'.repeat(64)}  ${zipName('1.94.0')}`), extract}), /does not match its published fingerprint/);
   await assert.rejects(prepareUpdate({version: '1.94.0', current: '1.93.0', dir, fetchImpl: fetchImpl(null), extract}), /no fingerprint file/);
