@@ -424,3 +424,9 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - `release.yml` now publishes `SHA256SUMS.txt` with each zip, so one-click works from 1.93.0 to the next version.
   - Tested on Windows: unpacking the real 1.92.0 zip took 0.6 s. Not tested: a full install, because there is no newer release yet.
 - Tests: 285 frontend (`features-1.93.0.test.mjs`, `update-calls-1.93.0.test.mjs`, 10 new) and Core again. The weekly review film and the scene contents were checked in a browser test page, not the test copy, which would take over the owner's screens.
+
+## Release 1.93.1: calmer overnight reports
+
+- `gatherFacts` splits `logFaults` into real faults and `OFFLINE` ones (DNS and no-internet errors such as ENOTFOUND, ERR_NAME_NOT_RESOLVED, fetch failed). Offline errors become one `facts.offline` line that the report is told to keep to the very end. The owner had a 06:12 call that opened with five mail failures and six Twilio failures from a sleeping PC.
+- On the owner's PC (not in the repo), the 06:00 weekday call and the 30-minute email check were paused in Standing orders (wrapped in comment marks, with a note), and a one-off date on 26 October reminds him to switch them back on.
+- Tests: frontend plus `fixes-1.93.1.test.mjs`, and Core.

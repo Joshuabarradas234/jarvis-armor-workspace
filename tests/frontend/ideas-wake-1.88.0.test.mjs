@@ -91,7 +91,7 @@ test('JARVIS Core keeps the wake task two minutes before the next call, and stay
   const core=createJarvisCore({userDir:dir,docs:dir,appVersion:'1.88.0',boot:{asarRoot:dir,root:dir,base:'1.88.0'},log(){},notify(){},broadcast(){},getKey:()=>'',pcAwake:()=>true,say(){},crypt:{available:()=>false},isIdle:()=>true,
     keepAwake:on=>awake.push(on),settings:{get:()=>({})},wakeAt:async at=>{wakes.push(at);return true;},wakeTimers:async()=>({mains:'on',battery:'off'})});
   t.after(()=>core.dispose());core.store.save({keepAwake:false});
-  const at=Date.now()+45*60000;core.store.addAlarm({at,kind:'call',note:'Gym'});
+  const at=Date.now()+4*60000;core.store.addAlarm({at,kind:'call',note:'Gym'});   // soon, so no message in the default schedule (21:00 summary) comes first
   await core.tick();await new Promise(r=>setTimeout(r,20));
   assert.equal(wakes.at(-1),at-2*60000);assert.equal(core.store.state.wake.what,'Gym');assert.deepEqual(core.status().wake.timers,{mains:'on',battery:'off'});
   await core.tick();assert.equal(wakes.length,1);   // unchanged: Windows is not asked again
