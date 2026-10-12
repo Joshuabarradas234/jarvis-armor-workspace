@@ -428,5 +428,25 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
 ## Release 1.93.1: calmer overnight reports
 
 - `gatherFacts` splits `logFaults` into real faults and `OFFLINE` ones (DNS and no-internet errors such as ENOTFOUND, ERR_NAME_NOT_RESOLVED, fetch failed). Offline errors become one `facts.offline` line that the report is told to keep to the very end. The owner had a 06:12 call that opened with five mail failures and six Twilio failures from a sleeping PC.
-- On the owner's PC (not in the repo), the 06:00 weekday call and the 30-minute email check were paused in Standing orders (wrapped in comment marks, with a note), and a one-off date on 26 October reminds him to switch them back on.
+- On the owner's PC (not in the repo), the 06:00 weekday call and the 30-minute email check were paused in Standing orders (wrapped in comment marks, with a note), and a one-off date on 26 October is a reminder to switch them back on.
 - Tests: frontend plus `fixes-1.93.1.test.mjs`, and Core.
+
+## Release 1.94.0: Ask JARVIS anywhere, and projects in their suits
+
+- **Ask JARVIS** (`src/main/ask-jarvis.js`, `dist/ask.html`, `dist/assets/ask-jarvis.js`).
+  - A `role:'ask'` window, frameless, centred on the screen under the mouse. `setAppDetails` gives it its own taskbar identity (`JARVIS.AskJarvis`) with `relaunchCommand` `"<exe>" --ask`, so it can be pinned. `app.setUserTasks` adds Ask JARVIS to JARVIS's jump list when packaged.
+  - `--ask` is handled at start-up and in `second-instance`. The hotkey is `settings.hotkeys.ask`, default `Control+Alt+Space`, and the uniqueness check now counts every hotkey rather than assuming 4. There is a tray item, and the voice commands `ask-open` and `desk-file` are added to `TRAY_OK`.
+  - One thread per project (`ask-threads.json`, key `<theme>:<suit>` or `all`). The last 16 messages go to Claude word for word; past 24, the oldest are folded into a running summary in the background.
+  - The system prompt holds a folder look (names only, two levels deep, skipping `node_modules`, `.git`, `dist` and so on), README, package.json name, description and scripts, `JARVIS notes.md`, control-deck tasks and a status block (to-dos, Tower jobs, ideas, the next 7 days of calendar).
+  - Calls go through `IdeaAssistant.ask`: the API key, else Claude Code; spend is recorded as 'ask jarvis'.
+  - Save to project notes appends a dated section to `<folder>/JARVIS notes.md` through `writeText`. Start building saves an idea (`stage:'designing'`, suit target).
+  - Every write-type request (`ask-send`, `ask-notes`, `ask-build`, `ask-clear`, `ask-say`, `ask-copy`) is refused from any role but `ask`.
+- **Desktop projects** (`src/main/desktop-projects.js`, `dist/assets/desk-projects.js`).
+  - `scanDesktop` lists Desktop folders that no suit holds (in either direction), skipping hidden folders, "Not a project" names and the JARVIS source repo (`IdeaAssistant.isRepo`).
+  - The hall card asks for the area, then the suit. The area label is the Tower's `org` for that hall, else `AREAS` (Work, Family business, Personal).
+  - `file()` renames the folder into `Documents/JARVIS Workspaces/<hall>/<name>`, which becomes the suit's folder, or into the suit's existing folder. It never overwrites (it adds `(2)` instead).
+  - EPERM, EBUSY and EACCES mean "close it and try again", with nothing changed. On EXDEV the folder is linked instead of copied.
+  - Moves are kept in `desk-projects.json` (last 50) for `undo()`, which also restores the suit's previous folder. "Ask me next week" sets `later` for 7 days. `dueAuto()` opens the card at most once every 20 h, 45 s after the hall opens.
+  - All `desk-project-*` requests come from the main role only.
+- Not tested on the real app: pinning to the taskbar, the jump list and the global hotkey. They need the installed exe and a desktop session; the test copy was not run, because it takes over the owner's screens. The window and the card were checked on a browser test page with sample data.
+- Tests: frontend (`ask-desk-1.94.0.test.mjs`, 7 new; 296 in total) and Core (124).

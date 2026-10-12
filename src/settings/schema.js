@@ -4,7 +4,7 @@ export const defaults = {
   mainDisplay:null, controlDisplay:null, singleScreen:false, thirdScreen:true, scale:1,
   quality:'auto', fps:30, reduceOnBattery:true,
   master:0.65, voice:0.8, interface:0.35, mechanical:0.45, ambience:0.12, music:0.65,
-  hotkeys:{wake:'CommandOrControl+Alt+J',home:'CommandOrControl+Alt+H',standdown:'CommandOrControl+Alt+X',back:'Escape'},
+  hotkeys:{wake:'CommandOrControl+Alt+J',home:'CommandOrControl+Alt+H',standdown:'CommandOrControl+Alt+X',back:'Escape',ask:'Control+Alt+Space'},
   weather:{latitude:null,longitude:null,enabled:false},
   ai:{endpoint:'',model:'',enabled:false},
   jaeAsset:'', shortcuts:[], favorites:[], updateFeed:'', deckBackdrops:{},
@@ -33,7 +33,7 @@ export function validateSettings(patch, current=defaults) {
         if(!(action in defaults.hotkeys)||typeof accelerator!=='string'||accelerator.length>80||!accelerator.trim())throw Error('Invalid hotkey.');
         merged[action]=accelerator;
       }
-      if(new Set(Object.values(merged)).size!==4)throw Error('Hotkeys must be different.');next.hotkeys=merged;
+      if(new Set(Object.values(merged)).size!==Object.keys(merged).length)throw Error('Hotkeys must be different.');next.hotkeys=merged;
     } else if(key==='weather') {
       if(!value||typeof value!=='object'||typeof value.enabled!=='boolean')throw Error('Invalid weather settings.');
       for(const [k,limit]of [['latitude',90],['longitude',180]])if(value[k]!==null&&(!Number.isFinite(value[k])||Math.abs(value[k])>limit))throw Error('Invalid weather coordinates.');
