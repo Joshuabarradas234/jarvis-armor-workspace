@@ -1,4 +1,4 @@
-import {app,BrowserWindow,ipcMain,Tray,Menu,nativeImage,screen,globalShortcut,powerMonitor,powerSaveBlocker,protocol,net,shell,dialog,safeStorage,Notification,session,WebContentsView,desktopCapturer} from 'electron';
+import {app,BrowserWindow,ipcMain,Tray,Menu,nativeImage,screen,globalShortcut,powerMonitor,powerSaveBlocker,protocol,net,shell,dialog,safeStorage,Notification,session,WebContentsView,desktopCapturer,clipboard} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -31,6 +31,10 @@ import {prepareUpdate,newer as newerVersion,validVersion} from './one-click-upda
 import {spawn,execFile} from 'node:child_process';
 import {sendGmail,validEmail} from '../meeting/mailer.js';
 import {callApi,callClaudeCode,detectClaudeCode} from '../tower/engines.js';
+import {DeskProjects} from './desktop-projects.js';
+import {AskJarvis,NOTES} from './ask-jarvis.js';
+import {ThinkRoom,cardsFromAnswer} from './think-room.js';
+import {toUrl} from './room-tabs.js';
 import {MissionStore} from '../control/missions.js';
 import {Workbench} from '../control/workbench.js';
 import {AgentRunner} from '../control/runner.js';
@@ -174,12 +178,14 @@ function registerHotkeys(values){
   for(let n=1;n<=7;n++)for(const k of [`Control+Alt+${n}`]){try{if(!globalShortcut.register(k,suitKey(n)))failed.push(k);}catch{failed.push(k);}}
   try{if(!globalShortcut.register('Control+Alt+F',()=>openRecall()))failed.push('Control+Alt+F');}catch{failed.push('Control+Alt+F');}   // search everything
   try{if(!globalShortcut.register('Control+Alt+L',()=>{look?.look('').catch(e=>log('look',e.message));}))failed.push('Control+Alt+L');}catch{failed.push('Control+Alt+L');}   // look at my screen
+  {const k=values.ask||'Control+Alt+Space';try{if(!globalShortcut.register(k,()=>toggleAsk()))failed.push(k);}catch{failed.push(k);}}   // Ask JARVIS, from anywhere
   if(failed.length)log('hotkeys',`Unavailable: ${failed.join(', ')}. Use the tray menu or choose another shortcut.`);
 }
 function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate([
   {label:'OPEN JARVIS',click:()=>dispatch('wake')},{label:'ENTER WORK MODE',click:()=>dispatch('wake')},{label:'ARMOR HALL',click:()=>dispatch('home')},{label:'THEME',submenu:workstations.themes.map(t=>({label:`${t.name.toUpperCase()} · ${t.assistant.toUpperCase()}`,type:'radio',checked:t.id===workstations.activeTheme,click:()=>setTheme(t.id)}))},
   ...(pendingUpdate?[{type:'separator'},{label:`INSTALL JARVIS ${pendingUpdate.latest}`,click:()=>installUpdate(pendingUpdate.latest).catch(e=>{try{if(Notification.isSupported())new Notification({title:'The update was not installed',body:e.message}).show();}catch{}})}]:[]),
   ...(meetings?.active?[{type:'separator'},{label:'END THE MEETING',click:()=>endMeeting().catch(e=>log('meeting',e.message))}]:[]),
+  {type:'separator'},{label:'ASK JARVIS',click:()=>openAsk()},room?.isOpen?{label:'LEAVE THE THINK ROOM',click:()=>{room.leave();updateTray();}}:{label:'THINK ROOM',click:()=>{try{openRoom();}catch(e){log('room',e.message);}}},{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},
   {type:'separator'},{label:'HALL SCREEN',submenu:[...screenList().map(d=>({label:`${d.n}. ${d.label} (${d.size})${d.internal?' · laptop':''}`,type:'radio',checked:d.main,click:()=>hallTo(d.id,d.label).catch(e=>log('screens',e.message))})),{type:'separator'},{label:'SWAP SCREENS',enabled:!!displays?.roles?.control,click:()=>swapScreens().catch(e=>log('screens',e.message))}]},
   {type:'separator'},{label:'OFFER TO RECORD CALLS',type:'checkbox',checked:callOffer.on,click:item=>{callOffer.on=item.checked;if(!item.checked)hideOffer();saveOffer();}},{label:'HAND CONTROL WHEN CLOSED',type:'checkbox',checked:deskOn,click:item=>setDeskHands(item.checked)},{label:'MICROPHONE',type:'checkbox',checked:settings.get().voiceEnabled,click:item=>applySettings({voiceEnabled:item.checked})},
   {label:'WALLPAPER',type:'checkbox',checked:settings.get().wallpaper,click:item=>applySettings({wallpaper:item.checked})},
@@ -247,7 +253,7 @@ function scheduleChatter(){
 }
 /** Spoken summary of where everything stands. */
 /* ---------- conversation: greetings, thanks, the daily briefing, maps ---------- */
-const TALK=['look','recall','meeting-recap','desk-hands','weekly-review','screen-swap','screen-tv','screen-home','screen-to','meeting-start','meeting-end','page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
+const TALK=['room-open','room-leave','ask-open','desk-file','look','recall','meeting-recap','desk-hands','weekly-review','screen-swap','screen-tv','screen-home','screen-to','meeting-start','meeting-end','page-close','attention','greet','thanks','briefing','status','map','search','panel-close','note','focus','focus-stop','tower-open','tower-report','tower-task','globe','globe-view','globe-zoom','globe-spin','hands-calibrate','panel-close-all'];
 function partOfDay(){const h=new Date().getHours();return h<12?'morning':h<18?'afternoon':'evening';}
 function addr(){return workstations.theme().voice?.address||'sir';}
 const pick=a=>a[Math.floor(Math.random()*a.length)];
@@ -365,6 +371,10 @@ function talk(action,cmd={}){
     return true;
   }
   if(action==='recall'){if(!recall)return false;if(!cmd.question){openRecall();say(`What shall I look for, ${who}?`);return true;}say(pick([`Searching everything, ${who}.`,`Let me check your records, ${who}.`,`Looking now, ${who}.`]));runRecall(cmd.question).catch(e=>log('recall',e.message));return true;}
+  if(action==='ask-open'){openAsk({mode:cmd.mode==='think'?'think':'ask',...(cmd.topic?{text:cmd.topic,send:true}:{})});if(!cmd.topic)say(cmd.mode==='think'?pick([`Let's think it through, ${who}.`,`I'm all ears, ${who}.`]):pick([`Go ahead, ${who}.`,`What would you like to know, ${who}?`]));return true;}
+  if(action==='desk-file'){fileDesktop(true);return true;}
+  if(action==='room-open'){try{openRoom();say(pick([`The room is yours, ${who}.`,`Setting up the room, ${who}.`]));}catch(e){say(e.message);}return true;}
+  if(action==='room-leave'){if(!room?.isOpen){say(`The think room isn't open, ${who}.`);return true;}const r=room.leave();updateTray();say(r.file?`Room closed, ${who}. The board is saved with the project.`:`Room closed, ${who}.`);return true;}
   if(action==='look'){if(!look)return false;say(pick([`Let me take a look, ${who}.`,`Looking now, ${who}.`,`One moment, ${who}.`]));look.look(cmd.question||'').catch(e=>log('look',e.message));return true;}
   if(action==='note'){
     const text=String(cmd.text||'').trim().replace(/\bi\b/g,'I').replace(/^./,c=>c.toUpperCase()).slice(0,200);if(!text)return false;
@@ -873,6 +883,61 @@ function openDeskHands(){
 }
 function closeDeskHands(){desk?.cancel();const w=deskWin;deskWin=null;if(w&&!w.isDestroyed())w.destroy();winctl?.stop();}
 function setDeskHands(on){deskOn=!!on;try{writeJson(deskFile(),{on:deskOn});}catch(e){log('hands',e.message);}syncDeskHands();updateTray();}
+/** Ask JARVIS (src/main/ask-jarvis.js, dist/ask.html): its own window and its own taskbar button, so it can be pinned there and opened with one click. */
+let askWin=null,askJ=null,deskProjects=null,room=null;
+const ASK_ARG='--ask',ASK_ID='JARVIS.AskJarvis';
+function askCommand(){return app.isPackaged?`"${process.execPath}" ${ASK_ARG}`:`"${process.execPath}" "${process.argv[1]||root}" ${ASK_ARG}`;}
+function askWindow(){
+  if(askWin&&!askWin.isDestroyed())return askWin;
+  const d=screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea,width=Math.min(780,d.width-40),height=Math.min(660,d.height-60);
+  const w=askWin=createWindow({role:'ask',x:Math.round(d.x+(d.width-width)/2),y:Math.round(d.y+Math.max(20,(d.height-height)/3)),width,height,minWidth:520,minHeight:380,show:false,frame:false,backgroundColor:'#050b11',fullscreenable:false});
+  try{w.setAppDetails({appId:ASK_ID,appIconPath:process.execPath,appIconIndex:0,relaunchCommand:askCommand(),relaunchDisplayName:'Ask JARVIS'});}catch(e){log('ask',e.message);}   // right-click its taskbar button, Pin to taskbar
+  w.on('closed',()=>{if(askWin===w)askWin=null;});
+  w.loadURL('jarvis://app/ask.html?view=ask').catch(e=>log('ask',e.message));
+  return w;
+}
+function openAsk(open={}){
+  const w=askWindow(),go=()=>{if(w.isDestroyed())return;if(w.isMinimized())w.restore();w.show();w.focus();if(Object.keys(open).length)w.webContents.send('jarvis:core',{type:'ask-open',...open});};
+  if(w.webContents.isLoading())w.webContents.once('did-finish-load',go);else go();
+}
+function toggleAsk(){if(askWin&&!askWin.isDestroyed()&&askWin.isVisible()&&askWin.isFocused())askWin.hide();else openAsk();}
+/** Every suit that holds a project folder, with its control-deck tasks. */
+function askProjects(){
+  const out=[],order=['ironman','batcave','spiderman'];
+  for(const t of [...workstations.themes].sort((a,b)=>(order.indexOf(a.id)+1||9)-(order.indexOf(b.id)+1||9))){let bays=[];try{bays=boardFor(t.id);}catch{}
+    for(const s of workstations.suits[t.id]||[]){if(s.isVehicle)continue;const b=bays.find(x=>x.id===s.id);
+      const tasks=b?[b.objective&&`Objective: ${b.objective}`,b.tasksTotal?`${b.tasksDone} of ${b.tasksTotal} tasks done${b.tasks.filter(x=>!x.done).length?`; still to do: ${b.tasks.filter(x=>!x.done).slice(0,8).map(x=>x.text||x.title||'').filter(Boolean).join('; ')}`:''}`:''].filter(Boolean).join('\n'):'';
+      out.push({key:`${t.id}:${s.id}`,id:s.id,theme:t.id,name:path.basename(s.folder)||s.name,suit:s.name,hall:t.name,area:deskProjects?.area(t.id)||t.name,folder:s.folder,tasks});}}
+  return out;
+}
+function askStatus(){
+  const lines=[],cut=(x,n)=>{x=String(x||'').replace(/\s+/g,' ').trim();return x.length>n?x.slice(0,n)+'…':x;};
+  try{const open=todos.list().filter(t=>!t.done).slice(0,12);if(open.length)lines.push(`Open to-dos: ${open.map(t=>cut(t.text,90)).join('; ')}`);}catch{}
+  try{for(const t of workstations.themes){const active=towerRunner?.active(t.id)||[],recent=tower.runs.filter(r=>r.theme===t.id).slice(-5).reverse();if(active.length||recent.length)lines.push(`${towerName(t.id)}: ${active.length?`${active.length} job${active.length===1?'':'s'} running`:'quiet'}${recent.length?`; latest jobs: ${recent.map(r=>`${cut(r.title||r.task,60)} (${r.status}${r.progress&&r.status!=='done'?`, ${r.progress}%`:''})`).join('; ')}`:''}`);}}catch{}
+  try{const list=ideas.list().filter(i=>i.stage!=='done').slice(0,10);if(list.length)lines.push(`Ideas: ${list.map(i=>`${cut(i.title,50)} (${i.stage}, ${i.progress}%)`).join('; ')}`);}catch{}
+  try{const soon=calendar.list().filter(e=>Date.parse(e.start)>Date.now()&&Date.parse(e.start)<Date.now()+7*864e5).slice(0,6);if(soon.length)lines.push(`Coming up: ${soon.map(e=>`${cut(e.title,50)} (${new Date(e.start).toLocaleString('en-GB',{weekday:'short',hour:'2-digit',minute:'2-digit'})})`).join('; ')}`);}catch{}
+  lines.push(`It is ${new Date().toLocaleString('en-GB',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})}.`);
+  return lines.join('\n');
+}
+/** The think room (think-room.js): every screen becomes one room for a project. Screens are numbered left to right, as in the tray. */
+function roomScreens(){return screen.getAllDisplays().sort((a,b)=>a.bounds.x-b.bounds.x||a.bounds.y-b.bounds.y).map((d,i)=>({n:i+1,id:d.id,label:d.label||`Screen ${i+1}`,workArea:{...d.workArea}}));}
+function roomHere(){const d=screen.getDisplayNearestPoint(screen.getCursorScreenPoint());return roomScreens().find(s=>s.id===d.id)?.n||1;}
+/** A suit's first room: the pages it had open last time, then its in-app links. */
+function roomSeed(key){try{const [theme,id]=String(key).split(':');const suit=workstations.suit(id,theme);return [...new Set([...(suit.session?.tabs||[]).map(t=>t.url),...(suit.links||[]).filter(l=>l.target==='inapp').map(l=>l.url)])];}catch{return [];}}
+/** The room for the suit you are in, else the one named, else the last one you used. */
+function openRoom(key=''){
+  const k=key||(machine?.value?.state==='MODULE'&&machine.value.selected?`${workstations.activeTheme}:${machine.value.selected}`:'')||room.last()||'all';
+  if(k!=='all'&&!askJ.project(k))throw Error('That suit is no longer there.');
+  if(askWin&&!askWin.isDestroyed())askWin.hide();
+  room.open(k);updateTray();return k;
+}
+/** "Jarvis, tidy my desktop" and the tray's File desktop projects: the card in the hall (desk-projects.js) asks about each folder. */
+function fileDesktop(spoken=false){
+  let n=0;try{n=deskProjects.pending().folders.length;}catch(e){log('desk',e.message);}
+  const idle=machine?.value?.state==='IDLE';if(idle)dispatch('wake');
+  setTimeout(()=>broadcast('core',{type:'desk-projects'}),idle?7000:0);
+  if(spoken)say(n?`${n===1?'There is one folder':`There are ${n} folders`} on your Desktop, ${addr()}. Tell me where each one belongs.`:`Your Desktop is already tidy, ${addr()}.`);
+}
 /** The look card's own window (dist/look.html): above every app, in the corner of the screen he looked at, so he can help in whatever you are using. */
 let lookWin=null,lookCard=null,lookMoved=false,lookH=200,lookSizing=false;
 function lookWindow(){
@@ -1362,6 +1427,40 @@ async function api(event,method,payload){
     case 'idea-step':return planner.step(String(payload?.id||''),String(payload?.step||''),payload?.done===true);
     case 'screen-look':return look?look.look(String(payload?.question||'').slice(0,600),{follow:payload?.follow===true}):null;
     case 'screen-look-forget':look?.forget();return true;
+    case 'ask-init':return {projects:askProjects().filter(p=>p.folder).map(p=>({key:p.key,theme:p.theme,name:p.name,suit:p.suit,hall:p.hall,area:p.area})),hotkey:settings.get().hotkeys?.ask||'Control+Alt+Space',address:addr()};
+    case 'ask-thread':return askJ.thread(String(payload?.key||'all'));
+    case 'ask-send':{if(role!=='ask')return false;lastUserAction=Date.now();return askJ.send({key:String(payload?.key||'all'),mode:payload?.mode==='think'?'think':'ask',text:payload?.text});}
+    case 'ask-clear':{if(role!=='ask')return false;return askJ.clear(String(payload?.key||'all'));}
+    case 'ask-notes':{if(role!=='ask')return false;const r=await askJ.saveNotes(String(payload?.key||''));return {file:r.file};}
+    case 'ask-show-notes':{if(role!=='ask')return false;const p=askJ.project(String(payload?.key||''));if(!p?.folder)throw Error('Choose a project first.');const file=path.join(p.folder,NOTES);if(!fs.existsSync(file))throw Error('There are no notes yet.');shell.showItemInFolder(file);return true;}
+    case 'ask-build':{if(role!=='ask')return false;const k=String(payload?.key||'all'),p=askJ.project(k),b=await askJ.brief(k);ideas.save({title:b.title,notes:b.notes,stage:'designing',target:p?{kind:'suit',theme:p.theme,id:p.id,name:p.suit}:null});assistant?.changed?.();return {title:b.title,suit:p?.suit||''};}
+    case 'ask-say':{if(role!=='ask')return false;say(String(payload?.text||'').replace(/[#*`>|]/g,'').slice(0,1500));return true;}
+    case 'ask-copy':{if(role!=='ask')return false;clipboard.writeText(String(payload?.text||'').slice(0,20000));return true;}
+    case 'ask-hide':{if(role==='ask')askWin?.hide();return true;}
+    case 'ask-pin':{if(role==='ask'&&askWin&&!askWin.isDestroyed())askWin.setAlwaysOnTop(!!payload?.on);return true;}
+    case 'room-open':{if(!['main','ask','room'].includes(role))return false;openRoom(typeof payload?.key==='string'?payload.key:'');return true;}
+    case 'room-init':{if(role!=='room'||!room.isOpen)return null;return {...room.state(room.screenOf(event.sender.id)),address:addr()};}
+    case 'room-layout':{if(role!=='room'||!room.isOpen)return false;room.tabs.setLayout(room.screenOf(event.sender.id),payload||{});return true;}
+    case 'room-tab-open':{if(role!=='room'||!room.isOpen)return false;return room.tabs.open(room.screenOf(event.sender.id),toUrl(payload?.text));}
+    case 'room-tab-activate':{if(role!=='room'||!room.isOpen)return false;return room.tabs.activate(String(payload?.id||''));}
+    case 'room-tab-close':{if(role!=='room'||!room.isOpen)return false;return room.tabs.close(String(payload?.id||''));}
+    case 'room-tab-nav':{if(role!=='room'||!room.isOpen)return false;return room.tabs.navigate(String(payload?.id||''),String(payload?.command||''));}
+    case 'room-tab-move':{if(role!=='room'||!room.isOpen)return false;return room.tabs.move(String(payload?.id||''),Number(payload?.screen));}
+    case 'room-tab-drop':{if(role!=='room'||!room.isOpen)return false;const n=room.screenAt(Number(payload?.x),Number(payload?.y));if(!n)throw Error('Let go over another screen of the room to move it there.');return room.tabs.move(String(payload?.id||''),n);}
+    case 'room-screen':{if(role!=='room'||!room.isOpen)return false;return room.setScreen(Number(payload?.screen),!!payload?.on);}
+    case 'room-cards':{if(role!=='room'||!room.isOpen)return false;room.setCards(payload?.cards);return true;}
+    case 'room-pin':{if(role!=='room'||!room.isOpen)return false;const m=askJ.thread(room.key).messages[Number(payload?.index)];if(m?.role!=='assistant')throw Error('That answer is no longer there.');return room.addCards(cardsFromAnswer(m.content));}
+    case 'room-say':{if(role!=='room'||!room.isOpen)return false;const m=askJ.thread(room.key).messages[Number(payload?.index)];if(m)say(String(m.content).replace(/[#*`>|]/g,'').slice(0,1500));return true;}
+    case 'room-ask':{if(role!=='room'||!room.isOpen)return false;lastUserAction=Date.now();await room.ask(String(payload?.text||'').slice(0,6000));return true;}
+    case 'room-sort':{if(role!=='room'||!room.isOpen)return false;return room.sort();}
+    case 'room-todo':{if(role!=='room')return false;todos.add(String(payload?.text||'').slice(0,200));broadcast('todos',todos.list());return true;}
+    case 'room-save':{if(role!=='room'||!room.isOpen)return false;return {file:room.saveBoard()};}
+    case 'room-leave':{if(role!=='room'||!room.isOpen)return false;const r=room.leave();updateTray();if(r.file)log('room',`The board was saved to ${r.file}`);return true;}
+    case 'desk-projects':{if(role!=='main')return false;return deskProjects.pending();}
+    case 'desk-project-file':{if(role!=='main')return false;lastUserAction=Date.now();const r=deskProjects.file({name:String(payload?.name||''),theme:String(payload?.theme||''),suit:String(payload?.suit||''),move:payload?.move!==false});if(r.theme===workstations.activeTheme)refreshModules();broadcast('theme',themePayload());scheduleHealth();return r;}
+    case 'desk-project-skip':{if(role!=='main')return false;return deskProjects.skip({name:String(payload?.name||''),never:!!payload?.never});}
+    case 'desk-project-undo':{if(role!=='main')return false;const r=deskProjects.undo(String(payload?.id||''));if(r.theme===workstations.activeTheme)refreshModules();broadcast('theme',themePayload());scheduleHealth();return true;}
+    case 'desk-project-show':{if(role!=='main')return false;const m=deskProjects.state().moves.find(x=>x.id===payload?.id);if(!m)throw Error('That move is no longer on record.');shell.showItemInFolder(m.to);return true;}
     case 'call-offer-answer':{if(role!=='offer')return false;const c=offerCard,answer=payload?.answer;hideOffer();if(!c)return false;
       if(answer==='record'){const ok=startMeeting(meetingSuit(),{autoEnd:true,quiet:true});if(ok&&!String(c.app).startsWith('desktop:'))micWatch?.follow(c.app);return !!ok;}   // a call seen in the Teams or Zoom window ends with its call-ended screen
       if(answer==='never'){callOffer.never=[...new Set([...callOffer.never,c.name])];saveOffer();}
@@ -1488,7 +1587,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
 
 
 
-  app.on('second-instance',(_e,argv)=>{if((argv||[]).includes(WAKE_ARG)){core?.woke?.('wake timer');return;}if(machine)dispatch('wake');});   // the wake task only nudges the clock; it never opens the hall   // a second launch while this one is still starting must not crash it
+  app.on('second-instance',(_e,argv)=>{if((argv||[]).includes(WAKE_ARG)){core?.woke?.('wake timer');return;}if((argv||[]).includes(ASK_ARG)){openAsk();return;}if(machine)dispatch('wake');});   // the wake task only nudges the clock; it never opens the hall   // a second launch while this one is still starting must not crash it
   app.whenReady().then(async()=>{Menu.setApplicationMenu(null);   /* Electron's default menu would reload or close the JARVIS screens on Ctrl+R / Ctrl+W */
     userDir=app.getPath('userData');fs.mkdirSync(userDir,{recursive:true});hallCalibration=new HallCalibrationStore(userDir);
     process.on('uncaughtException',e=>{try{log('crash',e?.stack||e?.message||String(e));}catch{}});
@@ -1523,7 +1622,8 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       if(s.state==='ARMOR_HALL'&&s.selected===null){if(pendingModule){const id=pendingModule;pendingModule=null;queueMicrotask(()=>dispatch('select',id));}else if(pendingShow){const id=pendingShow;pendingShow=null;setTimeout(()=>dispatch('suit-show',id),600);}}
       if(s.state==='SUIT_SELECTED'&&s.selected&&machine?.previous!=='SUIT_SELECTED')suitUp(s.selected);
       if(s.state==='SHUTDOWN')say('Standing by.');
-      if(s.state==='ARMOR_HALL'&&machine?.previous==='HELMET_OPENING'){if(introVoiced)introPlayed=true;else sayReady();introVoiced=false;morningBrief();}   // the welcome recording already greeted you
+      if(s.state==='ARMOR_HALL'&&machine?.previous==='HELMET_OPENING'){if(introVoiced)introPlayed=true;else sayReady();introVoiced=false;morningBrief();}
+      if(s.state==='ARMOR_HALL'&&machine?.previous==='HELMET_OPENING')setTimeout(()=>{try{if(machine?.value?.state==='ARMOR_HALL'&&deskProjects?.dueAuto())broadcast('core',{type:'desk-projects'});}catch(e){log('desk',e.message);}},45000);   // new folders on the Desktop: the card asks, at most once a day   // the welcome recording already greeted you
       if(s.state==='MODULE'&&s.selected&&machine?.previous!=='MODULE')suitOpened(s.selected);
       if(machine?.value?.selected&&s.state==='RETURNING'){}
       if(s.state==='MODULE'&&s.selected){if(machine.previous!=='MODULE'){try{const chosen=workstations.suit(s.selected);observeWork('suit',{theme:workstations.activeTheme,id:chosen.id,name:chosen.name,suit:true});}catch{}}const suit=modules.find(m=>m.id===s.selected);setTimeout(async()=>{if(machine.value.state!=='MODULE'||machine.value.selected!==s.selected)return;applyLayout(s.selected,{links:false}).then(r=>{if(r&&(r.placed||r.error))broadcast('layout-result',{id:s.selected,...r});}).catch(e=>log('layout',e.message));const resumed=await restoreSession(s.selected);broadcast('launch-result',{id:s.selected,resumed});if(resumed){try{const v=voiceProfile();if(v?.lines?.resume)say(v.lines.resume);}catch{}return;}if(!suit?.autoLaunch)return;launchSuit(s.selected).then(r=>broadcast('launch-result',{id:s.selected,...r})).catch(e=>log('launch',e.message));},400);}
@@ -1551,6 +1651,10 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
       docs:q=>core?.workDesk?core.workDesk.library.search(q,{limit:12000}).then(r=>r.sources.map(x=>({kind:'document',title:`${x.name}${x.location?`, ${x.location}`:''}`,text:x.excerpt,open:()=>core.workDesk.library.open(x.id)}))):[],
       claude:({system,prompt})=>callApi({key:aiKey(),model:core?.store?.get()?.models?.brain||tower.settings().plannerModel,system,prompt,maxTokens:1500,retries:1})});
     planner=new IdeaPlanner({assistant,todos:()=>todos,dir:userDir,runner:()=>towerRunner,tower:()=>tower,activeTheme:()=>workstations.activeTheme});
+    deskProjects=new DeskProjects({desktop:app.getPath('desktop'),documents:app.getPath('documents'),dir:userDir,workstations,tower:()=>tower,isWorkshop:p=>IdeaAssistant.isRepo(p),log});
+    room=new ThinkRoom({dir:userDir,create:createWindow,View:WebContentsView,openExternal:u=>shell.openExternal(u),log,screens:roomScreens,at:roomHere,ask:{thread:k=>askJ.thread(k),send:o=>askJ.send(o),cards:(k,b)=>askJ.cards(k,b)},project:k=>askJ.project(k),projects:askProjects,seed:roomSeed});
+    askJ=new AskJarvis({dir:userDir,ask:(system,prompt,o)=>assistant.ask(system,prompt,o),projects:askProjects,status:askStatus,owner:()=>({name:core?.store?.get()?.owner?.name||'',address:addr()})});
+    if(app.isPackaged)try{app.setUserTasks([{program:process.execPath,arguments:ASK_ARG,iconPath:process.execPath,iconIndex:0,title:'Ask JARVIS',description:'Ask about any project, or think something through together'}]);}catch(e){log('ask',e.message);}   // right-click JARVIS on the taskbar
     setInterval(()=>assistant.night(()=>visits.get('__','ideasNight').day,day=>visits.set('__','ideasNight',{day})).catch(e=>log('ideas',e.message)),10*60000);
     wake=new WakeTimer({dir:userDir});
     try{core=createJarvisCore({userDir,docs:app.getPath('documents'),appVersion:app.getVersion(),boot:BOOT||{asarRoot:root,root,base:app.getVersion(),version:null,label:app.getVersion()},log,broadcast,
@@ -1583,13 +1687,13 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     powerMonitor.on('resume',()=>{core?.woke?.('resume');if(settings.get().voiceEnabled)voice.listen(true);displays.rebuild().catch(e=>log('resume',e.message));});
     monitor=new SystemMonitor(data=>{telemetry=data;broadcast('telemetry',data);},()=>machine.value.state!=='IDLE');monitor.start().catch(e=>log('monitor',e.message));voice.listen(settings.get().voiceEnabled);
     const reminded=new Set();reminderTimer=setInterval(()=>{for(const event of calendar.list()){const delta=Date.parse(event.start)-Date.now();if(event.reminder&&delta>=0&&delta<=300000&&!reminded.has(event.id)&&!focusActive()&&Notification.isSupported()){reminded.add(event.id);new Notification({title:event.title,body:'Starting in '+Math.ceil(delta/60000)+' minutes.'}).show();}}},30000);
-    if(!settings.get().setupComplete)openSettings();else if(process.argv.includes(WAKE_ARG))core?.woke?.('wake timer');else if(settings.get().autoStart||(!process.argv.includes('--startup')&&!settings.get().startMinimized))dispatch('wake');
+    if(!settings.get().setupComplete)openSettings();else if(process.argv.includes(WAKE_ARG))core?.woke?.('wake timer');else if(process.argv.includes(ASK_ARG))openAsk();else if(settings.get().autoStart||(!process.argv.includes('--startup')&&!settings.get().startMinimized))dispatch('wake');
     app.on('activate',()=>{if(machine)dispatch('wake');});
   }).catch(e=>{console.error(e);app.quit();});
 }
 app.on('window-all-closed',()=>{});
 app.on('before-quit',()=>{
-  if(quitting)return;quitting=true;try{closeDeskHands();}catch{}try{micWatch?.stop();hideOffer();}catch{}try{meetings?.saveNow();}catch{}try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}try{core?.dispose();}catch{}try{wake?.clearNow();}catch{}
+  if(quitting)return;quitting=true;try{closeDeskHands();}catch{}try{room?.leave({quiet:true});}catch{}try{micWatch?.stop();hideOffer();}catch{}try{meetings?.saveNow();}catch{}try{saveOpenSession();}catch{}try{missions?.flush?.();}catch{}   /*quitting inside a suit: save its tabs now, the 1.2 s auto-save won't get the chance */try{towerRunner?.stopAll();}catch{}try{core?.dispose();}catch{}try{wake?.clearNow();}catch{}
   clearInterval(reminderTimer);clearTimeout(chatterTimer);clearTimeout(healthTimer);clearTimeout(focus.timer);try{deck?.close();}catch{}
   tabs?.dispose();machine?.dispose();monitor?.stop();voice?.dispose();globalShortcut.unregisterAll();
   // Let Electron close windows in its normal quit sequence, so renderer

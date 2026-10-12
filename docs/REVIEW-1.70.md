@@ -424,3 +424,49 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - `release.yml` now publishes `SHA256SUMS.txt` with each zip, so one-click works from 1.93.0 to the next version.
   - Tested on Windows: unpacking the real 1.92.0 zip took 0.6 s. Not tested: a full install, because there is no newer release yet.
 - Tests: 285 frontend (`features-1.93.0.test.mjs`, `update-calls-1.93.0.test.mjs`, 10 new) and Core again. The weekly review film and the scene contents were checked in a browser test page, not the test copy, which would take over the owner's screens.
+
+## Release 1.93.1: calmer overnight reports
+
+- `gatherFacts` splits `logFaults` into real faults and `OFFLINE` ones (DNS and no-internet errors such as ENOTFOUND, ERR_NAME_NOT_RESOLVED, fetch failed). Offline errors become one `facts.offline` line that the report is told to keep to the very end. The owner had a 06:12 call that opened with five mail failures and six Twilio failures from a sleeping PC.
+- On the owner's PC (not in the repo), the 06:00 weekday call and the 30-minute email check were paused in Standing orders (wrapped in comment marks, with a note), and a one-off date on 26 October is a reminder to switch them back on.
+- Tests: frontend plus `fixes-1.93.1.test.mjs`, and Core.
+
+## Release 1.94.0: Ask JARVIS anywhere, and projects in their suits
+
+- **Ask JARVIS** (`src/main/ask-jarvis.js`, `dist/ask.html`, `dist/assets/ask-jarvis.js`).
+  - A `role:'ask'` window, frameless, centred on the screen under the mouse. `setAppDetails` gives it its own taskbar identity (`JARVIS.AskJarvis`) with `relaunchCommand` `"<exe>" --ask`, so it can be pinned. `app.setUserTasks` adds Ask JARVIS to JARVIS's jump list when packaged.
+  - `--ask` is handled at start-up and in `second-instance`. The hotkey is `settings.hotkeys.ask`, default `Control+Alt+Space`, and the uniqueness check now counts every hotkey rather than assuming 4. There is a tray item, and the voice commands `ask-open` and `desk-file` are added to `TRAY_OK`.
+  - One thread per project (`ask-threads.json`, key `<theme>:<suit>` or `all`). The last 16 messages go to Claude word for word; past 24, the oldest are folded into a running summary in the background.
+  - The system prompt holds a folder look (names only, two levels deep, skipping `node_modules`, `.git`, `dist` and so on), README, package.json name, description and scripts, `JARVIS notes.md`, control-deck tasks and a status block (to-dos, Tower jobs, ideas, the next 7 days of calendar).
+  - Calls go through `IdeaAssistant.ask`: the API key, else Claude Code; spend is recorded as 'ask jarvis'.
+  - Save to project notes appends a dated section to `<folder>/JARVIS notes.md` through `writeText`. Start building saves an idea (`stage:'designing'`, suit target).
+  - Every write-type request (`ask-send`, `ask-notes`, `ask-build`, `ask-clear`, `ask-say`, `ask-copy`) is refused from any role but `ask`.
+- **Desktop projects** (`src/main/desktop-projects.js`, `dist/assets/desk-projects.js`).
+  - `scanDesktop` lists Desktop folders that no suit holds (in either direction), skipping hidden folders, "Not a project" names and the JARVIS source repo (`IdeaAssistant.isRepo`).
+  - The hall card asks for the area, then the suit. The area label is the Tower's `org` for that hall, else `AREAS` (Work, Family business, Personal).
+  - `file()` renames the folder into `Documents/JARVIS Workspaces/<hall>/<name>`, which becomes the suit's folder, or into the suit's existing folder. It never overwrites (it adds `(2)` instead).
+  - EPERM, EBUSY and EACCES mean "close it and try again", with nothing changed. On EXDEV the folder is linked instead of copied.
+  - Moves are kept in `desk-projects.json` (last 50) for `undo()`, which also restores the suit's previous folder. "Ask me next week" sets `later` for 7 days. `dueAuto()` opens the card at most once every 20 h, 45 s after the hall opens.
+  - All `desk-project-*` requests come from the main role only.
+- Not tested on the real app: pinning to the taskbar, the jump list and the global hotkey. They need the installed exe and a desktop session; the test copy was not run, because it takes over the owner's screens. The window and the card were checked on a browser test page with sample data.
+- Tests: frontend (`ask-desk-1.94.0.test.mjs`, 7 new; 296 in total) and Core (124).
+
+## Release 1.95.0: the think room
+
+- **`src/main/think-room.js`** (`ThinkRoom`) opens one `role:'room'` window per display: frameless, sized to the work area, so the taskbars stay. It loads `room.html?view=room&screen=<n>`, where screens are numbered left to right as in the tray.
+  - The display under the mouse gets the board. On a suit's first room, the suit's last session tabs and in-app links go to the other screens.
+  - State per project key lives in `rooms.json`: cards, tabs with their screen, the board's screen, and screens switched off.
+  - The board and JARVIS use the Ask JARVIS thread for the key. `AskJarvis.send({extra})` adds the board to the system prompt; `AskJarvis.cards()` asks for JSON cards. `cardsFromAnswer` files bullets by the heading above them, so pinning needs no Claude call.
+  - `leave()` writes `<folder>/JARVIS board.md`, which `folderFacts` now reads. `leave` is also called from `before-quit`.
+- **`src/main/room-tabs.js`** (`RoomTabs`) is one manager across all room windows, so pop-ups and events never go to the wrong manager. The suit `TabManager` was left alone.
+  - A move is `removeChildView` / `addChildView` of the same `WebContentsView`, so the page is live and nothing reloads.
+  - The board is the pseudo-tab `'board'`. `evacuate()` moves a leaving screen's tabs elsewhere.
+  - `View` and `openExternal` are passed in, so tests can run without Electron.
+- **Renderer** (`dist/assets/think-room.js`).
+  - Drag-to-screen uses pointer capture. A release outside the window sends `room-tab-drop {x, y}` (screen DIPs), and main picks the room window under that point.
+  - The page area is reported with `room-layout`, which is zero while the board shows.
+  - There are no overlays over the native view: the project switcher is a native `<select>`, and the screen toggles sit in the top bar.
+- **Entry points:** the `room-*` requests (all refused from any role but `room`, apart from `room-open` from main and ask), the tray THINK ROOM / LEAVE THE THINK ROOM item, a Ctrl+K tool, the room button in the Ask window, and the voice commands `room-open` and `room-leave` (also allowed from the tray).
+- `askProjects` now includes suits without a folder, so any suit can have a room. The Ask window still lists only suits with folders.
+- Not tested in the real app (it would take over the owner's screens): real windows across displays, dragging between physical screens, and web views. The page was checked on a browser test page with sample data, and the managers have tests with fake windows and views.
+- Tests: `think-room-1.95.0.test.mjs` (4 new; 300 frontend in total) and Core.

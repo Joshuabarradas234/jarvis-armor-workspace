@@ -37,6 +37,8 @@ const alarmNote = t => (/\b(?:to|for|so i can|so that i can) ((?!\d)[a-z].{2,80}
 const partOfDay = (d = new Date()) => d.getHours() < 12 ? 'morning' : d.getHours() < 18 ? 'afternoon' : 'evening';
 const CATCHUP = {call: 60, message: 120, audit: 180, improve: 180, email: 30, numbers: 30, task: 60};
 
+/** Errors that only mean the PC had no internet at that moment. */
+export const OFFLINE = /ENOTFOUND|EAI_AGAIN|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED|ERR_ADDRESS_UNREACHABLE|getaddrinfo|ENETUNREACH|fetch failed/i;
 export function createJarvisCore(deps) {
   const log = (m, kind = 'brain') => deps.log(kind, m);
   const store = new BrainStore({dir: deps.userDir, docs: deps.docs, crypt: deps.crypt, log: deps.log});
@@ -456,7 +458,12 @@ ${clip(store.notes() || '(none)', 5000)}${extra ? `\n${extra}` : ''}`;
     const ups = updater.updates().filter(u => (u.installedAt || u.createdAt) >= since);
     if (ups.length) facts.selfUpdates = ups.map(u => `${u.title}: ${u.status}${u.approvalId ? ` (#${u.approvalId})` : ''}`);
     facts.jarvisDidOnItsOwn = store.activity.filter(a => a.t >= since && a.auto).slice(-14).map(a => `${clock(a.t)} ${a.text}`);
-    try { const faults = logFaults(deps.logFile, 1).filter(f => f.last >= since); if (faults.length) facts.faults = faults.slice(0, 5).map(f => `${f.kind}: ${clip(f.sample, 100)} (${f.count}×)`); } catch {}
+    try {
+      // no internet while the PC slept is normal, not a fault: one quiet line at the end instead of the main news
+      const faults = logFaults(deps.logFile, 1).filter(f => f.last >= since), net = faults.filter(f => OFFLINE.test(f.sample)), real = faults.filter(f => !OFFLINE.test(f.sample));
+      if (real.length) facts.faults = real.slice(0, 5).map(f => `${f.kind}: ${clip(f.sample, 100)} (${f.count}×)`);
+      if (net.length) facts.offline = `The PC had no internet for part of the time (asleep or Wi-Fi off), so ${net.reduce((n, f) => n + f.count, 0)} checks could not connect. Normal; mention it only in one short line at the very end, never as the main news.`;
+    } catch {}
     try { const b = deps.briefing(); facts.calendarToday = b.events.filter(e => !e.past).map(e => `${e.time} ${e.title}`); facts.todos = {open: b.todoCount, first: b.todos.slice(0, 3)}; } catch {}
     try { const w = await deps.weather(); if (w) facts.weather = `${w.temp}°C${w.words ? ', ' + w.words : ''}${w.place ? ' in ' + w.place : ''}`; } catch {}
     const next = upcoming().filter(u => u.at > now + 10 * 60000 && u.kind === 'call')[0];

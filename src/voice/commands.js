@@ -76,15 +76,24 @@ const SCREENQ=/^(?:move|put|show)(?: (?:it|the hall|the suit|jarvis))?(?: on| to
 const screenCommand=rest=>SCREEN_SWAP.includes(rest)?{action:'screen-swap'}:SCREEN_TV.includes(rest)?{action:'screen-tv'}:SCREEN_HOME.includes(rest)?{action:'screen-home'}:
   (m=>m?{action:'screen-to',n:{one:1,two:2,three:3,four:4}[m[1]]||Number(m[1])}:null)(SCREENQ.exec(rest));
 // heard from the tray like Siri: "Jarvis" -> "Yes, sir?", then one of these (with or without the name)
-const TRAY_OK=['attention','meeting-start','meeting-end','select','look','desk-hands','screen-swap','screen-tv','screen-home','screen-to'];
+const TRAY_OK=['room-open','room-leave','ask-open','desk-file','attention','meeting-start','meeting-end','select','look','desk-hands','screen-swap','screen-tv','screen-home','screen-to'];
 // the weekly review on the full-screen film (src/main/weekly-review.js)
+// Ask JARVIS (src/main/ask-jarvis.js): "Jarvis, I've got a question", "Jarvis, let's think", "Jarvis, let's think about the cafe menu"
+const ASK_OPEN=['i have a question','ive got a question','i got a question','can i ask you something','i want to ask you something','ask jarvis','open ask jarvis','question for you'];
+const THINK_OPEN=['lets think','think with me','lets brainstorm','brainstorm with me','lets have a think','lets think together','think together','help me think','i need to think something through'];
+const THINKQ=/^(?:lets think about|think with me about|lets brainstorm|brainstorm with me about|help me think about|lets have a think about) (.{3,})$/;
+// the think room (src/main/think-room.js): every screen becomes one room for the suit you are in
+const ROOM_OPEN=['open the room','open the think room','think room','the think room','open the build room','build room','lets build','brainstorm room','open the brainstorm room','take me to the room','set up the room'];
+const ROOM_LEAVE=['leave the room','close the room','close the think room','leave the think room','exit the room'];
+// project folders on the Desktop, filed into suits (src/main/desktop-projects.js)
+const DESK_FILE=['tidy my desktop','tidy up my desktop','clean up my desktop','sort my desktop','file my projects','file my desktop','sort my projects','put my projects in their suits','organise my desktop','organize my desktop'];
 const WEEKLY=['weekly review','the weekly review','week in review','review my week','how was my week','show me my week','my week','give me my weekly review'];
 // the meeting co-pilot on the lower screen: bring its notes up to date now
 const MEETNOTES=['meeting notes','show the meeting notes','update the meeting notes','recap the meeting','meeting recap','what have we agreed','what have we agreed so far','summarise the meeting so far'];
 // your second brain: search everything he keeps (src/brain/recall.js)
 const RECALL=['open my second brain','second brain','search everything','search my records','search all my stuff'];
 const RECALLQ=/^(?:search (?:everything|my records|my second brain|my brain|all my stuff) (?:for|about) |find everything (?:about|on) |what do (?:i|we) know about |check my records (?:for|about) |recall )(.+)$|^((?:what|when|where|who|how much) did (?:i|we|they) (?:agree|decide|say|send|pay|book|order|promise|quote|plan)\b.*)$/;
-export const CORE_PHRASES=['start recording','record this call','record the call','record my meeting','record the meeting',...BEDTIME.filter(p=>p!=='night'),...LOOK,...SCREEN_SWAP,...SCREEN_TV,...SCREEN_HOME,...MEETNOTES,...WEEKLY,...HANDS_ON,...HANDS_OFF,...RECALL,...OVERNIGHT,...APPROVALS,...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME,...EMAIL];
+export const CORE_PHRASES=[...ROOM_OPEN,...ROOM_LEAVE,...ASK_OPEN,...THINK_OPEN,...DESK_FILE,'start recording','record this call','record the call','record my meeting','record the meeting',...BEDTIME.filter(p=>p!=='night'),...LOOK,...SCREEN_SWAP,...SCREEN_TV,...SCREEN_HOME,...MEETNOTES,...WEEKLY,...HANDS_ON,...HANDS_OFF,...RECALL,...OVERNIGHT,...APPROVALS,...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME,...EMAIL];
 /* these change things, cost money or ring your phone: they always need the name, never just "roll back" in the moment after he speaks */
 const NAME_REQUIRED=new Set(['core-undo','core-install','core-call','core-audit','core-improve','core-feature','core-message']);
 const NEEDS_NAME=new Set([...AUDIT,...IMPROVE,...UNDO,...INSTALL,...CALLME]);
@@ -189,6 +198,12 @@ export function parseCommand(text,context){
   // meeting mode: "start a meeting for Mark 5", "starting a meeting for Mark 5", "end the meeting"
   if(MEETNOTES.includes(rest))return {action:'meeting-recap'};
   if(WEEKLY.includes(rest))return {action:'weekly-review'};
+  if(ROOM_OPEN.includes(rest))return {action:'room-open'};
+  if(ROOM_LEAVE.includes(rest))return {action:'room-leave'};
+  if(ASK_OPEN.includes(rest))return {action:'ask-open',mode:'ask'};
+  if(THINK_OPEN.includes(rest))return {action:'ask-open',mode:'think'};
+  {const tq=THINKQ.exec(rest);if(tq)return {action:'ask-open',mode:'think',topic:tq[1].trim()};}
+  if(DESK_FILE.includes(rest))return {action:'desk-file'};
   {const sc=screenCommand(rest);if(sc)return sc;}
   {const h=handsCommand(rest);if(h)return h;}
   if(MEETEND.includes(rest))return {action:'meeting-end'};
