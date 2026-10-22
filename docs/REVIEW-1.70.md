@@ -487,3 +487,35 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - `registerHotkeys` tries the chosen key (skipping the old default), then `Control+Alt+Q`, `Control+Alt+K` and `Control+Shift+Alt+J`, and keeps the first that registers in `askKey`, which the Ask window and the tray label show.
 - **Start-up failures** in the `whenReady` chain are now logged as 'crash' before `app.quit()`. Before, they closed JARVIS without a word.
 - Tests: `fixes-1.95.1.test.mjs` (2 new; 302 frontend in total) and Core.
+
+## Release 1.96.0: JARVIS for Mac
+
+- **Mac build** (`scripts/release/build-mac.mjs`, `package.json` `build.mac`).
+  - `electron-builder --mac dir --arm64` with no developer identity, then `codesign --force --deep --sign -` (an Apple chip will not run an unsigned bundle at all) and a `ditto` zip. It fails at 30 MB of app.asar.
+  - Info.plist gets microphone, camera and Apple Events usage strings for later versions.
+  - The app isn't notarised, so the owner opens it once through Privacy & Security → Open Anyway.
+- **CI** (`.github/workflows/test.yml`).
+  - The workflow also runs on `claude/**` pushes.
+  - A `mac` job (macos-14) runs the app tests and the Core tests, builds the app, and starts it with `tests/mac/smoke.mjs`. That launches the built binary with a fresh profile and a remote-debugging port, then checks the main process logs `deck on`, the hall page loads, Core started and nothing is logged as a crash. The zip is kept as an artifact.
+  - `tests/ci-annotate.mjs` turns each failing test into an annotation, readable from the public check-runs API.
+  - `release.yml` builds the Mac zip after the Windows release, uploads it, and appends its SHA-256 to `SHA256SUMS.txt`.
+- **First Mac runs.** The Core tests passed and the app built and started on the first try.
+  - Four app tests failed. Three were travel tests with fixed October 2026 dates that had passed (they failed on Windows too); their clock is now pinned to 1 October with `t.mock.timers`.
+  - The fourth failed because a Mac's temp folder is a link (`/var` to `/private/var`); its fixture now uses the real path.
+- **App changes for macOS.** Everything Windows-only was already behind `process.platform` guards (an inventory was done first).
+  - The tray uses `setTitle('JARVIS')` when the icon is missing (the icons aren't in the repository, so the item would have been invisible).
+  - `display/windows.js` uses `setSimpleFullScreen` on the Mac: native fullscreen gives each window its own Space and animates against `position()`.
+  - `setLoginItemSettings` now works on the Mac. `app.setUserTasks` is Windows-only.
+  - `powerSaveBlocker('prevent-app-suspension')` runs while JARVIS does.
+  - `installUpdate` opens the release page on the Mac (the tray says DOWNLOAD JARVIS x), and the banner explains the drag into Applications.
+  - With no display at all, start-up itself calls `markGood()` and `core.booted()`. Before, they only ran on the hall's `renderer-ready`, so a self-update on a screenless Mac mini would have rolled back after 3 minutes.
+- **Move JARVIS** (`src/main/move-jarvis.js`, Settings → System).
+  - `bundle()` collects the top-level `*.json`/`*.jsonl` data and the text files in `Documents/JARVIS`.
+    - Left out: secrets (`*.enc`), `approvals.json` (so no pending request travels and can be approved elsewhere), `voice-grammar.json`, `desk-hands.json` and backups.
+    - Limits: 20 MB per file and 150 MB in total.
+  - `plan()` shows counts and where each suit folder lands. `mapper()` maps the old data folder to this one; `OneDrive*` maps to this computer's OneDrive (`~/Library/CloudStorage/OneDrive-*`), else Desktop or Documents; the rest of the home folder maps to this home. Paths outside the home folder are left alone.
+  - `apply()` rewrites every matching string in the JSON, resets display ids and the Windows voice (and the wallpaper off the Mac), and accepts only plain file names and safe relative document paths. Anything it replaces is copied to `before-move-<time>`, then JARVIS relaunches.
+  - On export, "Switch off JARVIS Core here" saves `enabled:false`, so only one computer runs the brain.
+- **Not done yet:** voice, wallpaper, window layout, hand control and call detection on the Mac (1.98), and the ZenBook client and pairing (1.97).
+- **Tested on a Mac** only through GitHub's macos-14 runner (tests, build, real start-up with a fresh profile). Not tested on the owner's Mac mini, the Gatekeeper "Open Anyway" step, or a real move between the two computers.
+- Tests: `mac-move-1.96.0.test.mjs` (5 new; 307 in total on Windows), Core on Windows, and the macOS job.

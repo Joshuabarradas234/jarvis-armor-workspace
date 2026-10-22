@@ -31,7 +31,7 @@ test('updates: installed only from a click in JARVIS, the tray or Settings; chec
   const main = fs.readFileSync('src/main/main.js', 'utf8');
   assert.ok(main.includes("case 'update-install':{if(!['main','settings'].includes(role))throw Error('Updates are installed from JARVIS itself.');"));
   assert.ok(main.includes("if(meetings?.active)throw Error('A meeting is being recorded. End it first, then install the update.');"));
-  assert.ok(main.includes("label:`INSTALL JARVIS ${pendingUpdate.latest}`"));
+  assert.ok(main.includes(":`INSTALL JARVIS ${pendingUpdate.latest}`,"));   // 1.96: the Mac says DOWNLOAD instead
   assert.ok(main.includes('setInterval(()=>checkForUpdate().catch(()=>{}),6*3600e3)'));
   assert.ok(!/update-install/.test(fs.readFileSync('src/brain/tools.js', 'utf8')) && !/update-install/.test(fs.readFileSync('src/voice/commands.js', 'utf8')));   // never by voice or by message
   const wf = fs.readFileSync('.github/workflows/release.yml', 'utf8');
