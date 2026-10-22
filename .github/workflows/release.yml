@@ -1,7 +1,8 @@
 # Publishes an update when the version in package.json changes on main (that is, when the owner merges a pull
 # request that raises it): runs the tests, builds release/JARVIS-Armor-Workspace-<version>-update.zip and creates
 # the GitHub release v<version> with that zip and the notes in docs/release-notes/<version>.md.
-# A version that is already published is left alone, so running this again is harmless.
+# A version that is already published is left alone, so running this again is harmless. The mac job then builds the
+# Mac app on a Mac (Apple chip), starts it once, and adds JARVIS-Armor-Workspace-<version>-mac.zip to the same release.
 name: Publish update
 
 on:
@@ -21,6 +22,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    outputs:
+      new: ${{ steps.v.outputs.new }}
+      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,3 +65,32 @@ jobs:
           (cd release && sha256sum "JARVIS-Armor-Workspace-$V-update.zip" > SHA256SUMS.txt)   # the fingerprint JARVIS checks before a one-click install
           gh release create "v$V" "release/JARVIS-Armor-Workspace-$V-update.zip" "release/SHA256SUMS.txt" --title "$title" --notes-file "$notes" --target "$GITHUB_SHA"
           echo "Published v$V."
+
+  mac:
+    needs: publish
+    if: needs.publish.outputs.new == 'true'
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build the Mac app
+        run: npm install --no-audit --no-fund && node scripts/release/build-mac.mjs
+
+      - name: Start the Mac app
+        run: node tests/mac/smoke.mjs
+
+      - name: Add it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.publish.outputs.version }}
+        run: |
+          zip="JARVIS-Armor-Workspace-$V-mac.zip"
+          gh release upload "v$V" "release/$zip" --clobber
+          gh release download "v$V" -p SHA256SUMS.txt -D "$RUNNER_TEMP" --clobber
+          (cd release && shasum -a 256 "$zip") >> "$RUNNER_TEMP/SHA256SUMS.txt"   # the Mac zip's fingerprint next to the Windows one
+          gh release upload "v$V" "$RUNNER_TEMP/SHA256SUMS.txt" --clobber
+          echo "Added $zip to v$V."

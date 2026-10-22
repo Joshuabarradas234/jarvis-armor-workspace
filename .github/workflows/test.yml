@@ -1,11 +1,12 @@
-# Checks every pull request (and every change on main): scripts parse, JARVIS Core's tests pass, and the update
-# package still builds under the size limit.
+# Checks every pull request, every change on main and every claude/ branch: scripts parse, JARVIS Core's tests
+# pass, and the update package still builds under the size limit. The mac job does the same on a Mac with an Apple
+# chip (like the owner's Mac mini), builds the Mac app and starts it once.
 name: Tests
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
   workflow_dispatch:
 
 permissions:
@@ -35,3 +36,36 @@ jobs:
 
       - name: The update package builds
         run: node scripts/release/build-update.mjs
+
+  mac:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: App tests on macOS
+        run: node tests/ci-annotate.mjs node --experimental-vm-modules --test --test-reporter=tap tests/frontend/*.test.mjs
+
+      - name: JARVIS Core tests on macOS
+        if: always()
+        working-directory: tests/core
+        run: npm install && node ../ci-annotate.mjs node core.test.mjs
+
+      - name: Build the Mac app
+        if: always()
+        run: npm install --no-audit --no-fund && node scripts/release/build-mac.mjs
+
+      - name: Start the Mac app
+        if: always()
+        run: node tests/ci-annotate.mjs node tests/mac/smoke.mjs
+
+      - name: Keep the Mac app to try out
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-mac
+          path: release/JARVIS-Armor-Workspace-*-mac.zip
+          retention-days: 14

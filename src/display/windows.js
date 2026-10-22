@@ -15,7 +15,7 @@ export class DisplayManager {
     const roles=resolveDisplays(allDisplays(),this.settings());this.roles=roles;
     for(const w of this.wallpapers)if(w&&!w.isDestroyed())w.destroy();this.wallpapers=[];
     if(!roles.main){this.rebuilding=false;return;}
-    const full=w=>{if(!testing)w.setFullScreen(true);};const position=(w,bounds)=>{const current=w.getBounds();if(['x','y','width','height'].some(k=>current[k]!==bounds[k])){if(!testing)w.setFullScreen(false);w.setBounds(bounds);full(w);}};
+    const mac=process.platform==='darwin',full=w=>{if(!testing){if(mac)w.setSimpleFullScreen(true);else w.setFullScreen(true);}};const position=(w,bounds)=>{const current=w.getBounds();if(['x','y','width','height'].some(k=>current[k]!==bounds[k])){if(!testing){if(mac)w.setSimpleFullScreen(false);else w.setFullScreen(false);}w.setBounds(bounds);full(w);}};   // the Mac: simple full screen, no Space of its own
     if(!this.work||this.work.isDestroyed()){
       this.work=this.create({role:'main',...roles.main.bounds,show:false,frame:false,backgroundColor:'#05080a'});
       full(this.work);await this.load(this.work,'main');

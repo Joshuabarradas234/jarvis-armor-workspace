@@ -27,7 +27,8 @@ import {MeetingManager,clock} from '../meeting/manager.js';
 import {MeetingCopilot,clock as minSec} from '../meeting/copilot.js';
 import {cloudTranscript,transcriptText} from '../meeting/cloud-transcript.js';
 import {MicWatch} from '../meeting/mic-watch.js';
-import {prepareUpdate,newer as newerVersion,validVersion} from './one-click-update.js';
+import {prepareUpdate,newer as newerVersion,validVersion,REPO} from './one-click-update.js';
+import {bundle as moveBundle,plan as movePlan,apply as moveApply,findOneDrive,KIND as MOVE_KIND} from './move-jarvis.js';
 import {spawn,execFile} from 'node:child_process';
 import {sendGmail,validEmail} from '../meeting/mailer.js';
 import {callApi,callClaudeCode,detectClaudeCode} from '../tower/engines.js';
@@ -184,7 +185,7 @@ function registerHotkeys(values){
 }
 function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate([
   {label:'OPEN JARVIS',click:()=>dispatch('wake')},{label:'ENTER WORK MODE',click:()=>dispatch('wake')},{label:'ARMOR HALL',click:()=>dispatch('home')},{label:'THEME',submenu:workstations.themes.map(t=>({label:`${t.name.toUpperCase()} · ${t.assistant.toUpperCase()}`,type:'radio',checked:t.id===workstations.activeTheme,click:()=>setTheme(t.id)}))},
-  ...(pendingUpdate?[{type:'separator'},{label:`INSTALL JARVIS ${pendingUpdate.latest}`,click:()=>installUpdate(pendingUpdate.latest).catch(e=>{try{if(Notification.isSupported())new Notification({title:'The update was not installed',body:e.message}).show();}catch{}})}]:[]),
+  ...(pendingUpdate?[{type:'separator'},{label:process.platform==='darwin'?`DOWNLOAD JARVIS ${pendingUpdate.latest}`:`INSTALL JARVIS ${pendingUpdate.latest}`,click:()=>installUpdate(pendingUpdate.latest).catch(e=>{try{if(Notification.isSupported())new Notification({title:'The update was not installed',body:e.message}).show();}catch{}})}]:[]),
   ...(meetings?.active?[{type:'separator'},{label:'END THE MEETING',click:()=>endMeeting().catch(e=>log('meeting',e.message))}]:[]),
   {type:'separator'},{label:askKey?`ASK JARVIS  (${keyName(askKey)})`:'ASK JARVIS',click:()=>openAsk()},room?.isOpen?{label:'LEAVE THE THINK ROOM',click:()=>{room.leave();updateTray();}}:{label:'THINK ROOM',click:()=>{try{openRoom();}catch(e){log('room',e.message);}}},{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},
   {type:'separator'},{label:'HALL SCREEN',submenu:[...screenList().map(d=>({label:`${d.n}. ${d.label} (${d.size})${d.internal?' · laptop':''}`,type:'radio',checked:d.main,click:()=>hallTo(d.id,d.label).catch(e=>log('screens',e.message))})),{type:'separator'},{label:'SWAP SCREENS',enabled:!!displays?.roles?.control,click:()=>swapScreens().catch(e=>log('screens',e.message))}]},
@@ -493,8 +494,10 @@ async function checkForUpdate(){
     return out;
   }catch(e){return {current,error:e.message};}
 }
+const RELEASES=`https://github.com/${REPO}/releases/latest`;
 async function installUpdate(version){
   if(installing)throw Error('The update is already being installed.');
+  if(process.platform==='darwin'){await shell.openExternal(RELEASES);return {opened:true};}   // on the Mac: the new zip from the release page, dragged into Applications
   if(process.platform!=='win32')throw Error('Updates install this way on Windows only.');
   if(meetings?.active)throw Error('A meeting is being recorded. End it first, then install the update.');
   installing=true;const say2=text=>broadcast('core',{type:'update-progress',text});
@@ -809,6 +812,7 @@ async function applySettings(patch){
   if('voiceEnabled'in patch){voice.listen(result.voiceEnabled);scheduleChatter();}   // idle chatter starts (or stops) with the microphone, not only at launch
   if('hotkeys'in patch)registerHotkeys(result.hotkeys);
   if('startWithWindows'in patch&&process.platform==='win32')app.setLoginItemSettings({openAtLogin:result.startWithWindows,path:process.execPath,args:['--startup']});
+  else if('startWithWindows'in patch&&process.platform==='darwin')app.setLoginItemSettings({openAtLogin:result.startWithWindows});   // the Mac: Login Items
   if('weather'in patch){weatherCache=null;weatherChecked=0;}
   if('startup'in patch)applyDurations(result);
   broadcast('settings',result);updateTray();
@@ -885,7 +889,7 @@ function openDeskHands(){
 function closeDeskHands(){desk?.cancel();const w=deskWin;deskWin=null;if(w&&!w.isDestroyed())w.destroy();winctl?.stop();}
 function setDeskHands(on){deskOn=!!on;try{writeJson(deskFile(),{on:deskOn});}catch(e){log('hands',e.message);}syncDeskHands();updateTray();}
 /** Ask JARVIS (src/main/ask-jarvis.js, dist/ask.html): its own window and its own taskbar button, so it can be pinned there and opened with one click. */
-let askWin=null,askJ=null,deskProjects=null,room=null;
+let askWin=null,askJ=null,deskProjects=null,room=null,pendingMove=null;
 const ASK_ARG='--ask',ASK_ID='JARVIS.AskJarvis';
 /** Ask JARVIS's key: the one you chose, else the first of these that no other app holds. Ctrl+Alt+Space (1.94's choice) is the Claude app's quick entry. */
 const ASK_KEYS=['Control+Alt+Q','Control+Alt+K','Control+Shift+Alt+J'];let askKey='';
@@ -1509,6 +1513,34 @@ async function api(event,method,payload){
       w.once('ready-to-show',()=>{if(!w.isDestroyed())w.maximize();});if(w.isVisible())w.maximize();
       return {ok:true,where:n};
     }
+    case 'move-export':{
+      if(!['settings','main'].includes(role))return false;
+      const res=await dialog.showSaveDialog({title:'Save everything JARVIS knows, to move him',defaultPath:path.join(app.getPath('desktop'),`JARVIS move ${new Date().toISOString().slice(0,10)}.json`),filters:[{name:'JARVIS move',extensions:['json']}]});
+      if(res.canceled||!res.filePath)return {saved:false};
+      try{core?.store?.flushAlarms?.();}catch{}
+      const b=moveBundle({userDir,docsDir:app.getPath('documents'),version:app.getVersion(),home:app.getPath('home')});
+      writeText(res.filePath,JSON.stringify(b));log('move',`Saved ${Object.keys(b.files).length} files and ${Object.keys(b.documents).length} documents to ${res.filePath}`);
+      let paused=false;if(payload?.pause&&core?.store){core.store.save({enabled:false});paused=true;log('move','JARVIS Core switched off on this computer: the brain now runs on the new one.');broadcast('core',{type:'changed'});}
+      return {saved:true,path:res.filePath,files:Object.keys(b.files).length,documents:Object.keys(b.documents).length,paused};
+    }
+    case 'move-plan':{
+      if(!['settings','main'].includes(role))return false;
+      const res=await dialog.showOpenDialog({title:'Bring JARVIS over from another computer',properties:['openFile'],filters:[{name:'JARVIS move',extensions:['json']}]});
+      if(res.canceled||!res.filePaths[0])return {chosen:false};
+      if(fs.statSync(res.filePaths[0]).size>200e6)throw Error('That file is too big to be a JARVIS move file.');
+      let b;try{b=JSON.parse(fs.readFileSync(res.filePaths[0],'utf8'));}catch{throw Error('That file is not a JARVIS move file.');}
+      if(b?.kind!==MOVE_KIND)throw Error('That file is not a JARVIS move file.');
+      const where={home:app.getPath('home'),oneDrive:findOneDrive({home:app.getPath('home')}),userDir,docsDir:app.getPath('documents')};
+      pendingMove={b,where,at:Date.now()};return {chosen:true,...movePlan(b,where)};
+    }
+    case 'move-apply':{
+      if(!['settings','main'].includes(role))return false;
+      if(!pendingMove||Date.now()-pendingMove.at>15*60000)throw Error('Choose the move file again.');
+      const r=moveApply(pendingMove.b,pendingMove.where);pendingMove=null;
+      log('move',`Brought over ${r.files} files and ${r.documents} documents (${r.rewritten} paths changed for this computer). The old ones are in ${r.kept}.`);
+      setTimeout(()=>{app.relaunch();app.exit(0);},1500);   // start again on the data that came over
+      return r;
+    }
     case 'backup-export':{
       const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
       const res=await dialog.showSaveDialog({title:'Save workspace backup',defaultPath:`jarvis-workspace-${stamp}.json`,filters:[{name:'JARVIS backup',extensions:['json']}]});
@@ -1660,7 +1692,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     deskProjects=new DeskProjects({desktop:app.getPath('desktop'),documents:app.getPath('documents'),dir:userDir,workstations,tower:()=>tower,isWorkshop:p=>IdeaAssistant.isRepo(p),log});
     room=new ThinkRoom({dir:userDir,create:createWindow,View:WebContentsView,openExternal:u=>shell.openExternal(u),log,screens:roomScreens,at:roomHere,ask:{thread:k=>askJ.thread(k),send:o=>askJ.send(o),cards:(k,b)=>askJ.cards(k,b)},project:k=>askJ.project(k),projects:askProjects,seed:roomSeed});
     askJ=new AskJarvis({dir:userDir,ask:(system,prompt,o)=>assistant.ask(system,prompt,o),projects:askProjects,status:askStatus,owner:()=>({name:core?.store?.get()?.owner?.name||'',address:addr()})});
-    if(app.isPackaged)try{app.setUserTasks([{program:process.execPath,arguments:ASK_ARG,iconPath:process.execPath,iconIndex:0,title:'Ask JARVIS',description:'Ask about any project, or think something through together'}]);}catch(e){log('ask',e.message);}   // right-click JARVIS on the taskbar
+    if(app.isPackaged&&process.platform==='win32')try{app.setUserTasks([{program:process.execPath,arguments:ASK_ARG,iconPath:process.execPath,iconIndex:0,title:'Ask JARVIS',description:'Ask about any project, or think something through together'}]);}catch(e){log('ask',e.message);}   // right-click JARVIS on the taskbar
     setInterval(()=>assistant.night(()=>visits.get('__','ideasNight').day,day=>visits.set('__','ideasNight',{day})).catch(e=>log('ideas',e.message)),10*60000);
     wake=new WakeTimer({dir:userDir});
     try{core=createJarvisCore({userDir,docs:app.getPath('documents'),appVersion:app.getVersion(),boot:BOOT||{asarRoot:root,root,base:app.getVersion(),version:null,label:app.getVersion()},log,broadcast,
@@ -1684,9 +1716,12 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     // v9.20: setup run with the keyboard on used to save "single screen", and then the lower screen never lit up. Undo that once.
     try{if(!visits.get('__','screens2').done){visits.set('__','screens2',{done:true});if(settings.get().singleScreen)settings.update({singleScreen:false});}}catch(e){log('displays',e.message);}
     try{await displays.start();}catch(e){log('displays',e.message);setTimeout(()=>displays.rebuild().catch(err=>log('displays',err.message)),2000);}
+    if(!displays.work&&!screen.getAllDisplays().length&&!bootMarked&&(core||coreError)){bootMarked=true;globalThis.__jarvisBoot?.markGood?.();setTimeout(()=>{try{core?.booted();}catch(e){log('brain',e.message);}},5000);log('displays','No screen: running without the hall.');}   // the hall never loads without a screen, so start-up itself is the sign that this version works
     scheduleChatter();
     const icon=nativeImage.createFromPath(path.join(assets,'icons','tray.png'));
-    tray=new Tray(icon);tray.setToolTip('JARVIS // ARMOR WORKSPACE');tray.on('double-click',()=>dispatch('wake'));updateTray();registerHotkeys(settings.get().hotkeys);
+    tray=new Tray(icon);tray.setToolTip('JARVIS // ARMOR WORKSPACE');if(process.platform==='darwin'&&icon.isEmpty())tray.setTitle('JARVIS');   // the Mac menu bar: a word, until there is an icon
+    if(process.platform==='darwin'){try{powerSaveBlocker.start('prevent-app-suspension');log('mac','Keeping this Mac awake while JARVIS runs (the screen can still sleep).');}catch(e){log('mac',e.message);}}   // the Mac mini runs JARVIS's brain round the clock
+tray.on('double-click',()=>dispatch('wake'));updateTray();registerHotkeys(settings.get().hotkeys);
     {let relayoutTimer;const relayout=()=>{clearTimeout(relayoutTimer);relayoutTimer=setTimeout(()=>{if(machine?.value?.state!=='MODULE'||!machine.value.selected)return;const id=machine.value.selected;applyLayout(id,{links:false}).then(r=>{if(r&&(r.placed||r.error))broadcast('layout-result',{id,...r});}).catch(e=>log('layout',e.message));},1500);};for(const e of ['display-added','display-removed','display-metrics-changed'])screen.on(e,relayout);}
     onBattery=powerMonitor.isOnBatteryPower();powerMonitor.on('on-battery',()=>{onBattery=true;broadcast('status',getStatus());});powerMonitor.on('on-ac',()=>{onBattery=false;broadcast('status',getStatus());});
     powerMonitor.on('lock-screen',()=>{screenLocked=true;syncDeskHands();});powerMonitor.on('unlock-screen',()=>{screenLocked=false;syncDeskHands();});   // no camera on a locked PC
