@@ -9,7 +9,8 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis --x64"
+    "dist": "electron-builder --win nsis --x64",
+    "dist:mac": "node scripts/release/build-mac.mjs"
   },
   "devDependencies": {
     "electron": "44.4.3",
@@ -62,6 +63,25 @@
       "shortcutName": "JARVIS Armor Workspace",
       "runAfterFinish": true,
       "artifactName": "JARVIS-Armor-Workspace-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "JARVIS listens for his name and records the meetings you ask him to.",
+        "NSCameraUsageDescription": "JARVIS uses the camera only for hand control, when you switch it on.",
+        "NSAppleEventsUsageDescription": "JARVIS arranges your app windows when you open a suit.",
+        "LSUIElement": false
+      }
     }
   }
 }
