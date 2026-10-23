@@ -1,5 +1,5 @@
 {
-  "version": "1.97.0",
+  "version": "1.97.1",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "JARVIS Server: the Mac mini can run JARVIS's brain round the clock, and the ZenBook signs in to it over Tailscale."
+  "notes": "JARVIS Link and Move JARVIS now appear in Settings, System, so the ZenBook can sign in to the Mac mini."
 }

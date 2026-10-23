@@ -559,3 +559,10 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - The Tower, ideas and the control deck stay on the ZenBook.
   - Not tested on the owner's macOS 12 Mac mini: GitHub has no macOS 12 runners, so the closest test is macOS 15 on Intel with Node 22.
 - Tests: `link-1.97.0.test.mjs` (5 new), `tests/server/server.test.mjs` (22), the frontend suite and Core on Windows, and the three CI jobs.
+
+## Release 1.97.1: JARVIS Link appears in Settings
+
+- The 1.96/1.97 Settings sections (Move JARVIS, JARVIS Link) went into `src/settings/view.js`, which `package.json` excludes from the build (`!src/settings/view.js`). The Settings page the app actually shows is in the index bundle. The owner saw no JARVIS Link section.
+- Fix: one exact string replacement in `dist/assets/index-DNK6LM5N.js` adds `<h3>JARVIS Link</h3><div data-jarvis-link>` after Backup on the System page. The new `dist/assets/jarvis-link.js` (main and settings views) fills each new placeholder through a MutationObserver with sign-in (Find my Mac, code), Move JARVIS's brain to the Mac, Sign out, and Move JARVIS by file. It uses the existing `link-*` and `move-*` requests.
+- Checked on a browser test page with a pretend JARVIS: the placeholder fills when drawn later, Find my Mac lists the Mac, sign-in works, and the signed-in view appears. Tests: `fixes-1.97.1.test.mjs`.
+- Lesson: settings UI belongs in the bundle's template or a module, not `src/settings/view.js`.
