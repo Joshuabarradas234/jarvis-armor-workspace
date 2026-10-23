@@ -11,15 +11,14 @@ import {execFileSync} from 'node:child_process';
 const SERVICE = 'JARVIS Server', ACCOUNT = 'data-key';
 
 /** The 32-byte key: from the Keychain on a Mac, else from <dir>/data-key (mode 600). Made the first time. */
-export function dataKey({dir, platform = process.platform, exec = execFileSync, fsImpl = fs, log = () => {}}) {
-  const make = () => crypto.randomBytes(32).toString('base64');
-  if (platform === 'darwin') {
-    try { const k = String(exec('security', ['find-generic-password', '-s', SERVICE, '-a', ACCOUNT, '-w'], {stdio: ['ignore', 'pipe', 'ignore']})).trim(); if (k) return Buffer.from(k, 'base64'); } catch {}
-    try { const k = make(); exec('security', ['add-generic-password', '-U', '-s', SERVICE, '-a', ACCOUNT, '-w', k], {stdio: 'ignore'}); return Buffer.from(k, 'base64'); }
+export function dataKey({dir, platform = process.platform, exec = execFileSync, fsImpl = fs, log = () => {}, keychain = true}) {
+  const make = () => crypto.randomBytes(32).toString('base64'), file = path.join(dir, 'data-key');
+  try { const k = fsImpl.readFileSync(file, 'utf8').trim(); if (k) return Buffer.from(k, 'base64'); } catch {}   // a key already kept in the file stays the key
+  if (platform === 'darwin' && keychain) {
+    try { const k = String(exec('security', ['find-generic-password', '-s', SERVICE, '-a', ACCOUNT, '-w'], {stdio: ['ignore', 'pipe', 'ignore'], timeout: 15000})).trim(); if (k) return Buffer.from(k, 'base64'); } catch {}
+    try { const k = make(); exec('security', ['add-generic-password', '-U', '-s', SERVICE, '-a', ACCOUNT, '-w', k], {stdio: 'ignore', timeout: 15000}); return Buffer.from(k, 'base64'); }
     catch (e) { log('server', `The Keychain could not be used (${e.message}); keeping the key in a private file instead.`); }
   }
-  const file = path.join(dir, 'data-key');
-  try { const k = fsImpl.readFileSync(file, 'utf8').trim(); if (k) return Buffer.from(k, 'base64'); } catch {}
   const k = make(); fsImpl.mkdirSync(dir, {recursive: true}); fsImpl.writeFileSync(file, k, {mode: 0o600}); return Buffer.from(k, 'base64');
 }
 

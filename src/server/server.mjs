@@ -57,7 +57,7 @@ try { const pid = Number(fs.readFileSync(LOCK, 'utf8')); if (pid && pid !== proc
 fs.writeFileSync(LOCK, String(process.pid));
 
 /* ---------- the stores, as the app makes them ---------- */
-const crypt = makeCrypt(dataKey({dir: DATA, log}));
+const crypt = makeCrypt(dataKey({dir: DATA, log, keychain: !TEST}));   // tests never touch the runner's Keychain
 const keyFile = path.join(DATA, 'anthropic-key.enc');
 const getKey = () => { try { return fs.existsSync(keyFile) ? crypt.decrypt(fs.readFileSync(keyFile)) : ''; } catch (e) { log('server', `The Claude key could not be read: ${e.message}`); return ''; } };
 const settings = new SettingsStore(DATA, log);
