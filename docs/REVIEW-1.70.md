@@ -519,3 +519,43 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
 - **Not done yet:** voice, wallpaper, window layout, hand control and call detection on the Mac (1.98), and the ZenBook client and pairing (1.97).
 - **Tested on a Mac** only through GitHub's macos-14 runner (tests, build, real start-up with a fresh profile). Not tested on the owner's Mac mini, the Gatekeeper "Open Anyway" step, or a real move between the two computers.
 - Tests: `mac-move-1.96.0.test.mjs` (5 new; 307 in total on Windows), Core on Windows, and the macOS job.
+
+## Release 1.97.0: JARVIS Server and the JARVIS Link
+
+- **Why a server, not the Mac app.** The owner's Mac mini is a Late 2014 Intel model on macOS 12.7.6 (its last). Electron 44 needs macOS 13, so the 1.96 app can't run on it. Node 22 supports macOS 11+ on x64, and Tailscale 1.102.4 is the last version for Monterey (1.104 is built with Go 1.27).
+- **`src/server/server.mjs`** is the brain under plain Node, with no Electron.
+  - It builds the same stores as main.js (settings, to-dos, calendar, ideas, Tower store and runner, workstations, meeting follow-ups) and `createJarvisCore`, with server versions of the app-only deps:
+    - `crypt` is AES-256-GCM, with the key in the login Keychain (`security`; a 600-mode file elsewhere).
+    - `fetch` is the global fetch.
+    - `say`, `openFile` and `health` do nothing, and `printDocument` refuses.
+    - `relaunch` exits so launchd restarts it.
+    - Its own briefing and weather.
+  - Data lives in `~/Library/Application Support/JARVIS Server/data`; Documents sit next to it, which avoids macOS privacy prompts for a background job.
+  - It uses one pid lock, runs `caffeinate -i -w <pid>`, and logs to `jarvis.log` in the app's format.
+  - Pairing: with nothing paired, a 60-minute code appears at once (a dialog, `pair-code.json` and a Desktop note). `server.mjs pair` (the "Pair a device" file) asks the running server for a 10-minute code through a request file, so there is no extra listener.
+- **`src/main/link.js`.**
+  - `LinkServer` listens only on the Tailscale address (`tailscaleAddress()`, re-checked every minute), refuses peers outside `100.64.0.0/10` (`allow`), and answers `/pair`, `/call`, `/events` (SSE) and `/move` (up to 200 MB).
+  - Pairing codes come from a 32-character alphabet with no 0/O or 1/I and are used once. Five wrong codes lock pairing for 15 minutes. A device key is 32 random bytes; only its SHA-256 is stored, compared in constant time, and removing the device revokes it.
+  - `FORWARD` is `core`, `todo-*` and `calendar-*`. The server also accepts `tower-key` (the Claude key, sealed) and `server-info`.
+  - `LinkClient` handles calls with timeouts, the SSE stream with back-off reconnects, `move()`, and `pair()`.
+- **The ZenBook as client** (`src/main/main.js`).
+  - With `link.json` set to `role:'client'` and a sealed `link-token.enc`, JARVIS Core never starts (`coreError` names the Mac), and the Windows wake task is cleared.
+  - `api()` forwards `FORWARD` requests from the main, console and settings roles to the Mac. `tower-key` goes to the Mac and is also saved locally (Ask JARVIS and the Tower stay on the ZenBook).
+  - The local to-do and calendar stores mirror the Mac's: from call results, from `todos` and `calendar` news, and every 2 minutes. Local `todos.add` (meeting follow-ups) is sent to the Mac too, with its meta.
+  - Settings → System → JARVIS Link offers Find my Mac (`tailscale status --json`), sign-in with the code, Move JARVIS's brain to the Mac (the move bundle over `/move`, then `brain.json` set to `enabled:false` here), and Sign out. Sign-in and sign-out relaunch the app.
+  - The tray shows BRAIN ON … · LINKED or CONNECTING.
+- **AGENTS.md rule 3** is updated as the owner approved: the control deck on `127.0.0.1`, plus the Link on the Tailscale address only, with the limits above.
+- **Mac install.**
+  - `scripts/server/` has Install, Pair and Uninstall `.command` files and a READ ME. The installer checks for Node 22 or later, copies the app to `…/JARVIS Server/app`, writes the `com.jarvis.server` launchd agent (RunAtLoad and KeepAlive, using the absolute path to node), and bootstraps it into `gui/<uid>`.
+  - `scripts/release/build-server.mjs` packs only committed files, with the scripts executable (ditto or zip), and refuses to run on Windows.
+- **CI.**
+  - Linux: `tests/server/server.test.mjs` (22 end-to-end checks) and the server package.
+  - `mac`: the same tests on an Apple chip.
+  - The new `server-intel` job (macos-15-intel, Node 22) runs the tests, builds the package and does a real install with `tests/mac/server-install.sh`. That covers the installer, launchd, the pairing code, the server staying up, restart after a kill, and Uninstall keeping the data.
+  - `release.yml` adds `JARVIS-Server-<v>-mac.zip` and its SHA-256.
+- **Known gaps.**
+  - Voice commands that need Core don't work on the client.
+  - Meeting follow-up emails from calls recorded on the ZenBook can't be sent.
+  - The Tower, ideas and the control deck stay on the ZenBook.
+  - Not tested on the owner's macOS 12 Mac mini: GitHub has no macOS 12 runners, so the closest test is macOS 15 on Intel with Node 22.
+- Tests: `link-1.97.0.test.mjs` (5 new), `tests/server/server.test.mjs` (22), the frontend suite and Core on Windows, and the three CI jobs.

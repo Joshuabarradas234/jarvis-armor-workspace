@@ -28,8 +28,10 @@ import {MeetingCopilot,clock as minSec} from '../meeting/copilot.js';
 import {cloudTranscript,transcriptText} from '../meeting/cloud-transcript.js';
 import {MicWatch} from '../meeting/mic-watch.js';
 import {prepareUpdate,newer as newerVersion,validVersion,REPO} from './one-click-update.js';
+import {LinkClient,FORWARD} from './link.js';
 import {bundle as moveBundle,plan as movePlan,apply as moveApply,findOneDrive,KIND as MOVE_KIND} from './move-jarvis.js';
 import {spawn,execFile} from 'node:child_process';
+import os from 'node:os';
 import {sendGmail,validEmail} from '../meeting/mailer.js';
 import {callApi,callClaudeCode,detectClaudeCode} from '../tower/engines.js';
 import {DeskProjects} from './desktop-projects.js';
@@ -188,6 +190,7 @@ function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate
   ...(pendingUpdate?[{type:'separator'},{label:process.platform==='darwin'?`DOWNLOAD JARVIS ${pendingUpdate.latest}`:`INSTALL JARVIS ${pendingUpdate.latest}`,click:()=>installUpdate(pendingUpdate.latest).catch(e=>{try{if(Notification.isSupported())new Notification({title:'The update was not installed',body:e.message}).show();}catch{}})}]:[]),
   ...(meetings?.active?[{type:'separator'},{label:'END THE MEETING',click:()=>endMeeting().catch(e=>log('meeting',e.message))}]:[]),
   {type:'separator'},{label:askKey?`ASK JARVIS  (${keyName(askKey)})`:'ASK JARVIS',click:()=>openAsk()},room?.isOpen?{label:'LEAVE THE THINK ROOM',click:()=>{room.leave();updateTray();}}:{label:'THINK ROOM',click:()=>{try{openRoom();}catch(e){log('room',e.message);}}},{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},
+  ...(linkCfg.role==='client'?[{type:'separator'},{label:`BRAIN ON ${String(linkCfg.name||linkCfg.host).toUpperCase()} · ${linkState==='connected'?'LINKED':'CONNECTING'}`,enabled:false}]:[]),
   {type:'separator'},{label:'HALL SCREEN',submenu:[...screenList().map(d=>({label:`${d.n}. ${d.label} (${d.size})${d.internal?' · laptop':''}`,type:'radio',checked:d.main,click:()=>hallTo(d.id,d.label).catch(e=>log('screens',e.message))})),{type:'separator'},{label:'SWAP SCREENS',enabled:!!displays?.roles?.control,click:()=>swapScreens().catch(e=>log('screens',e.message))}]},
   {type:'separator'},{label:'OFFER TO RECORD CALLS',type:'checkbox',checked:callOffer.on,click:item=>{callOffer.on=item.checked;if(!item.checked)hideOffer();saveOffer();}},{label:'HAND CONTROL WHEN CLOSED',type:'checkbox',checked:deskOn,click:item=>setDeskHands(item.checked)},{label:'MICROPHONE',type:'checkbox',checked:settings.get().voiceEnabled,click:item=>applySettings({voiceEnabled:item.checked})},
   {label:'WALLPAPER',type:'checkbox',checked:settings.get().wallpaper,click:item=>applySettings({wallpaper:item.checked})},
@@ -889,7 +892,7 @@ function openDeskHands(){
 function closeDeskHands(){desk?.cancel();const w=deskWin;deskWin=null;if(w&&!w.isDestroyed())w.destroy();winctl?.stop();}
 function setDeskHands(on){deskOn=!!on;try{writeJson(deskFile(),{on:deskOn});}catch(e){log('hands',e.message);}syncDeskHands();updateTray();}
 /** Ask JARVIS (src/main/ask-jarvis.js, dist/ask.html): its own window and its own taskbar button, so it can be pinned there and opened with one click. */
-let askWin=null,askJ=null,deskProjects=null,room=null,pendingMove=null;
+let askWin=null,askJ=null,deskProjects=null,room=null,pendingMove=null,linkClient=null,linkCfg={},linkState='';
 const ASK_ARG='--ask',ASK_ID='JARVIS.AskJarvis';
 /** Ask JARVIS's key: the one you chose, else the first of these that no other app holds. Ctrl+Alt+Space (1.94's choice) is the Claude app's quick entry. */
 const ASK_KEYS=['Control+Alt+Q','Control+Alt+K','Control+Shift+Alt+J'];let askKey='';
@@ -946,6 +949,29 @@ function fileDesktop(spoken=false){
   const idle=machine?.value?.state==='IDLE';if(idle)dispatch('wake');
   setTimeout(()=>broadcast('core',{type:'desk-projects'}),idle?7000:0);
   if(spoken)say(n?`${n===1?'There is one folder':`There are ${n} folders`} on your Desktop, ${addr()}. Tell me where each one belongs.`:`Your Desktop is already tidy, ${addr()}.`);
+}
+/** JARVIS Link (link.js): this computer signed in to JARVIS Server on another (the Mac mini), which runs the brain. */
+function linkFile(){return path.join(userDir,'link.json');}
+function linkTokenFile(){return path.join(userDir,'link-token.enc');}
+function readLinkToken(){try{return safeStorage.decryptString(fs.readFileSync(linkTokenFile()));}catch{return '';}}
+/** The hall's own copies of the to-dos and the calendar stay as the Mac has them. */
+function linkMirror(method,result){try{if(method.startsWith('todo-')&&Array.isArray(result)){todos.items=result;todos.flush();broadcast('todos',result);}else if(method==='calendar-list'&&Array.isArray(result)){calendar.events=result;calendar.flush();}}catch(e){log('link',e.message);}}
+async function linkSync(){if(!linkClient)return;try{linkMirror('todo-list',await linkClient.call('todo-list'));linkMirror('calendar-list',await linkClient.call('calendar-list'));}catch{}}
+function startLinkClient(){
+  linkClient=new LinkClient({host:linkCfg.host,token:readLinkToken(),log,
+    onEvent:(channel,data)=>{if(channel==='todos')linkMirror('todo-list',data);else if(channel==='calendar')linkMirror('calendar-list',data);else broadcast(channel,data);},
+    onState:st=>{linkState=st;if(st==='connected')linkSync();updateTray();broadcast('core',{type:'link',state:st});}});
+  linkClient.listen();setInterval(linkSync,120000);
+  const localAdd=todos.add.bind(todos);todos.add=(text,meta={})=>{const r=localAdd(text,meta);linkClient?.call('todo-add',{text,meta}).then(list=>linkMirror('todo-list',list)).catch(e=>log('link',e.message));return r;};   // to-dos JARVIS writes here (after a meeting) go to the Mac too
+}
+/** The other computers on your Tailscale network, for Settings → JARVIS Link. */
+function tailscalePeers(){
+  const exe=process.platform==='win32'?path.join(process.env.ProgramFiles||'C:\\Program Files','Tailscale','tailscale.exe'):process.platform==='darwin'?'/Applications/Tailscale.app/Contents/MacOS/Tailscale':'tailscale';
+  return new Promise(resolve=>execFile(exe,['status','--json'],{windowsHide:true,timeout:8000,maxBuffer:4<<20},(e,out)=>{
+    if(e)return resolve({error:'Tailscale is not running on this computer, or not signed in.',peers:[]});
+    try{const j=JSON.parse(out);resolve({self:j.Self?.HostName||'',peers:Object.values(j.Peer||{}).map(p=>({name:String(p.HostName||p.DNSName||'').replace(/[^\w .'\u2019-]/g,'').slice(0,60),host:(p.TailscaleIPs||[])[0]||'',os:String(p.OS||''),online:!!p.Online})).filter(p=>p.host).sort((a,b)=>Number(b.online)-Number(a.online)||Number(b.os==='macOS')-Number(a.os==='macOS'))});}
+    catch{resolve({error:'Tailscale answered in a way I could not read.',peers:[]});}
+  }));
 }
 /** The look card's own window (dist/look.html): above every app, in the corner of the screen he looked at, so he can help in whatever you are using. */
 let lookWin=null,lookCard=null,lookMoved=false,lookH=200,lookSizing=false;
@@ -1226,6 +1252,10 @@ function importFiles(dest,files){
 async function api(event,method,payload){
   assertSender(event);if(typeof method!=='string')throw Error('Invalid request.');
   const role=trusted.get(event.sender.id).role;
+  if(linkClient&&['main','console','settings'].includes(role)){
+    if(FORWARD.has(method)){const r=await linkClient.call(method,payload);linkMirror(method,r);if(method==='calendar-save'||method==='calendar-delete')linkSync();return r;}
+    if(method==='tower-key')await linkClient.call('tower-key',payload);   // the Mac needs the Claude key for the brain; this computer keeps its own for Ask JARVIS and the Tower
+  }
   if(method==='action'||(method==='core'&&!['status','report','details','orders-text','notes'].includes(payload?.method)))lastUserAction=Date.now();
   if(['wallpaper','identify'].includes(role)&&method!=='bootstrap')throw Error('Read-only display.');
   switch(method){
@@ -1513,6 +1543,27 @@ async function api(event,method,payload){
       w.once('ready-to-show',()=>{if(!w.isDestroyed())w.maximize();});if(w.isVisible())w.maximize();
       return {ok:true,where:n};
     }
+    case 'link-status':{if(!['settings','main'].includes(role))return false;let server=null;if(linkClient)try{server=await linkClient.call('server-info');}catch(e){server={error:e.message};}return {role:linkCfg.role||'off',host:linkCfg.host||'',name:linkCfg.name||'',state:linkState,server,moved:linkCfg.moved||0,coreHere:!!core};}
+    case 'link-peers':{if(!['settings','main'].includes(role))return false;return tailscalePeers();}
+    case 'link-signin':{
+      if(!['settings','main'].includes(role))return false;
+      const host=String(payload?.host||'').trim(),name=String(payload?.name||'').replace(/[^\w .'\u2019-]/g,'').slice(0,60);
+      if(!/^[\w.:-]{2,253}$/.test(host))throw Error('Choose the Mac from the list, or type its Tailscale address.');
+      if(!safeStorage.isEncryptionAvailable())throw Error('Secure key storage is not available on this computer.');
+      const r=await LinkClient.pair({host,code:payload?.code,name:os.hostname()});
+      fs.writeFileSync(linkTokenFile(),safeStorage.encryptString(r.token));writeJson(linkFile(),{role:'client',host,name:name||r.server||host,pairedAt:Date.now()});
+      log('link',`Signed in to JARVIS on ${name||r.server||host}.`);setTimeout(()=>{app.relaunch();app.exit(0);},1500);   // start again without a brain of its own
+      return {ok:true,server:name||r.server||host};
+    }
+    case 'link-move':{
+      if(!['settings','main'].includes(role))return false;if(!linkClient)throw Error('Sign in to the Mac first.');
+      const b=moveBundle({userDir,docsDir:app.getPath('documents'),version:app.getVersion(),home:app.getPath('home')}),r=await linkClient.move(b);
+      linkCfg={...linkCfg,moved:Date.now()};writeJson(linkFile(),linkCfg);
+      try{const bf=path.join(userDir,'brain.json');writeJson(bf,{...(readJson(bf,{})||{}),enabled:false},2);}catch(e){log('link',e.message);}   // and it stays off here, even after signing out, until you switch it on
+      log('link',`Moved JARVIS's brain to ${linkCfg.name||linkCfg.host}: ${r.files} files and ${r.documents} documents.`);setTimeout(linkSync,8000);
+      return r;
+    }
+    case 'link-signout':{if(!['settings','main'].includes(role))return false;try{fs.rmSync(linkTokenFile(),{force:true});fs.rmSync(linkFile(),{force:true});}catch{}log('link','Signed out of JARVIS on the Mac.');setTimeout(()=>{app.relaunch();app.exit(0);},1500);return true;}
     case 'move-export':{
       if(!['settings','main'].includes(role))return false;
       const res=await dialog.showSaveDialog({title:'Save everything JARVIS knows, to move him',defaultPath:path.join(app.getPath('desktop'),`JARVIS move ${new Date().toISOString().slice(0,10)}.json`),filters:[{name:'JARVIS move',extensions:['json']}]});
@@ -1695,7 +1746,9 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     if(app.isPackaged&&process.platform==='win32')try{app.setUserTasks([{program:process.execPath,arguments:ASK_ARG,iconPath:process.execPath,iconIndex:0,title:'Ask JARVIS',description:'Ask about any project, or think something through together'}]);}catch(e){log('ask',e.message);}   // right-click JARVIS on the taskbar
     setInterval(()=>assistant.night(()=>visits.get('__','ideasNight').day,day=>visits.set('__','ideasNight',{day})).catch(e=>log('ideas',e.message)),10*60000);
     wake=new WakeTimer({dir:userDir});
-    try{core=createJarvisCore({userDir,docs:app.getPath('documents'),appVersion:app.getVersion(),boot:BOOT||{asarRoot:root,root,base:app.getVersion(),version:null,label:app.getVersion()},log,broadcast,
+    linkCfg=readJson(linkFile(),{})||{};if(linkCfg.role==='client'&&!(linkCfg.host&&readLinkToken()))linkCfg={};
+    if(linkCfg.role==='client'){core=null;coreError=`JARVIS Core runs on ${linkCfg.name||linkCfg.host}.`;log('link',`Signed in to JARVIS on ${linkCfg.name||linkCfg.host}: the brain runs there, not here.`);try{wake.set(null);}catch{}startLinkClient();}
+    else try{core=createJarvisCore({userDir,docs:app.getPath('documents'),appVersion:app.getVersion(),boot:BOOT||{asarRoot:root,root,base:app.getVersion(),version:null,label:app.getVersion()},log,broadcast,
       say:t=>say(t),notify:(title,body)=>{try{if(Notification.isSupported())new Notification({title,body:String(body).slice(0,240)}).show();}catch{}broadcast('core',{type:'notice',title,body});},
       pcAwake:()=>machine?.value?.state!=='IDLE',isIdle:()=>machine?.value?.state==='IDLE'&&Date.now()-lastUserAction>5*60000,
       getKey:readTowerKey,crypt:{available:()=>safeStorage.isEncryptionAvailable()&&!(process.platform==='linux'&&safeStorage.getSelectedStorageBackend()==='basic_text'),encrypt:t=>safeStorage.encryptString(t),decrypt:b=>safeStorage.decryptString(b)},

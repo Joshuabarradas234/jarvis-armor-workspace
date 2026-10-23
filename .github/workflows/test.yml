@@ -37,6 +37,12 @@ jobs:
       - name: The update package builds
         run: node scripts/release/build-update.mjs
 
+      - name: JARVIS Server tests
+        run: node tests/server/server.test.mjs
+
+      - name: The JARVIS Server package builds
+        run: node scripts/release/build-server.mjs
+
   mac:
     runs-on: macos-14
     timeout-minutes: 30
@@ -54,6 +60,10 @@ jobs:
         working-directory: tests/core
         run: npm install && node ../ci-annotate.mjs node core.test.mjs
 
+      - name: JARVIS Server tests on macOS
+        if: always()
+        run: node tests/ci-annotate.mjs node tests/server/server.test.mjs
+
       - name: Build the Mac app
         if: always()
         run: npm install --no-audit --no-fund && node scripts/release/build-mac.mjs
@@ -68,4 +78,37 @@ jobs:
         with:
           name: JARVIS-mac
           path: release/JARVIS-Armor-Workspace-*-mac.zip
+          retention-days: 14
+
+  server-intel:
+    # JARVIS Server on an Intel Mac with Node 22, like the owner's Mac mini (Late 2014, macOS 12): the tests, the
+    # package, and a real install through the Install .command, then Uninstall.
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: The Mac scripts parse
+        run: for f in scripts/server/*.command tests/mac/server-install.sh; do bash -n "$f" || exit 1; done
+
+      - name: JARVIS Server tests on an Intel Mac
+        run: node tests/ci-annotate.mjs node tests/server/server.test.mjs
+
+      - name: Pack JARVIS Server
+        if: always()
+        run: node scripts/release/build-server.mjs
+
+      - name: Install it as the owner does
+        if: always()
+        run: node tests/ci-annotate.mjs bash tests/mac/server-install.sh
+
+      - name: Keep the server package to try out
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Server-mac
+          path: release/JARVIS-Server-*-mac.zip
           retention-days: 14
