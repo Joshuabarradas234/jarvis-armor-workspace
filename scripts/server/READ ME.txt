@@ -1,0 +1,23 @@
+JARVIS Server
+=============
+
+JARVIS's brain, for a Mac that stays on: the phone and WhatsApp, email, approvals, schedules, overnight jobs,
+reports, your to-dos and your calendar. It has no windows. It runs in the background and starts by itself
+whenever the Mac starts. Your ZenBook signs in to it over Tailscale.
+
+It needs:
+  - Node.js 22  (nodejs.org/dist/latest-v22.x/, the .pkg). Newer versions don't run on macOS 12.
+  - Tailscale, signed in with the same account as the ZenBook.
+
+To install:
+  1. Right-click "Install JARVIS Server" and choose Open, then Open again.
+     (The first time, macOS asks because the file isn't from the App Store.)
+  2. A window shows the pairing code. On the ZenBook, open JARVIS, then
+     Settings > System > JARVIS Link, choose this Mac and type the code.
+
+To pair another computer later, right-click "Pair a device" and choose Open.
+To remove it, right-click "Uninstall JARVIS Server" and choose Open. Your data is kept.
+
+Where things are:
+  ~/Library/Application Support/JARVIS Server/data       JARVIS's data, and jarvis.log
+  ~/Library/Application Support/JARVIS Server/Documents  standing orders and notes

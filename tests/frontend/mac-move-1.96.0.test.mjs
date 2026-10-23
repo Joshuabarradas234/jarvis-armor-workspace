@@ -91,6 +91,6 @@ test('on a Mac: menu-bar word, simple full screen, start at login, awake, downlo
   const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
   assert.deepEqual(pkg.build.mac.target, [{target: 'zip', arch: ['arm64']}]); assert.equal(pkg.build.mac.identity, null); assert.ok(pkg.build.mac.extendInfo.NSMicrophoneUsageDescription);
   const ci = fs.readFileSync('.github/workflows/test.yml', 'utf8'); assert.ok(ci.includes('runs-on: macos-14') && ci.includes('node tests/ci-annotate.mjs node tests/mac/smoke.mjs'));
-  const rel = fs.readFileSync('.github/workflows/release.yml', 'utf8'); assert.ok(rel.includes('gh release upload "v$V" "release/$zip" --clobber'));
+  const rel = fs.readFileSync('.github/workflows/release.yml', 'utf8'); assert.ok(rel.includes('gh release upload "v$V" "release/$zip" "release/$server" --clobber'));   // 1.97: the JARVIS Server zip goes up with it
   assert.ok(fs.readFileSync('scripts/release/build-mac.mjs', 'utf8').includes("if (size >= 30e6) fail("));
 });

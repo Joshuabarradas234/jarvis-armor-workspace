@@ -29,8 +29,15 @@ JARVIS Armor Workspace is a Windows desktop app built on Electron 44. It uses ES
    - the update validator (no servers, no process or network modules, no references to the approval machinery,
      no imports of Windows streams, full paths, URLs or computed names);
    - the boot loader's check of every file against the manifest written at install.
-3. **Nothing listens for connections from the internet.** The only server is the control deck on `127.0.0.1`. Do not
-   add tunnels, webhooks that need a public address, or listeners on other interfaces.
+3. **Nothing listens for connections from the internet.** There are only two servers. One is the control deck, on `127.0.0.1`.
+   The other is the JARVIS Link (`src/main/link.js`), run by JARVIS Server (`src/server/server.mjs`) on the owner's Mac mini. The
+   owner approved the Link on 23 October 2026, and these limits apply to it:
+   - it listens only on the computer's **Tailscale address** (`100.64.0.0/10`) and refuses any other address;
+   - it answers only devices paired with a one-time code shown on that Mac, and wrong codes lock it out;
+   - it keeps only a fingerprint of each device's key;
+   - it carries only `LINK_METHODS`: JARVIS Core, to-dos, the calendar, the Claude key (stored sealed on the Mac) and a status
+     check. It never carries anything that opens a window, a file picker or a folder.
+   Do not add tunnels, public addresses, port forwarding, webhooks, or listeners on any other interface.
 4. **Minified bundles.** `dist/assets/index-*.js` and the other hashed files in `dist/assets/` are a prebuilt Vite
    build that is patched by hand:
    - Do not reformat, prettify or re-minify them.

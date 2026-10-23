@@ -1,5 +1,5 @@
 {
-  "version": "1.96.0",
+  "version": "1.97.0",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "JARVIS for Mac: the Mac mini can run his brain round the clock, and Move JARVIS carries everything he knows over from this PC."
+  "notes": "JARVIS Server: the Mac mini can run JARVIS's brain round the clock, and the ZenBook signs in to it over Tailscale."
 }
