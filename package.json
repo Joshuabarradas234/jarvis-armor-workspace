@@ -1,6 +1,6 @@
 {
   "name": "jarvis-armor-workspace",
-  "version": "1.97.1",
+  "version": "1.98.0",
   "description": "A dual-display cinematic Windows armor workspace",
   "author": "Armor Workspace",
   "private": true,
@@ -67,8 +67,9 @@
     "mac": {
       "target": [
         {
-          "target": "zip",
+          "target": "dmg",
           "arch": [
+            "x64",
             "arm64"
           ]
         }
@@ -80,8 +81,16 @@
         "NSMicrophoneUsageDescription": "JARVIS listens for his name and records the meetings you ask him to.",
         "NSCameraUsageDescription": "JARVIS uses the camera only for hand control, when you switch it on.",
         "NSAppleEventsUsageDescription": "JARVIS arranges your app windows when you open a suit.",
-        "LSUIElement": false
-      }
+        "LSUIElement": false,
+        "NSSpeechRecognitionUsageDescription": "JARVIS turns what you say into commands, on this Mac."
+      },
+      "minimumSystemVersion": "12.0",
+      "extraResources": [
+        {
+          "from": "release/mac-helper",
+          "to": "mac"
+        }
+      ]
     }
   }
 }

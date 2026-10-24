@@ -964,12 +964,18 @@ function startLinkClient(){
   linkClient.listen();setInterval(linkSync,120000);
   const localAdd=todos.add.bind(todos);todos.add=(text,meta={})=>{const r=localAdd(text,meta);linkClient?.call('todo-add',{text,meta}).then(list=>linkMirror('todo-list',list)).catch(e=>log('link',e.message));return r;};   // to-dos JARVIS writes here (after a meeting) go to the Mac too
 }
-/** The other computers on your Tailscale network, for Settings → JARVIS Link. */
+/** JARVIS Server running on this very Mac (src/server/server.mjs): then this app never starts a brain of its own. */
+function localServer(){
+  if(process.platform!=='darwin')return false;let pid=0;
+  try{pid=Number(fs.readFileSync(path.join(app.getPath('home'),'Library','Application Support','JARVIS Server','data','server.pid'),'utf8'));}catch{return false;}
+  if(!pid)return false;try{process.kill(pid,0);return true;}catch(e){return e.code==='EPERM';}
+}
+/** The other computers on your Tailscale network, for Settings → JARVIS Link (and this Mac, if it runs JARVIS Server). */
 function tailscalePeers(){
   const exe=process.platform==='win32'?path.join(process.env.ProgramFiles||'C:\\Program Files','Tailscale','tailscale.exe'):process.platform==='darwin'?'/Applications/Tailscale.app/Contents/MacOS/Tailscale':'tailscale';
   return new Promise(resolve=>execFile(exe,['status','--json'],{windowsHide:true,timeout:8000,maxBuffer:4<<20},(e,out)=>{
     if(e)return resolve({error:'Tailscale is not running on this computer, or not signed in.',peers:[]});
-    try{const j=JSON.parse(out);resolve({self:j.Self?.HostName||'',peers:Object.values(j.Peer||{}).map(p=>({name:String(p.HostName||p.DNSName||'').replace(/[^\w .'\u2019-]/g,'').slice(0,60),host:(p.TailscaleIPs||[])[0]||'',os:String(p.OS||''),online:!!p.Online})).filter(p=>p.host).sort((a,b)=>Number(b.online)-Number(a.online)||Number(b.os==='macOS')-Number(a.os==='macOS'))});}
+    try{const j=JSON.parse(out),me=localServer()&&j.Self?.TailscaleIPs?.[0]?[{name:'This Mac (JARVIS Server)',host:j.Self.TailscaleIPs[0],os:'macOS',online:true}]:[];resolve({self:j.Self?.HostName||'',peers:[...me,...Object.values(j.Peer||{}).map(p=>({name:String(p.HostName||p.DNSName||'').replace(/[^\w .'\u2019-]/g,'').slice(0,60),host:(p.TailscaleIPs||[])[0]||'',os:String(p.OS||''),online:!!p.Online})).filter(p=>p.host).sort((a,b)=>Number(b.online)-Number(a.online)||Number(b.os==='macOS')-Number(a.os==='macOS'))]});}
     catch{resolve({error:'Tailscale answered in a way I could not read.',peers:[]});}
   }));
 }
@@ -1699,7 +1705,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     runner=new AgentRunner({missions,onUpdate:deckUpdate,onBuild:()=>broadcast('core',{type:'reaction',kind:'build-passed',at:Date.now()}),log});
     deck=new ControlServer({missions,runner,board:boardFor,run:runBay,changed:t=>{try{if(workstations.themes.some(x=>x.id===t))broadcast('board',{theme:t,bays:boardFor(t)});}catch(e){log('control',e.message);}},hallName:id=>{try{return workstations.theme(id).name;}catch{return id;}},log});
     await deck.listen();
-    voice=new WindowsVoice({scripts,assets,dir:userDir,grammar:()=>buildGrammar(voiceContext()),names:()=>spokenNames(voiceContext()),onClap:()=>{if(machine?.value?.state==='IDLE'){log('voice','double clap: waking');dispatch('wake');}},onMeter:m=>{broadcast('voice-meter',{level:voice.level,detected:!!m.detected,recognizer:voice.recognizer,audioState:voice.audioState});},onCommand:(text,confidence,rejected,meta={})=>{const heard=text||rejected||'';let command=text?parseCommand(text,voiceContext()):null;let handled=false,why='';if(text)lastUserAction=Date.now();
+    voice=new WindowsVoice({scripts,assets,dir:userDir,helper:app.isPackaged?path.join(process.resourcesPath,'mac','jarvis-listen'):path.join(baseRoot,'release','mac-helper','jarvis-listen'),grammar:()=>buildGrammar(voiceContext()),names:()=>spokenNames(voiceContext()),onClap:()=>{if(machine?.value?.state==='IDLE'){log('voice','double clap: waking');dispatch('wake');}},onMeter:m=>{broadcast('voice-meter',{level:voice.level,detected:!!m.detected,recognizer:voice.recognizer,audioState:voice.audioState});},onCommand:(text,confidence,rejected,meta={})=>{const heard=text||rejected||'';let command=text?parseCommand(text,voiceContext()):null;let handled=false,why='';if(text)lastUserAction=Date.now();
       // a quieter, less certain match still counts when it starts or ends with the assistant's name (or JARVIS has just answered you)
       if(command&&meta.low){const ctx=voiceContext();const nm=clean(ctx.theme?.assistant||'');const t=clean(text);const named=!!nm&&[nm,...(NAME_ALIASES[nm]||[])].some(n=>t===n||t.startsWith(n+' ')||t.endsWith(' '+n));if(!named&&!(ctx.follow&&confidence>=0.25)){command=null;why='unsure';}}
       if(text&&!command&&!why)why='no-match';if(!text)why=meta.mine?'own-voice':meta.rejected?'unclear':'quiet';
@@ -1748,6 +1754,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     wake=new WakeTimer({dir:userDir});
     linkCfg=readJson(linkFile(),{})||{};if(linkCfg.role==='client'&&!(linkCfg.host&&readLinkToken()))linkCfg={};
     if(linkCfg.role==='client'){core=null;coreError=`JARVIS Core runs on ${linkCfg.name||linkCfg.host}.`;log('link',`Signed in to JARVIS on ${linkCfg.name||linkCfg.host}: the brain runs there, not here.`);try{wake.set(null);}catch{}startLinkClient();}
+    else if(localServer()){core=null;coreError='JARVIS Server runs the brain on this Mac. Sign in to it: Settings → System → JARVIS Link → This Mac.';log('link','JARVIS Server is running on this Mac, so this app starts without a brain of its own (never two at once).');}
     else try{core=createJarvisCore({userDir,docs:app.getPath('documents'),appVersion:app.getVersion(),boot:BOOT||{asarRoot:root,root,base:app.getVersion(),version:null,label:app.getVersion()},log,broadcast,
       say:t=>say(t),notify:(title,body)=>{try{if(Notification.isSupported())new Notification({title,body:String(body).slice(0,240)}).show();}catch{}broadcast('core',{type:'notice',title,body});},
       pcAwake:()=>machine?.value?.state!=='IDLE',isIdle:()=>machine?.value?.state==='IDLE'&&Date.now()-lastUserAction>5*60000,

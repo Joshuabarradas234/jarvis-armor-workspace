@@ -1,4 +1,4 @@
-// Starts the built Mac app (release/mac-arm64) on a GitHub macOS runner and checks it really runs: the main process
+// Starts the built Mac app (release/mac-arm64 or release/mac, for the runner's chip) on a GitHub macOS runner and checks it really runs: the main process
 // gets to the end of start-up, JARVIS Core starts, the hall's window loads, and nothing is logged as a crash.
 // Run after scripts/release/build-mac.mjs. Mac only; it uses a fresh profile, so it never touches anyone's data.
 import fs from 'node:fs';
@@ -8,7 +8,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const APP = path.join(ROOT, 'release', 'mac-arm64', 'JARVIS Armor Workspace.app', 'Contents', 'MacOS', 'JARVIS Armor Workspace');
+const APP = path.join(ROOT, 'release', process.arch === 'arm64' ? 'mac-arm64' : 'mac', 'JARVIS Armor Workspace.app', 'Contents', 'MacOS', 'JARVIS Armor Workspace');   // this runner's own chip
 const PROFILE = path.join(os.homedir(), 'Library', 'Application Support', 'jarvis-armor-workspace'), LOG = path.join(PROFILE, 'jarvis.log');
 const PORT = 9333, sleep = ms => new Promise(r => setTimeout(r, ms));
 let failed = 0; const ok = (c, name, extra = '') => { console.log(`${c ? '  ✔' : '  ✘'} ${name}${extra ? ` (${extra})` : ''}`); if (!c) { failed++; console.log(`::error::${name}${extra ? `: ${extra}` : ''}`); } };

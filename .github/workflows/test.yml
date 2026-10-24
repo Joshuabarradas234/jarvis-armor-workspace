@@ -66,7 +66,7 @@ jobs:
 
       - name: Build the Mac app
         if: always()
-        run: npm install --no-audit --no-fund && node scripts/release/build-mac.mjs
+        run: npm install --no-audit --no-fund && node tests/ci-annotate.mjs node scripts/release/build-mac.mjs
 
       - name: Start the Mac app
         if: always()
@@ -77,7 +77,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-mac
-          path: release/JARVIS-Armor-Workspace-*-mac.zip
+          path: release/JARVIS-Armor-Workspace-*-mac-*.dmg
           retention-days: 14
 
   server-intel:
@@ -96,6 +96,14 @@ jobs:
 
       - name: JARVIS Server tests on an Intel Mac
         run: node tests/ci-annotate.mjs node tests/server/server.test.mjs
+
+      - name: Build the Mac app for Intel (Electron 43, opens on macOS 12)
+        if: always()
+        run: npm install --no-audit --no-fund && node tests/ci-annotate.mjs node scripts/release/build-mac.mjs --arch x64
+
+      - name: Start the Mac app on an Intel Mac
+        if: always()
+        run: node tests/ci-annotate.mjs node tests/mac/smoke.mjs
 
       - name: Pack JARVIS Server
         if: always()
