@@ -27,7 +27,7 @@ import {MeetingManager,clock} from '../meeting/manager.js';
 import {MeetingCopilot,clock as minSec} from '../meeting/copilot.js';
 import {cloudTranscript,transcriptText} from '../meeting/cloud-transcript.js';
 import {MicWatch} from '../meeting/mic-watch.js';
-import {prepareUpdate,newer as newerVersion,validVersion,REPO} from './one-click-update.js';
+import {prepareUpdate,newer as newerVersion,validVersion,REPO,releaseFile,zipName} from './one-click-update.js';
 import {LinkClient,FORWARD} from './link.js';
 import {bundle as moveBundle,plan as movePlan,apply as moveApply,findOneDrive,KIND as MOVE_KIND} from './move-jarvis.js';
 import {spawn,execFile} from 'node:child_process';
@@ -490,8 +490,13 @@ async function checkForUpdate(){
   try{
     const res=await net.fetch(feed,{headers:{'User-Agent':'JARVIS-Armor-Workspace'},signal:AbortSignal.timeout(8000)});
     if(!res.ok)return {current,error:'feed returned '+res.status};
-    const data=await res.json(),update=validVersion(data.version)&&newerVersion(data.version,current);
-    const out={current,latest:data.version,update,url:data.url||'',notes:String(data.notes||'').slice(0,300)};
+    const data=await res.json();let update=validVersion(data.version)&&newerVersion(data.version,current),publishing=false;
+    if(update){   // merged is not yet published: only offer it once this computer's download and its fingerprint are up
+      const file=process.platform==='darwin'?`JARVIS-Armor-Workspace-${data.version}-mac-${process.arch==='arm64'?'apple':'intel'}.dmg`:zipName(data.version);
+      try{const r=await net.fetch(releaseFile(data.version,'SHA256SUMS.txt'),{headers:{'User-Agent':'JARVIS-Armor-Workspace'},signal:AbortSignal.timeout(8000)});publishing=!(r.ok&&(await r.text()).includes(file));}catch{publishing=true;}
+      if(publishing){update=false;clearTimeout(checkForUpdate.again);checkForUpdate.again=setTimeout(()=>checkForUpdate().catch(()=>{}),5*60000);}   // look again in five minutes
+    }
+    const out={current,latest:data.version,update,publishing,url:data.url||'',notes:publishing?`JARVIS ${data.version} is still being published. It will be offered here in a few minutes.`:String(data.notes||'').slice(0,300)};
     pendingUpdate=update?out:null;updateTray();
     if(update)broadcast('core',{type:'update-ready',update:out});
     return out;
