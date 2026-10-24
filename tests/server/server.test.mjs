@@ -15,6 +15,8 @@ let pass = 0, fail = 0; const ok = (c, name, extra = '') => { if (c) { pass++; c
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const env = {...process.env, JARVIS_SERVER_DIR: BASE, JARVIS_SERVER_TEST: '1', HOME: BASE, USERPROFILE: BASE};   // HOME too: the pairing note goes on this test's own "Desktop"
 fs.mkdirSync(path.join(BASE, 'Desktop'), {recursive: true});
+// a leftover from before a restart, naming a process that is alive but isn't JARVIS Server (this test itself): it must not stop the server
+if (process.platform !== 'win32') { fs.mkdirSync(DATA, {recursive: true}); fs.writeFileSync(path.join(DATA, 'server.pid'), String(process.pid)); }
 const server = spawn(process.execPath, [path.join(ROOT, 'src', 'server', 'server.mjs')], {env, stdio: ['ignore', 'pipe', 'pipe']});
 let out = ''; server.stdout.on('data', d => out += d); server.stderr.on('data', d => out += d);
 const stopAll = () => { try { server.kill(); } catch {} };

@@ -583,3 +583,17 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
 - **Not tested on the owner's macOS 12 Mac mini.** GitHub has no macOS 12 runners. Listening was never tried with a real microphone (CI has none, and macOS asks for permission on screen). The 3D hall's speed on Intel HD 5000 graphics is unknown.
 - **SSH to the mini was offered by the owner but not set up.** Installing a lasting key needs the owner's explicit go-ahead.
 - Tests: `mac-intel-1.98.0.test.mjs` (3 new; 316 in total) and the three CI jobs.
+
+## Release 1.98.1: JARVIS Server starts after the Mac restarts
+
+- **The owner's log**, every 10 s: `Another JARVIS Server is already running (process 534)`.
+  - After the Mac restarted, the stale `server.pid` (534) named another program.
+  - The lock checked only `process.kill(pid, 0)`, so every launchd restart exited at once.
+  - The installer reported "running" because it only checked that `server.pid` existed.
+- **Server fix.** `isServer(pid)` needs the process alive (EPERM counts) and, off Windows, `ps -p <pid> -o command=` matching `src/server/server.mjs`.
+- **Installer fix.**
+  - It removes `server.pid` after `bootout` and before `bootstrap`.
+  - It waits up to 15 s for a new pid that is alive.
+  - If `server.mjs pair` gets no answer, it prints the logs.
+- **Test.** `tests/server/server.test.mjs` now starts with a leftover `server.pid` naming the test runner itself, a live process that isn't a server; the server must still start. This applies off Windows, so it runs in the macOS and Linux CI jobs. `fixes-1.98.1.test.mjs` checks the code.
+- **Immediate fix given to the owner:** delete `server.pid` in Terminal; launchd restarts the server within 10 s.

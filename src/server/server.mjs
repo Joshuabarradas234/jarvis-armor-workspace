@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {spawn} from 'node:child_process';
+import {spawn, execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createJarvisCore} from '../brain/index.js';
 import {TodoStore} from '../services/todos.js';
@@ -53,7 +53,13 @@ if (process.argv[2] === 'pair') {
 
 /* ---------- one server at a time ---------- */
 const LOCK = path.join(DATA, 'server.pid');
-try { const pid = Number(fs.readFileSync(LOCK, 'utf8')); if (pid && pid !== process.pid) { process.kill(pid, 0); log('server', `Another JARVIS Server is already running (process ${pid}).`); process.exit(0); } } catch {}
+/** Is that process really a JARVIS Server? After the Mac restarts, an old number can belong to any other program. */
+function isServer(pid) {
+  try { process.kill(pid, 0); } catch (e) { if (e.code !== 'EPERM') return false; }
+  if (process.platform === 'win32') return true;
+  try { return /src[\/]server[\/]server.mjs/.test(execFileSync('ps', ['-p', String(pid), '-o', 'command='], {encoding: 'utf8', timeout: 5000})); } catch { return false; }
+}
+{ let pid = 0; try { pid = Number(fs.readFileSync(LOCK, 'utf8')); } catch {} if (pid && pid !== process.pid && isServer(pid)) { log('server', `Another JARVIS Server is already running (process ${pid}).`); process.exit(0); } }
 fs.writeFileSync(LOCK, String(process.pid));
 
 /* ---------- the stores, as the app makes them ---------- */
