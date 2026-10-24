@@ -566,3 +566,20 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
 - Fix: one exact string replacement in `dist/assets/index-DNK6LM5N.js` adds `<h3>JARVIS Link</h3><div data-jarvis-link>` after Backup on the System page. The new `dist/assets/jarvis-link.js` (main and settings views) fills each new placeholder through a MutationObserver with sign-in (Find my Mac, code), Move JARVIS's brain to the Mac, Sign out, and Move JARVIS by file. It uses the existing `link-*` and `move-*` requests.
 - Checked on a browser test page with a pretend JARVIS: the placeholder fills when drawn later, Find my Mac lists the Mac, sign-in works, and the signed-in view appears. Tests: `fixes-1.97.1.test.mjs`.
 - Lesson: settings UI belongs in the bundle's template or a module, not `src/settings/view.js`.
+
+## Release 1.98.0: the Mac app on macOS 12, the Mac voice
+
+- **Mac builds** (`scripts/release/build-mac.mjs`).
+  - `-c.electronVersion=43.8.3`, the last Electron for Monterey. Electron 44 dropped macOS 12 with Chromium; Windows stays on 44.
+  - The x64 and arm64 apps come from `electron-builder --mac dir`. `LSMinimumSystemVersion` is 12.0 (from `package.json`; on the command line `12.0` became the number 12, which failed the first CI run). It is checked with `plutil` in the built Info.plist.
+  - The apps are signed ad hoc, then `hdiutil` makes `-mac-intel.dmg` and `-mac-apple.dmg`, each with an Applications link. The 1.96/1.97 arm64 `-mac.zip` is gone.
+- **CI.** `mac` (Apple chip) builds both images and starts the arm64 app. `server-intel` builds the x64 image and starts it on an Intel Mac (macOS 15) before the server install test. `release.yml` uploads both images and their SHA-256s. Build steps now go through `ci-annotate.mjs`, which also reports `⨯` and `error:` lines.
+- **No second brain on a server Mac.** `localServer()` reads `~/Library/Application Support/JARVIS Server/data/server.pid` and probes it with `process.kill(pid,0)`, where EPERM still means it is running. If JARVIS Server is running and the app isn't signed in, JARVIS Core does not start (`coreError` says so). `tailscalePeers()` then lists This Mac (JARVIS Server) with the Mac's own Tailscale address; the server accepts it, because the source address is on the tailnet.
+- **Mac voice.**
+  - `scripts/mac/listen.swift` (`jarvis-listen`) uses `SFSpeechRecognizer`, on-device where `supportsOnDeviceRecognition` is true, with `AVAudioEngine`. It asks for speech recognition and the microphone, ends a phrase after a 1.2 s pause, restarts every 50 s (Apple's one-minute limit), and ignores results from old sessions by a generation number. It prints listen.ps1's JSON lines.
+  - It is compiled with `-target {x86_64,arm64}-apple-macos12.0`, with an embedded `__info_plist` holding the usage strings, merged with lipo and signed ad hoc. The build runs `--version` to prove it works. `package.json` `build.mac.extraResources` puts it in `Resources/mac`.
+  - `WindowsVoice` on darwin: `attach()` reads the listener's lines (shared with Windows); `speak` uses `say` (the chosen Mac voice, else Daniel; `macRate` maps SAPI's −10..10 to 120–260 wpm; volume via `[[volm]]`) and `afplay` for the recorded lines. `speakParts` runs one `say` per line for the briefing's marks, `hush` stops the sequence, and `diagnose` lists the English voices.
+- **Settings → General** label: "Start when the Mac starts" on a Mac (a small change in the index bundle). The darwin `setLoginItemSettings` dates from 1.96.
+- **Not tested on the owner's macOS 12 Mac mini.** GitHub has no macOS 12 runners. Listening was never tried with a real microphone (CI has none, and macOS asks for permission on screen). The 3D hall's speed on Intel HD 5000 graphics is unknown.
+- **SSH to the mini was offered by the owner but not set up.** Installing a lasting key needs the owner's explicit go-ahead.
+- Tests: `mac-intel-1.98.0.test.mjs` (3 new; 316 in total) and the three CI jobs.
