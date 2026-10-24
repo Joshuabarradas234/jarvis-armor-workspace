@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>com.joshua.jarvis-armor-workspace.listen</string>
+  <key>CFBundleName</key><string>JARVIS listening</string>
+  <key>NSMicrophoneUsageDescription</key><string>JARVIS listens for his name and for what you ask him.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>JARVIS turns what you say into commands, on this Mac where it can.</string>
+</dict>
+</plist>

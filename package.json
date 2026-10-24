@@ -84,7 +84,13 @@
         "LSUIElement": false,
         "NSSpeechRecognitionUsageDescription": "JARVIS turns what you say into commands, on this Mac."
       },
-      "minimumSystemVersion": "12.0"
+      "minimumSystemVersion": "12.0",
+      "extraResources": [
+        {
+          "from": "release/mac-helper",
+          "to": "mac"
+        }
+      ]
     }
   }
 }

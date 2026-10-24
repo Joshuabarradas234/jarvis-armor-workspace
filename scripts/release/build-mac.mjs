@@ -27,10 +27,18 @@ const arches = [['x64', 'mac', 'intel'], ['arm64', 'mac-arm64', 'apple']].filter
 if (!arches.length) fail('Use --arch x64 or --arch arm64.');
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, {cwd: ROOT, stdio: 'inherit', ...opts});
 
+// 0. JARVIS's ears on the Mac (scripts/mac/listen.swift): one helper for both chips, with its own Info.plist so macOS can
+//    ask for the microphone and speech recognition; package.json copies release/mac-helper into the app's Resources/mac
+const helperDir = path.join(ROOT, 'release', 'mac-helper'); fs.rmSync(helperDir, {recursive: true, force: true}); fs.mkdirSync(helperDir, {recursive: true});
+const slices = ['x86_64', 'arm64'].map(t => { const out = path.join(helperDir, `jarvis-listen-${t}`); run('swiftc', ['-O', '-swift-version', '5', '-target', `${t}-apple-macos${MAC_MINIMUM}`, 'scripts/mac/listen.swift', '-o', out, '-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__info_plist', '-Xlinker', 'scripts/mac/listen-Info.plist']); return out; });
+const helper = path.join(helperDir, 'jarvis-listen'); run('lipo', ['-create', ...slices, '-output', helper]); for (const x of slices) fs.rmSync(x);
+run('codesign', ['--force', '--sign', '-', helper]);
+if (!/"status"/.test(execFileSync(helper, ['--version']).toString())) fail('jarvis-listen does not run.');
+
 for (const [arch, dir, label] of arches) {
   // 1. the app bundle on Electron 43, unsigned, for this chip
   fs.rmSync(path.join(ROOT, 'release', dir), {recursive: true, force: true});
-  run('npx', ['--no-install', 'electron-builder', '--mac', 'dir', `--${arch}`, '--publish', 'never', `-c.electronVersion=${MAC_ELECTRON}`, '-c.mac.identity=null', `-c.mac.minimumSystemVersion=${MAC_MINIMUM}`]);
+  run('npx', ['--no-install', 'electron-builder', '--mac', 'dir', `--${arch}`, '--publish', 'never', `-c.electronVersion=${MAC_ELECTRON}`, '-c.mac.identity=null']);   // macOS 12.0 comes from package.json build.mac.minimumSystemVersion (on the command line, 12.0 becomes the number 12)
   const app = path.join(ROOT, 'release', dir, 'JARVIS Armor Workspace.app');
   if (!fs.existsSync(app)) fail(`electron-builder did not make ${app}`);
   const size = fs.statSync(path.join(app, 'Contents', 'Resources', 'app.asar')).size;
@@ -38,6 +46,7 @@ for (const [arch, dir, label] of arches) {
   const plist = execFileSync('plutil', ['-extract', 'LSMinimumSystemVersion', 'raw', path.join(app, 'Contents', 'Info.plist')]).toString().trim();
   if (plist !== MAC_MINIMUM) fail(`The app says it needs macOS ${plist}, not ${MAC_MINIMUM}.`);
   // 2. signed ad hoc (an Apple chip won't run an unsigned app at all) and checked
+  if (!fs.existsSync(path.join(app, 'Contents', 'Resources', 'mac', 'jarvis-listen'))) fail('The app has no jarvis-listen (package.json build.mac.extraResources).');
   run('codesign', ['--force', '--deep', '--sign', '-', app]);
   run('codesign', ['--verify', '--deep', '--strict', app]);
   // 3. a disk image with the app and a link to Applications, to drag it across
