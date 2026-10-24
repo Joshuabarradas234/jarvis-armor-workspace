@@ -89,8 +89,8 @@ test('on a Mac: menu-bar word, simple full screen, start at login, awake, downlo
   assert.ok(fs.readFileSync('src/settings/view.js', 'utf8').includes("/Mac/.test(navigator.platform)?'Start when the Mac starts':'Start with Windows'"));
   assert.ok(fs.readFileSync('dist/assets/update-ready.js', 'utf8').includes("if (r?.opened) render({busy:"));
   const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-  assert.deepEqual(pkg.build.mac.target, [{target: 'zip', arch: ['arm64']}]); assert.equal(pkg.build.mac.identity, null); assert.ok(pkg.build.mac.extendInfo.NSMicrophoneUsageDescription);
+  assert.deepEqual(pkg.build.mac.target, [{target: 'dmg', arch: ['x64', 'arm64']}]);   // 1.98: disk images for Intel and Apple chips assert.equal(pkg.build.mac.identity, null); assert.ok(pkg.build.mac.extendInfo.NSMicrophoneUsageDescription);
   const ci = fs.readFileSync('.github/workflows/test.yml', 'utf8'); assert.ok(ci.includes('runs-on: macos-14') && ci.includes('node tests/ci-annotate.mjs node tests/mac/smoke.mjs'));
-  const rel = fs.readFileSync('.github/workflows/release.yml', 'utf8'); assert.ok(rel.includes('gh release upload "v$V" "release/$zip" "release/$server" --clobber'));   // 1.97: the JARVIS Server zip goes up with it
+  const rel = fs.readFileSync('.github/workflows/release.yml', 'utf8'); assert.ok(rel.includes('gh release upload "v$V" "release/$intel" "release/$apple" "release/$server" --clobber'));   // 1.98: both disk images and JARVIS Server
   assert.ok(fs.readFileSync('scripts/release/build-mac.mjs', 'utf8').includes("if (size >= 30e6) fail("));
 });

@@ -2,8 +2,8 @@
 # request that raises it): runs the tests, builds release/JARVIS-Armor-Workspace-<version>-update.zip and creates
 # the GitHub release v<version> with that zip and the notes in docs/release-notes/<version>.md.
 # A version that is already published is left alone, so running this again is harmless. The mac job then builds the
-# Mac app on a Mac (Apple chip), starts it once, and adds JARVIS-Armor-Workspace-<version>-mac.zip and
-# JARVIS-Server-<version>-mac.zip (the brain on its own, for the Mac mini) to the same release.
+# Mac app (Electron 43, Intel and Apple chips, opens on macOS 12) on a Mac, starts it once, and adds
+# JARVIS-Armor-Workspace-<version>-mac-intel.dmg, -mac-apple.dmg and JARVIS-Server-<version>-mac.zip to the same release.
 name: Publish update
 
 on:
@@ -92,9 +92,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           V: ${{ needs.publish.outputs.version }}
         run: |
-          zip="JARVIS-Armor-Workspace-$V-mac.zip"; server="JARVIS-Server-$V-mac.zip"
-          gh release upload "v$V" "release/$zip" "release/$server" --clobber
+          intel="JARVIS-Armor-Workspace-$V-mac-intel.dmg"; apple="JARVIS-Armor-Workspace-$V-mac-apple.dmg"; server="JARVIS-Server-$V-mac.zip"
+          gh release upload "v$V" "release/$intel" "release/$apple" "release/$server" --clobber
           gh release download "v$V" -p SHA256SUMS.txt -D "$RUNNER_TEMP" --clobber
-          (cd release && shasum -a 256 "$zip" "$server") >> "$RUNNER_TEMP/SHA256SUMS.txt"   # the Mac downloads' fingerprints next to the Windows one
+          (cd release && shasum -a 256 "$intel" "$apple" "$server") >> "$RUNNER_TEMP/SHA256SUMS.txt"   # the Mac downloads' fingerprints next to the Windows one
           gh release upload "v$V" "$RUNNER_TEMP/SHA256SUMS.txt" --clobber
-          echo "Added $zip and $server to v$V."
+          echo "Added $intel, $apple and $server to v$V."
