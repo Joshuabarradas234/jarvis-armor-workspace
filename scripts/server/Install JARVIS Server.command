@@ -56,18 +56,26 @@ cat > "$PLIST" <<PLISTEOF
 PLISTEOF
 launchctl bootout "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null
 sleep 1
+rm -f "$BASE/data/server.pid"   # a leftover from before a restart would look like a server already running
 launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl load -w "$PLIST" || { echo "  macOS would not start it. Restart the Mac and double-click this file again."; bye 1; }
 
 echo "  Starting..."
-for i in 1 2 3 4 5 6 7 8 9 10; do sleep 1; [ -f "$BASE/data/server.pid" ] && break; done
-if [ ! -f "$BASE/data/server.pid" ]; then
+PID=""
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do sleep 1; PID="$(cat "$BASE/data/server.pid" 2>/dev/null)"; [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null && break; PID=""; done
+if [ -z "$PID" ]; then
   echo ""
   echo "  JARVIS Server did not start. What it said:"
   tail -n 20 "$BASE/server-output.log" 2>/dev/null
+  tail -n 15 "$BASE/data/jarvis.log" 2>/dev/null
   bye 1
 fi
 echo ""
 echo "  JARVIS Server is running, and will start by itself whenever this Mac starts."
 echo "  Keep Tailscale signed in on this Mac."
-"$NODE" "$BASE/app/src/server/server.mjs" pair
+if ! "$NODE" "$BASE/app/src/server/server.mjs" pair; then
+  echo "  It started but isn't answering. What it said:"
+  tail -n 15 "$BASE/data/jarvis.log" 2>/dev/null
+  tail -n 10 "$BASE/server-output.log" 2>/dev/null
+  bye 1
+fi
 bye 0
