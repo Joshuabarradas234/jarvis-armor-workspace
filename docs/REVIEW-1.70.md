@@ -717,3 +717,19 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - `tests/mac/update.mjs`, in both macOS CI jobs: the app built in that job is served as the release, checked, mounted, staged and swapped over a pretend installed copy by the real script. `codesign --verify --deep` must pass before and after.
 - **Known.** The app is signed ad hoc, so macOS treats each version as a new app and may ask for the microphone or camera again after an update.
 - **Not tested on the Mac mini itself.** The first real one-click update will be from 1.103.0 to the next version.
+
+## Release 1.104.0: the second screen's buttons
+
+- **The owner's request:** Earth and Systems should appear on the second screen, and Arrange should arrange the open tabs.
+- **Earth.**
+  - `globe.js` ran only in the main view, so the deck's Earth button opened the globe on the main screen.
+  - The globe now also runs in the console view. Its commands name a screen (`on`): `deck-earth` from the deck sends `on:'console'`, and the rest (voice, the hall) default to main.
+  - `.gx` (z 99) sits above `.dk` (z 80).
+- **Systems** already showed the console's own view on the deck (`D.show(false)`). No change.
+- **Arrange.**
+  - It only tiled pages already on the deck. Now the deck calls `deck-gather`, and `gatherToDeck` moves every floating page (`throwPanelDown`) and every suit tab that isn't popped out (`tabs.release` then `deckPanels.adopt`) down to the deck, up to 12. Then it tiles them.
+  - Send all up reverses it.
+- **Memory in the check-up:** JARVIS's processes (`app.getAppMetrics`, working set) against `os.totalmem()`, with advice when that is over 35% or the computer has 8 GB or less.
+- **Drag and drop:** no change. A suit's Files panel already copies files dropped from Explorer into the suit's folder (`folder-import`), which is now on the Mac (J:). Deskflow doesn't carry files.
+- **Tests.** `tests/frontend/deck-1.104.0.test.mjs`: which screen handles which globe command, the earth above the deck in the CSS, the gather wiring and its limit, and the memory row.
+- **Not tested on the Mac mini itself**: the globe drawing on the deck, and Arrange with real tabs.

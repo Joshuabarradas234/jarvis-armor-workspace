@@ -897,6 +897,8 @@ async function machineCheck(){
   else add('JARVIS\'s brain',!!core,core?'JARVIS Core runs on this computer.':coreError||'JARVIS Core is off.');
   add('Claude key on this computer',!!readTowerKey(),readTowerKey()?'Added: Ask JARVIS, the think room and "look at my screen" work here.':'Missing here: Ask JARVIS, the think room and "look at my screen" need it on this computer too.','The Tower → Engines on this computer: paste your Claude API key.');
   if(mac&&voice?.macVoiceFor)add('Hall voices',true,workstations.themes.map(t=>{const v=workstations.theme(t.id)?.voice;return `${t.assistant||t.name}: ${voice.macVoiceFor(settings.get(),v)}${v?.rate?` (${v.rate<0?'slower':'faster'})`:''}`;}).join(' · ')+'.');
+  try{const used=app.getAppMetrics().reduce((a,m)=>a+(m.memory?.workingSetSize||0),0)*1024,total=os.totalmem(),gb=b=>`${(b/2**30).toFixed(1)} GB`;
+    add('Memory',used<total*.35,`JARVIS is using ${gb(used)} of this computer's ${gb(total)}.`,used<total*.35?'':total<9*2**30?`${gb(total)} is tight for the 3D halls and a second screen. Quit apps you aren't using, keep the animated wallpaper off, and keep Graphics on Auto or Low.`:'Quit apps you aren\'t using, or restart JARVIS if it has been open for days.');}catch(e){log('check',e.message);}
   if(mac)add('Not on the Mac yet',null,'Moving windows with your hands, window layouts, JARVIS offering to record a call by itself, and the live transcript during a call are Windows-only for now. Recording a call here takes your microphone only.');
   return {platform:process.platform,rows};
 }
@@ -1187,6 +1189,13 @@ function throwPanelDown(id){
   const r=panels.release(id);if(!r)return false;const pid=deckPanels.adopt(r);
   broadcast('hologram',{kind:'gone',id});broadcast('deck',{type:'adopted',id:pid,url:r.url,title:r.title});return {deck:true,id:pid};
 }
+/** The deck's Arrange: every floating page and every tab open on the top screen comes down to the deck (up to its 12), to be tiled there. */
+function gatherToDeck(){
+  if(!deckUp())throw Error('The second screen is not on. Take the keyboard off to use it.');let n=0;
+  for(const p of panels.list()){if(deckPanels.list().length>=12)break;try{if(throwPanelDown(p.id))n++;}catch(e){log('deck',e.message);break;}}
+  for(const t of tabs.list().filter(t=>!t.popped)){if(deckPanels.list().length>=12)break;const r=tabs.release(t.id);if(!r)continue;const pid=deckPanels.adopt(r);broadcast('deck',{type:'adopted',id:pid,url:r.url,title:r.title});n++;}
+  return n;
+}
 /** A page on the deck goes back up: into the open suit as a tab, or into the hall as a floating panel. */
 function sendUp(id){
   if(machine?.value?.state!=='MODULE'&&panels.list().length>=12)throw Error('The top screen already has 12 pages. Close one first.');
@@ -1459,7 +1468,8 @@ async function api(event,method,payload){
       return out;
     }
     case 'deck-info':return deckInfo();
-    case 'deck-earth':{broadcast('globe',{cmd:'earth'});return true;}
+    case 'deck-earth':{broadcast('globe',{cmd:'earth',on:role==='console'?'console':'main'});return true;}   // the deck's Earth button: the earth on the deck itself
+    case 'deck-gather':{if(role!=='console')return 0;return gatherToDeck();}
     case 'panel-throw':{if(role!=='main')return false;return throwPanelDown(String(payload?.id||''));}
     case 'deck-send-up':return sendUp(String(payload?.id||''));
     case 'deck-send-all-up':{let n=0;for(const p of deckPanels.list()){if(sendUp(p.id))n++;}return n;}
