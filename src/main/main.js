@@ -30,6 +30,7 @@ import {MicWatch} from '../meeting/mic-watch.js';
 import {prepareUpdate,newer as newerVersion,validVersion,REPO,releaseFile,zipName} from './one-click-update.js';
 import {LinkClient,FORWARD} from './link.js';
 import {mediaFile,mediaCounts,unzip as unzipMedia,adoptMedia} from './media.js';
+import {prepareMacUpdate,MAC_INSTALL_SCRIPT} from './mac-update.js';
 import {bundle as moveBundle,plan as movePlan,apply as moveApply,findOneDrive,KIND as MOVE_KIND} from './move-jarvis.js';
 import {spawn,execFile} from 'node:child_process';
 import os from 'node:os';
@@ -192,7 +193,7 @@ function registerHotkeys(values){
 }
 function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate([
   {label:'OPEN JARVIS',click:()=>dispatch('wake')},{label:'ENTER WORK MODE',click:()=>dispatch('wake')},{label:'ARMOR HALL',click:()=>dispatch('home')},{label:'THEME',submenu:workstations.themes.map(t=>({label:`${t.name.toUpperCase()} · ${t.assistant.toUpperCase()}`,type:'radio',checked:t.id===workstations.activeTheme,click:()=>setTheme(t.id)}))},
-  ...(pendingUpdate?[{type:'separator'},{label:process.platform==='darwin'?`DOWNLOAD JARVIS ${pendingUpdate.latest}`:`INSTALL JARVIS ${pendingUpdate.latest}`,click:()=>installUpdate(pendingUpdate.latest).catch(e=>{try{if(Notification.isSupported())new Notification({title:'The update was not installed',body:e.message}).show();}catch{}})}]:[]),
+  ...(pendingUpdate?[{type:'separator'},{label:`INSTALL JARVIS ${pendingUpdate.latest}`,click:()=>installUpdate(pendingUpdate.latest).catch(e=>{try{if(Notification.isSupported())new Notification({title:'The update was not installed',body:e.message}).show();}catch{}})}]:[]),
   ...(meetings?.active?[{type:'separator'},{label:'END THE MEETING',click:()=>endMeeting().catch(e=>log('meeting',e.message))}]:[]),
   {type:'separator'},{label:askKey?`ASK JARVIS  (${keyName(askKey)})`:'ASK JARVIS',click:()=>openAsk()},room?.isOpen?{label:'LEAVE THE THINK ROOM',click:()=>{room.leave();updateTray();}}:{label:'THINK ROOM',click:()=>{try{openRoom();}catch(e){log('room',e.message);}}},{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},
   ...(linkCfg.role==='client'?[{type:'separator'},{label:`BRAIN ON ${String(linkCfg.name||linkCfg.host).toUpperCase()} · ${linkState==='connected'?'LINKED':'CONNECTING'}`,enabled:false}]:[]),
@@ -510,7 +511,7 @@ async function checkForUpdate(){
 const RELEASES=`https://github.com/${REPO}/releases/latest`;
 async function installUpdate(version){
   if(installing)throw Error('The update is already being installed.');
-  if(process.platform==='darwin'){await shell.openExternal(RELEASES);return {opened:true};}   // on the Mac: the new zip from the release page, dragged into Applications
+  if(process.platform==='darwin')return installMacUpdate(version);
   if(process.platform!=='win32')throw Error('Updates install this way on Windows only.');
   if(meetings?.active)throw Error('A meeting is being recorded. End it first, then install the update.');
   installing=true;const say2=text=>broadcast('core',{type:'update-progress',text});
@@ -518,6 +519,24 @@ async function installUpdate(version){
     const dir=await prepareUpdate({version,current:app.getVersion(),dir:path.join(app.getPath('temp'),`JARVIS-update-${version}`),fetchImpl:(u,o)=>net.fetch(u,o),onStatus:say2});
     say2('Installing. JARVIS will close and open again in a minute.');log('update',`installing ${version} from ${dir}`);
     const child=spawn('cmd.exe',['/d','/c',`start "Installing JARVIS" /d "${dir}" cmd.exe /c "${path.join(dir,'run-update.cmd')}"`],{cwd:dir,detached:true,stdio:'ignore',windowsVerbatimArguments:true,windowsHide:true});child.unref();   // its own window with a real console, outside JARVIS's process tree
+    setTimeout(()=>app.quit(),1200);
+    return {ok:true};
+  }catch(e){installing=false;say2('');throw e;}
+}
+/** The Mac (src/main/mac-update.js): checked downloads of the app, and of JARVIS Server when it runs here, then a script swaps
+ *  them in after JARVIS quits and opens him again. An app that isn't in a folder it can write to gets the release page instead. */
+async function installMacUpdate(version){
+  const bundle=path.resolve(app.getPath('exe'),'..','..','..');let writable=false;
+  try{fs.accessSync(path.dirname(bundle),fs.constants.W_OK);writable=app.isPackaged&&bundle.endsWith('.app');}catch{}
+  if(!writable){await shell.openExternal(RELEASES);return {opened:true};}
+  if(meetings?.active)throw Error('A meeting is being recorded. End it first, then install the update.');
+  installing=true;const say2=text=>broadcast('core',{type:'update-progress',text});
+  try{
+    const dir=path.join(app.getPath('temp'),`JARVIS-update-${version}`),serverBase=path.join(app.getPath('home'),'Library','Application Support','JARVIS Server');
+    const staged=await prepareMacUpdate({version,current:app.getVersion(),dir,server:fs.existsSync(path.join(serverBase,'app','src','server','server.mjs')),fetchImpl:(u,o)=>net.fetch(u,o),onStatus:say2});
+    const script=path.join(dir,'install.sh');fs.writeFileSync(script,MAC_INSTALL_SCRIPT,{mode:0o755});
+    say2(`Installing${staged.server?' JARVIS and JARVIS Server':''}. JARVIS will close and open again in a minute.`);log('update',`installing ${version} on the Mac from ${dir}${staged.server?', with JARVIS Server':''}`);
+    spawn('/bin/bash',[script,String(process.pid),bundle,staged.app,staged.server||'',serverBase,path.join(userDir,'update.log'),'yes'],{detached:true,stdio:'ignore'}).unref();
     setTimeout(()=>app.quit(),1200);
     return {ok:true};
   }catch(e){installing=false;say2('');throw e;}

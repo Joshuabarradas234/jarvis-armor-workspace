@@ -695,3 +695,25 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - Battery mode and a chosen quality still win.
 - **Tests.** `tests/frontend/mac-wallpaper-1.102.0.test.mjs` covers the wallpaper wiring, the voice choice against a Mac without the downloaded voices and against one with them, a chosen voice, a Windows voice name ignored, the rates, and the new Auto. `mac-check-1.101.0` now expects Medium.
 - **Not tested on the Mac mini itself**: how the wallpaper looks behind the icons, the voices, and how smooth Medium is on the HD 5000.
+
+## Release 1.103.0: one-click updates on the Mac
+
+- **Before.** On the Mac, Install now only opened the releases page. Every update meant downloading the dmg, quitting, dragging into Applications, Replace and Open Anyway, and JARVIS Server took a separate download and installer.
+- **`src/main/mac-update.js`, `prepareMacUpdate`.**
+  - It takes `SHA256SUMS.txt` and the files only from `releaseFile`, the official repo's release downloads.
+  - Each file has to match its line (`expectedSum`, as on Windows): the dmg for this chip (`-mac-intel` or `-mac-apple`), and `JARVIS-Server-<v>-mac.zip` when JARVIS Server is installed on this Mac.
+  - It mounts the dmg read-only (`hdiutil attach -nobrowse -readonly -noverify`; the sha256 has already checked it), copies the app out with `ditto`, then detaches.
+  - It checks the staged app's `CFBundleShortVersionString` is the version asked for, and unpacks the server zip with `ditto -x -k`.
+- **`MAC_INSTALL_SCRIPT`.** `installMacUpdate` writes it to the update folder and starts it detached with `/bin/bash` before JARVIS quits. The script:
+  - waits for JARVIS's pid (up to 90 s);
+  - swaps JARVIS Server's `app` folder (old kept as `app.old`, put back if the copy fails) and restarts it with `launchctl kickstart -k gui/<uid>/com.jarvis.server`;
+  - moves the old `.app` aside, copies the new one in with `ditto`, deletes the old one only once the copy worked, and otherwise puts it back;
+  - clears quarantine and opens JARVIS;
+  - logs to `<user>/update.log`.
+- **Only from a click**, as on Windows: the banner, the menu-bar item (now "INSTALL JARVIS x" on the Mac too) or Settings. It refuses while a meeting records.
+  - If the app isn't in a folder JARVIS can write to (not installed, or run from the dmg), it opens the releases page as before.
+- **Tests.**
+  - `tests/frontend/mac-update-1.103.0.test.mjs`: staging with a pretend release and pretend tools, official URLs only, refusals (wrong fingerprint, unlisted, wrong version, not newer, a bad version string), and the main.js wiring. On a Mac it also runs the real swap script over pretend folders, including putting the old app back after a failed copy.
+  - `tests/mac/update.mjs`, in both macOS CI jobs: the app built in that job is served as the release, checked, mounted, staged and swapped over a pretend installed copy by the real script. `codesign --verify --deep` must pass before and after.
+- **Known.** The app is signed ad hoc, so macOS treats each version as a new app and may ask for the microphone or camera again after an update.
+- **Not tested on the Mac mini itself.** The first real one-click update will be from 1.103.0 to the next version.

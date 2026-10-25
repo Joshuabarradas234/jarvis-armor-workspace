@@ -25,7 +25,7 @@ if (J && VIEW === 'main') {
       const b = e.target.closest('[data-ur]'); if (!b) return;
       if (b.dataset.ur === 'later') { hiddenFor = update.latest; el.remove(); el = null; return; }
       render({busy: 'Starting…'});
-      try { const r = await J.call('update-install', {version: update.latest}); if (r?.opened) render({busy: 'The download page is open. Unzip the Mac file and drag JARVIS into Applications, replacing the old one.'}); }
+      try { const r = await J.call('update-install', {version: update.latest}); if (r?.opened) render({busy: 'The download page is open. Open the Mac file and drag JARVIS into Applications, replacing the old one.'}); /* only when JARVIS can't replace himself (not in Applications) */ }
       catch (err) { render({error: String(err?.message || err).replace(/^Error invoking remote method '[^']*': (Error: )?/, '')}); }
     };
   }

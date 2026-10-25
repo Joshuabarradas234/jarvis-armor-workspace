@@ -72,6 +72,10 @@ jobs:
         if: always()
         run: node tests/ci-annotate.mjs node tests/mac/smoke.mjs
 
+      - name: One-click Mac update
+        if: always()
+        run: node tests/ci-annotate.mjs node tests/mac/update.mjs
+
       - name: Keep the Mac app to try out
         if: always()
         uses: actions/upload-artifact@v4
@@ -104,6 +108,10 @@ jobs:
       - name: Start the Mac app on an Intel Mac
         if: always()
         run: node tests/ci-annotate.mjs node tests/mac/smoke.mjs
+
+      - name: One-click Mac update
+        if: always()
+        run: node tests/ci-annotate.mjs node tests/mac/update.mjs
 
       - name: Pack JARVIS Server
         if: always()
