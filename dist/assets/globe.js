@@ -538,7 +538,7 @@ G.button = function (k) {
   else if (k === 'close') G.close();
 };
 G.handle = function (m) {
-  if (!m || VIEW !== 'main') return;
+  if (!m || (m.on || 'main') !== VIEW) return;   // the deck's Earth button opens it on the deck; voice and the hall open it on the main screen
   if (m.cmd === 'earth') return G.open({ earth: true, style: m.style });
   if (m.cmd === 'place' && m.q) return G.open({ place: m.q, style: m.style });
   if (m.cmd === 'close') return G.close();
@@ -548,7 +548,7 @@ G.handle = function (m) {
   if (m.cmd === 'spin') { G.spin = m.on !== false; G.el?.querySelector('[data-gx=spin]')?.classList.toggle('on', G.spin); }
 };
 
-if (J && VIEW === 'main') {
+if (J && (VIEW === 'main' || VIEW === 'console')) {
   try { J.on('globe', m => G.handle(m)); } catch {}
   call('geo-home').then(h => { if (h && Number.isFinite(h.lat)) { G.home = h; placeHome(); } }).catch(() => {});
   new MutationObserver(() => { if (G.isOpen) { recolour(); if (G.map) mapLayers(); } }).observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });

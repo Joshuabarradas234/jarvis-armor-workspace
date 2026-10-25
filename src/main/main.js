@@ -1,4 +1,4 @@
-import {app,BrowserWindow,ipcMain,Tray,Menu,nativeImage,screen,globalShortcut,powerMonitor,powerSaveBlocker,protocol,net,shell,dialog,safeStorage,Notification,session,WebContentsView,desktopCapturer,clipboard} from 'electron';
+import {app,BrowserWindow,ipcMain,Tray,Menu,nativeImage,screen,globalShortcut,powerMonitor,powerSaveBlocker,protocol,net,shell,dialog,safeStorage,Notification,session,WebContentsView,desktopCapturer,clipboard,systemPreferences} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -30,6 +30,7 @@ import {MicWatch} from '../meeting/mic-watch.js';
 import {prepareUpdate,newer as newerVersion,validVersion,REPO,releaseFile,zipName} from './one-click-update.js';
 import {LinkClient,FORWARD} from './link.js';
 import {mediaFile,mediaCounts,unzip as unzipMedia,adoptMedia} from './media.js';
+import {prepareMacUpdate,MAC_INSTALL_SCRIPT} from './mac-update.js';
 import {bundle as moveBundle,plan as movePlan,apply as moveApply,findOneDrive,KIND as MOVE_KIND} from './move-jarvis.js';
 import {spawn,execFile} from 'node:child_process';
 import os from 'node:os';
@@ -192,7 +193,7 @@ function registerHotkeys(values){
 }
 function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate([
   {label:'OPEN JARVIS',click:()=>dispatch('wake')},{label:'ENTER WORK MODE',click:()=>dispatch('wake')},{label:'ARMOR HALL',click:()=>dispatch('home')},{label:'THEME',submenu:workstations.themes.map(t=>({label:`${t.name.toUpperCase()} · ${t.assistant.toUpperCase()}`,type:'radio',checked:t.id===workstations.activeTheme,click:()=>setTheme(t.id)}))},
-  ...(pendingUpdate?[{type:'separator'},{label:process.platform==='darwin'?`DOWNLOAD JARVIS ${pendingUpdate.latest}`:`INSTALL JARVIS ${pendingUpdate.latest}`,click:()=>installUpdate(pendingUpdate.latest).catch(e=>{try{if(Notification.isSupported())new Notification({title:'The update was not installed',body:e.message}).show();}catch{}})}]:[]),
+  ...(pendingUpdate?[{type:'separator'},{label:`INSTALL JARVIS ${pendingUpdate.latest}`,click:()=>installUpdate(pendingUpdate.latest).catch(e=>{try{if(Notification.isSupported())new Notification({title:'The update was not installed',body:e.message}).show();}catch{}})}]:[]),
   ...(meetings?.active?[{type:'separator'},{label:'END THE MEETING',click:()=>endMeeting().catch(e=>log('meeting',e.message))}]:[]),
   {type:'separator'},{label:askKey?`ASK JARVIS  (${keyName(askKey)})`:'ASK JARVIS',click:()=>openAsk()},room?.isOpen?{label:'LEAVE THE THINK ROOM',click:()=>{room.leave();updateTray();}}:{label:'THINK ROOM',click:()=>{try{openRoom();}catch(e){log('room',e.message);}}},{label:'FILE DESKTOP PROJECTS',click:()=>fileDesktop()},
   ...(linkCfg.role==='client'?[{type:'separator'},{label:`BRAIN ON ${String(linkCfg.name||linkCfg.host).toUpperCase()} · ${linkState==='connected'?'LINKED':'CONNECTING'}`,enabled:false}]:[]),
@@ -510,7 +511,7 @@ async function checkForUpdate(){
 const RELEASES=`https://github.com/${REPO}/releases/latest`;
 async function installUpdate(version){
   if(installing)throw Error('The update is already being installed.');
-  if(process.platform==='darwin'){await shell.openExternal(RELEASES);return {opened:true};}   // on the Mac: the new zip from the release page, dragged into Applications
+  if(process.platform==='darwin')return installMacUpdate(version);
   if(process.platform!=='win32')throw Error('Updates install this way on Windows only.');
   if(meetings?.active)throw Error('A meeting is being recorded. End it first, then install the update.');
   installing=true;const say2=text=>broadcast('core',{type:'update-progress',text});
@@ -518,6 +519,24 @@ async function installUpdate(version){
     const dir=await prepareUpdate({version,current:app.getVersion(),dir:path.join(app.getPath('temp'),`JARVIS-update-${version}`),fetchImpl:(u,o)=>net.fetch(u,o),onStatus:say2});
     say2('Installing. JARVIS will close and open again in a minute.');log('update',`installing ${version} from ${dir}`);
     const child=spawn('cmd.exe',['/d','/c',`start "Installing JARVIS" /d "${dir}" cmd.exe /c "${path.join(dir,'run-update.cmd')}"`],{cwd:dir,detached:true,stdio:'ignore',windowsVerbatimArguments:true,windowsHide:true});child.unref();   // its own window with a real console, outside JARVIS's process tree
+    setTimeout(()=>app.quit(),1200);
+    return {ok:true};
+  }catch(e){installing=false;say2('');throw e;}
+}
+/** The Mac (src/main/mac-update.js): checked downloads of the app, and of JARVIS Server when it runs here, then a script swaps
+ *  them in after JARVIS quits and opens him again. An app that isn't in a folder it can write to gets the release page instead. */
+async function installMacUpdate(version){
+  const bundle=path.resolve(app.getPath('exe'),'..','..','..');let writable=false;
+  try{fs.accessSync(path.dirname(bundle),fs.constants.W_OK);writable=app.isPackaged&&bundle.endsWith('.app');}catch{}
+  if(!writable){await shell.openExternal(RELEASES);return {opened:true};}
+  if(meetings?.active)throw Error('A meeting is being recorded. End it first, then install the update.');
+  installing=true;const say2=text=>broadcast('core',{type:'update-progress',text});
+  try{
+    const dir=path.join(app.getPath('temp'),`JARVIS-update-${version}`),serverBase=path.join(app.getPath('home'),'Library','Application Support','JARVIS Server');
+    const staged=await prepareMacUpdate({version,current:app.getVersion(),dir,server:fs.existsSync(path.join(serverBase,'app','src','server','server.mjs')),fetchImpl:(u,o)=>net.fetch(u,o),onStatus:say2});
+    const script=path.join(dir,'install.sh');fs.writeFileSync(script,MAC_INSTALL_SCRIPT,{mode:0o755});
+    say2(`Installing${staged.server?' JARVIS and JARVIS Server':''}. JARVIS will close and open again in a minute.`);log('update',`installing ${version} on the Mac from ${dir}${staged.server?', with JARVIS Server':''}`);
+    spawn('/bin/bash',[script,String(process.pid),bundle,staged.app,staged.server||'',serverBase,path.join(userDir,'update.log'),'yes'],{detached:true,stdio:'ignore'}).unref();
     setTimeout(()=>app.quit(),1200);
     return {ok:true};
   }catch(e){installing=false;say2('');throw e;}
@@ -858,6 +877,31 @@ async function choose({type}){
   if(['jae','armor','startup-video','startup-sound','transition-video','transition-sound'].includes(type)){const from=res.filePaths[0];if(fs.statSync(from).size>(type.endsWith('-video')?400:100)*1024*1024)throw Error('Use an asset under 100 MB (video 400 MB).');const name=crypto.randomUUID()+path.extname(from).toLowerCase();const dir=path.join(userDir,'assets');fs.mkdirSync(dir,{recursive:true});fs.copyFileSync(from,path.join(dir,name));return `jarvis://custom/${name}`;}
   return res.filePaths;
 }
+/** Settings → System → This computer (dist/assets/jarvis-check.js): what works here, and what to do about what doesn't. */
+async function machineCheck(){
+  const mac=process.platform==='darwin',rows=[],add=(name,ok,text,fix='')=>rows.push({name,ok,text,fix});
+  const PRIV='Apple menu → System Preferences → Security & Privacy → Privacy';
+  const access=t=>{try{return systemPreferences.getMediaAccessStatus(t);}catch{return 'unknown';}};
+  add('JARVIS',true,`${BOOT?.label||app.getVersion()} on ${mac?`macOS ${process.getSystemVersion()}`:process.platform==='win32'?'Windows':process.platform}`);
+  const lastVoice=[...status.errors].reverse().find(e=>['voice','speech'].includes(e.kind))?.message||'';
+  add('Voice',/LISTENING|READY|HEARD/i.test(voiceStatus),voiceStatus+(lastVoice&&!/LISTENING/i.test(voiceStatus)?` · ${lastVoice}`:''),mac?`Tick Microphone in the JARVIS menu (top right). If it still doesn't listen: ${PRIV}, tick JARVIS Armor Workspace under Microphone and Speech Recognition, then quit and reopen JARVIS.`:'Tick Microphone in the tray menu.');
+  if(mac){
+    for(const [t,name,why] of [['microphone','Microphone','voice and recording calls'],['camera','Camera','hand control'],['screen','Screen Recording','"look at my screen"']]){const a=access(t);add(`${name} permission`,a==='granted',a==='granted'?`Allowed, for ${why}.`:`${a==='denied'?'Not allowed':'Not asked yet'}: needed for ${why}.`,`${PRIV} → ${name}: tick JARVIS Armor Workspace, then quit and reopen JARVIS.`);}
+  }
+  const hands=['hand_landmarker.task','vision_wasm_module_internal.wasm','vision_wasm_module_internal.js'].every(n=>fs.existsSync(assetPath('handtrack',n)));
+  add('Hand control',hands,hands?'The hand tracker is in place.':'The hand tracker is missing, so the camera starts but nothing follows your hand.','Install the latest JARVIS: the hand tracker comes with it.');
+  const mc=mediaCounts([assets,mediaDir()]);
+  add('Suits, films and sounds',mc.suits>0&&mc.films>0,`${mc.suits} suits, ${mc.films} films, ${mc.backdrops} second-screen backdrops, ${mc.clips} voice clips.`,'Settings → System → Suits, films and sounds: add JARVIS-media.zip.');
+  if(linkClient){let sv=null;try{sv=await linkClient.call('server-info');}catch(e){add('JARVIS\'s brain',false,e.message,'Check the Mac mini is on, with Tailscale connected.');}
+    if(sv){add('JARVIS\'s brain',linkState==='connected'&&sv.core==='running',`On ${linkCfg.name||sv.name} (JARVIS Server ${sv.version}), ${linkState}; JARVIS Core ${sv.core}.`);add('Claude key on the Mac mini',!!sv.claudeKey,sv.claudeKey?'Added: the Mac can write up your calls.':'Missing: the Mac can\'t write call notes yet.','JARVIS Core → add your Claude API key (it is kept sealed on the Mac).');}}
+  else add('JARVIS\'s brain',!!core,core?'JARVIS Core runs on this computer.':coreError||'JARVIS Core is off.');
+  add('Claude key on this computer',!!readTowerKey(),readTowerKey()?'Added: Ask JARVIS, the think room and "look at my screen" work here.':'Missing here: Ask JARVIS, the think room and "look at my screen" need it on this computer too.','The Tower → Engines on this computer: paste your Claude API key.');
+  if(mac&&voice?.macVoiceFor)add('Hall voices',true,workstations.themes.map(t=>{const v=workstations.theme(t.id)?.voice;return `${t.assistant||t.name}: ${voice.macVoiceFor(settings.get(),v)}${v?.rate?` (${v.rate<0?'slower':'faster'})`:''}`;}).join(' · ')+'.');
+  try{const used=app.getAppMetrics().reduce((a,m)=>a+(m.memory?.workingSetSize||0),0)*1024,total=os.totalmem(),gb=b=>`${(b/2**30).toFixed(1)} GB`;
+    add('Memory',used<total*.35,`JARVIS is using ${gb(used)} of this computer's ${gb(total)}.`,used<total*.35?'':total<9*2**30?`${gb(total)} is tight for the 3D halls and a second screen. Quit apps you aren't using, keep the animated wallpaper off, and keep Graphics on Auto or Low.`:'Quit apps you aren\'t using, or restart JARVIS if it has been open for days.');}catch(e){log('check',e.message);}
+  if(mac)add('Not on the Mac yet',null,'Moving windows with your hands, window layouts, JARVIS offering to record a call by itself, and the live transcript during a call are Windows-only for now. Recording a call here takes your microphone only.');
+  return {platform:process.platform,rows};
+}
 /** The newest JARVIS-media*.zip in Downloads, where Tailscale puts what the ZenBook sends. */
 function findMediaZip(){try{const dl=app.getPath('downloads');return fs.readdirSync(dl).filter(f=>/^JARVIS-media.*\.zip$/i.test(f)).map(f=>path.join(dl,f)).sort((a,b)=>fs.statSync(b).mtimeMs-fs.statSync(a).mtimeMs)[0]||null;}catch{return null;}}
 /** Add the suits, films and sounds from JARVIS-media.zip, then restart so the halls and the deck pick them up. */
@@ -1145,6 +1189,13 @@ function throwPanelDown(id){
   const r=panels.release(id);if(!r)return false;const pid=deckPanels.adopt(r);
   broadcast('hologram',{kind:'gone',id});broadcast('deck',{type:'adopted',id:pid,url:r.url,title:r.title});return {deck:true,id:pid};
 }
+/** The deck's Arrange: every floating page and every tab open on the top screen comes down to the deck (up to its 12), to be tiled there. */
+function gatherToDeck(){
+  if(!deckUp())throw Error('The second screen is not on. Take the keyboard off to use it.');let n=0;
+  for(const p of panels.list()){if(deckPanels.list().length>=12)break;try{if(throwPanelDown(p.id))n++;}catch(e){log('deck',e.message);break;}}
+  for(const t of tabs.list().filter(t=>!t.popped)){if(deckPanels.list().length>=12)break;const r=tabs.release(t.id);if(!r)continue;const pid=deckPanels.adopt(r);broadcast('deck',{type:'adopted',id:pid,url:r.url,title:r.title});n++;}
+  return n;
+}
 /** A page on the deck goes back up: into the open suit as a tab, or into the hall as a floating panel. */
 function sendUp(id){
   if(machine?.value?.state!=='MODULE'&&panels.list().length>=12)throw Error('The top screen already has 12 pages. Close one first.');
@@ -1417,7 +1468,8 @@ async function api(event,method,payload){
       return out;
     }
     case 'deck-info':return deckInfo();
-    case 'deck-earth':{broadcast('globe',{cmd:'earth'});return true;}
+    case 'deck-earth':{broadcast('globe',{cmd:'earth',on:role==='console'?'console':'main'});return true;}   // the deck's Earth button: the earth on the deck itself
+    case 'deck-gather':{if(role!=='console')return 0;return gatherToDeck();}
     case 'panel-throw':{if(role!=='main')return false;return throwPanelDown(String(payload?.id||''));}
     case 'deck-send-up':return sendUp(String(payload?.id||''));
     case 'deck-send-all-up':{let n=0;for(const p of deckPanels.list()){if(sendUp(p.id))n++;}return n;}
@@ -1684,6 +1736,7 @@ async function api(event,method,payload){
     case 'open-logs':{const file=path.join(userDir,'jarvis.log');if(!fs.existsSync(file))fs.writeFileSync(file,'No errors recorded in this session.\n');const error=await shell.openPath(file);if(error)throw Error(error);return true;}
     case 'clear-cache':await session.defaultSession.clearCache();return true;
     case 'reset-settings':{const response=await dialog.showMessageBox({type:'question',buttons:['Cancel','Reset settings'],defaultId:0,cancelId:0,message:'Reset JARVIS settings?',detail:'Your local calendar and imported assets are kept.'});if(response.response===1){await applySettings(structuredClone(defaults));openSettings();}return true;}
+    case 'machine-check':return machineCheck();
     case 'media-status':return {platform:process.platform,...mediaCounts([assets,mediaDir()]),zip:findMediaZip()};
     case 'media-add':{if(!['main','settings'].includes(role))throw Error('Add the media from Settings.');return addMediaZip(payload?.choose===true);}
     case 'meeting-state':return meetingInfo();

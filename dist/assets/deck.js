@@ -26,9 +26,9 @@ if (J && VIEW === 'console') {
           <div class="dk-stats"><span>CPU <b class="dk-cpu">–</b></span><span>RAM <b class="dk-ram">–</b></span><span class="dk-batt-w">PWR <b class="dk-batt">–</b></span></div>
         </header>
         <nav class="dk-dock">
-          <button type="button" data-dk="arrange" title="Tidy the pages into a grid"><i>⊞</i>Arrange</button>
+          <button type="button" data-dk="arrange" title="Bring your open tabs and pages here, tidied into a grid"><i>⊞</i>Arrange</button>
           <button type="button" data-dk="up" title="Send every page back to the top screen"><i>⤒</i>Send all up</button>
-          <button type="button" data-dk="earth" title="Show the earth on the top screen"><i>◍</i>Earth</button>
+          <button type="button" data-dk="earth" title="Show the earth on this screen"><i>◍</i>Earth</button>
           <button type="button" data-dk="backdrop" title="Use your own picture for this screen"><i>▣</i>Backdrop</button>
           <button type="button" data-dk="systems" title="System stats and suits"><i>◧</i>Systems</button>
           <button type="button" data-dk="sound" title="Background sound on or off" hidden><i>🔊</i>Sound</button>
@@ -83,7 +83,11 @@ if (J && VIEW === 'console') {
     },
     show(on) { this.shown = on; this.el.hidden = !on; this.backBtn.hidden = on; window.__jarvisHolo?.showScope?.('deck', on); },
     async button(k) {
-      if (k === 'arrange') return this.arrange(true);
+      if (k === 'arrange') {   // every tab and page open on the top screen comes down here, then all of them are tiled
+        const n = await call('deck-gather').catch(e => { this.note(String(e?.message || e).replace(/^Error invoking remote method '[^']*': (Error: )?/, '')); return -1; });
+        if (n === 0 && !this.panels().length) this.note('No tabs or pages are open to arrange.');
+        setTimeout(() => this.arrange(true), 400); return this.arrange(true);
+      }
       if (k === 'up') { const n = await call('deck-send-all-up').catch(() => 0); if (!n) this.note('Nothing to send up.'); return; }
       if (k === 'earth') return call('deck-earth').catch(() => {});
       if (k === 'backdrop') { try { await call('deck-backdrop-set', { theme: this.theme }); } catch (e) { this.note(e.message); } return; }

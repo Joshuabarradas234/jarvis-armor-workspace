@@ -1,4 +1,4 @@
-import {renderBudget} from './render-budget.js';
+import {renderBudget,weakGpu} from './render-budget.js';
 /* Consistent control glyphs and a quiet, lifecycle-aware ambient hologram. */
 const paths={
   settings:'<path d="m9 3-.7 2.1-2 .9-2-.4-1.6 2.8 1.4 1.6v2.3l-1.4 1.6 1.6 2.8 2-.4 2 .9.7 2.1h3.2l.7-2.1 2-.9 2 .4 1.6-2.8-1.4-1.6V10l1.4-1.6-1.6-2.8-2 .4-2-.9L12.2 3Z"/><circle cx="10.6" cy="11.1" r="3"/>',
@@ -39,7 +39,7 @@ if(typeof document!=='undefined'){
   function media(){
     const root=document.querySelector('.image-hall');if(!root)return;
     const budget=renderBudget(settings,status,{reduced:motion.matches});
-    const paused=shouldPauseAmbient({hidden:document.hidden,reduced:motion.matches,still:budget.quiet||root.classList.contains('still'),state:root.dataset.state,covered:!!document.querySelector('.jc.in,.tw.in,.ix-room.in,.gx.in')});
+    const paused=shouldPauseAmbient({hidden:document.hidden,reduced:motion.matches,still:budget.quiet||root.classList.contains('still'),state:root.dataset.state,covered:!!document.querySelector('.jc.in,.tw.in,.ix-room.in,.gx.in')||(weakGpu()&&!!document.querySelector('.hall-transition.playing'))});
     for(const v of root.querySelectorAll('.hall-overlay .ov-vid')){
       v.playbackRate=budget.videoRate;
       if(paused||v.closest('.has-vehicle-hologram')){if(!v.paused)v.pause();}

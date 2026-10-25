@@ -288,7 +288,10 @@
         "everyMinutes": 9,
         "chance": 0.5
       },
-      "greetAfter": 1500
+      "greetAfter": 1500,
+      "mac": [
+        "Daniel"
+      ]
     },
     "fit": "contain"
   },
@@ -576,7 +579,11 @@
         "everyMinutes": 8,
         "chance": 0.55
       },
-      "greetAfter": 1600
+      "greetAfter": 1600,
+      "mac": [
+        "Oliver",
+        "Daniel"
+      ]
     },
     "fit": "contain"
   },
@@ -853,7 +860,10 @@
       "chatter": {
         "everyMinutes": 7,
         "chance": 0.6
-      }
+      },
+      "mac": [
+        "Samantha"
+      ]
     },
     "overlay": {
       "video": "jarvis://asset/transitions/spidey3.webm",

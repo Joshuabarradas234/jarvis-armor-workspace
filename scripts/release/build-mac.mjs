@@ -47,6 +47,7 @@ for (const [arch, dir, label] of arches) {
   if (plist !== MAC_MINIMUM) fail(`The app says it needs macOS ${plist}, not ${MAC_MINIMUM}.`);
   // 2. signed ad hoc (an Apple chip won't run an unsigned app at all) and checked
   if (!fs.existsSync(path.join(app, 'Contents', 'Resources', 'mac', 'jarvis-listen'))) fail('The app has no jarvis-listen (package.json build.mac.extraResources).');
+  if (!fs.existsSync(path.join(app, 'Contents', 'Resources', 'assets', 'handtrack', 'hand_landmarker.task'))) fail('The app has no hand tracker (assets/handtrack).');
   run('codesign', ['--force', '--deep', '--sign', '-', app]);
   run('codesign', ['--verify', '--deep', '--strict', app]);
   // 3. a disk image with the app and a link to Applications, to drag it across

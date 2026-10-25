@@ -652,3 +652,84 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - `tests/server/server.test.mjs` (31 checks): a meeting with a 300 KB recording goes to the real server. A scripted Claude writes the notes. The test checks the folder and the bytes, the `saved` news, `transcript.md`, the to-do, the history without paths, the notes, that a meeting sent twice is kept once, that a bad id is refused, and that `incoming` is left empty.
   - `tests/frontend/meetings-mac-1.100.0.test.mjs`: the write-up's outcomes; the outbox and `forget`; the stream through a real LinkServer (1.5 MB), including oversized details refused by the client and by the server; and the main.js, server and quiet-hall wiring.
 - **Not tested with a real call.** That means Zoom or Teams on the ZenBook, the Windows speech engine, AssemblyAI, and the sound going quiet on real speakers.
+
+## Release 1.101.0: hand control and a smoother hall on the Mac, a check-up of each computer
+
+- **Hand control on the Mac.** `handtrack.worker.js` loads its WebAssembly and the hand landmarker model from `jarvis://asset/handtrack`. Those three files (19.9 MB, already listed in THIRD-PARTY-NOTICES) were only on the ZenBook's install, and 1.99's media zip leaves out code on purpose.
+  - They are now in `assets/handtrack`, so the Mac app carries them (`extraResources: assets`).
+  - `build-mac.mjs` fails if the built app has no `hand_landmarker.task`.
+- **The lag on the 2014 Mac mini.** Auto meant High everywhere.
+  - `render-budget.js` now reads the WebGL renderer name once (`gpuName`). `weakGpu` matches older Intel HD and Iris (5100/5200/6100/6200), GMA and software drawing; it does not match UHD, Iris Xe or Arc.
+  - Auto then means Low: dpr 1, no particles, no extra detail, and the suit buffer at 1.2 Mpx.
+  - On that chip, `concealedHall` also pauses the 3D hall behind `.hall-transition.playing`, and `interface-quality.js` pauses the hall's overlay video, so the transition film doesn't share the GPU.
+  - Strong chips (the ZenBook's Arc 140T) behave as before.
+- **A comment bug, caught by the tests.** The first edit put a `//` comment in the middle of a single-line statement in `render-budget.js`. It hid `if(battery)quality='low'`, and the case-mist battery tests failed. It is now `/* … */`, as rule 4 says.
+- **Settings → System → This computer** (`dist/assets/jarvis-check.js`, placed after Suits, films and sounds) shows `machine-check`:
+  - the version and OS;
+  - voice status and its last error;
+  - on the Mac, the microphone, camera and screen permissions (`systemPreferences.getMediaAccessStatus`);
+  - the hand tracker and the media counts;
+  - the brain (link state and server version);
+  - the Claude key on the Mac mini and on this computer;
+  - on the Mac, the features that are still Windows-only;
+  - the graphics chip and the quality Auto picks.
+  - Each problem comes with what to do. Checked on a test page in the browser with a pretend Mac.
+- **Tests.** `tests/frontend/mac-check-1.101.0.test.mjs`: the chip names and Auto's choice, that a chosen quality is kept, battery mode, the hand tracker files and the build check, the check-up wiring, and pausing behind a film only on a small chip.
+- **Not tested on the Mac mini itself**: how smooth it is, hand tracking with its camera, and the permission readings. The owner will send a photo of the check-up.
+
+## Release 1.102.0: the Mac wallpaper, each hall's own voice, suits with their full opening effects
+
+- **Wallpaper on the Mac.**
+  - Windows attaches its wallpaper window behind the icons with `wallpaper.ps1`. The Mac had no equivalent (`WINDOWS REQUIRED`).
+  - On the Mac, `DisplayManager.rebuild` makes one `type:'desktop'` window per screen, which Electron places at the desktop's own level, under the icons.
+  - The window can't take focus, ignores the mouse (clicks reach Finder) and is visible on all Spaces.
+  - The wallpaper page already animates only when the hall is idle, at 10 fps.
+  - The macOS CI start-up check now runs with the wallpaper on and checks its page loads.
+- **Hall voices on the Mac.** Each hall's `voice.prefer` lists Windows voice names (David, Zira), so the Mac fell back to Daniel for all three.
+  - `voice.mac` in `config/themes.json` now gives each hall a Mac voice: Jarvis `Daniel`; Alfred `Oliver`, else `Daniel`; Karen `Samantha`.
+  - `macVoiceFor` uses a voice you chose (unless it's a Windows name), then the hall's, then the defaults, and only voices this Mac has (`say -v '?'`, read once).
+  - The hall's own rate still applies: Alfred slower, Karen faster.
+  - The check-up lists each hall's voice.
+- **Suit openings on a small chip.** 1.101.0's Auto went to Low, and Low switches off the suit-entry pulse and sparks (`budget.particles`) and halves the case mist. The owner wants suits to open as they do on Windows.
+  - Auto on a small chip is now Medium with `particles:true`: dpr 1, a 2.2 Mpx idle buffer, 6 mist layers, the eye detail, the pulse and the sparks.
+  - Battery mode and a chosen quality still win.
+- **Tests.** `tests/frontend/mac-wallpaper-1.102.0.test.mjs` covers the wallpaper wiring, the voice choice against a Mac without the downloaded voices and against one with them, a chosen voice, a Windows voice name ignored, the rates, and the new Auto. `mac-check-1.101.0` now expects Medium.
+- **Not tested on the Mac mini itself**: how the wallpaper looks behind the icons, the voices, and how smooth Medium is on the HD 5000.
+
+## Release 1.103.0: one-click updates on the Mac
+
+- **Before.** On the Mac, Install now only opened the releases page. Every update meant downloading the dmg, quitting, dragging into Applications, Replace and Open Anyway, and JARVIS Server took a separate download and installer.
+- **`src/main/mac-update.js`, `prepareMacUpdate`.**
+  - It takes `SHA256SUMS.txt` and the files only from `releaseFile`, the official repo's release downloads.
+  - Each file has to match its line (`expectedSum`, as on Windows): the dmg for this chip (`-mac-intel` or `-mac-apple`), and `JARVIS-Server-<v>-mac.zip` when JARVIS Server is installed on this Mac.
+  - It mounts the dmg read-only (`hdiutil attach -nobrowse -readonly -noverify`; the sha256 has already checked it), copies the app out with `ditto`, then detaches.
+  - It checks the staged app's `CFBundleShortVersionString` is the version asked for, and unpacks the server zip with `ditto -x -k`.
+- **`MAC_INSTALL_SCRIPT`.** `installMacUpdate` writes it to the update folder and starts it detached with `/bin/bash` before JARVIS quits. The script:
+  - waits for JARVIS's pid (up to 90 s);
+  - swaps JARVIS Server's `app` folder (old kept as `app.old`, put back if the copy fails) and restarts it with `launchctl kickstart -k gui/<uid>/com.jarvis.server`;
+  - moves the old `.app` aside, copies the new one in with `ditto`, deletes the old one only once the copy worked, and otherwise puts it back;
+  - clears quarantine and opens JARVIS;
+  - logs to `<user>/update.log`.
+- **Only from a click**, as on Windows: the banner, the menu-bar item (now "INSTALL JARVIS x" on the Mac too) or Settings. It refuses while a meeting records.
+  - If the app isn't in a folder JARVIS can write to (not installed, or run from the dmg), it opens the releases page as before.
+- **Tests.**
+  - `tests/frontend/mac-update-1.103.0.test.mjs`: staging with a pretend release and pretend tools, official URLs only, refusals (wrong fingerprint, unlisted, wrong version, not newer, a bad version string), and the main.js wiring. On a Mac it also runs the real swap script over pretend folders, including putting the old app back after a failed copy.
+  - `tests/mac/update.mjs`, in both macOS CI jobs: the app built in that job is served as the release, checked, mounted, staged and swapped over a pretend installed copy by the real script. `codesign --verify --deep` must pass before and after.
+- **Known.** The app is signed ad hoc, so macOS treats each version as a new app and may ask for the microphone or camera again after an update.
+- **Not tested on the Mac mini itself.** The first real one-click update will be from 1.103.0 to the next version.
+
+## Release 1.104.0: the second screen's buttons
+
+- **The owner's request:** Earth and Systems should appear on the second screen, and Arrange should arrange the open tabs.
+- **Earth.**
+  - `globe.js` ran only in the main view, so the deck's Earth button opened the globe on the main screen.
+  - The globe now also runs in the console view. Its commands name a screen (`on`): `deck-earth` from the deck sends `on:'console'`, and the rest (voice, the hall) default to main.
+  - `.gx` (z 99) sits above `.dk` (z 80).
+- **Systems** already showed the console's own view on the deck (`D.show(false)`). No change.
+- **Arrange.**
+  - It only tiled pages already on the deck. Now the deck calls `deck-gather`, and `gatherToDeck` moves every floating page (`throwPanelDown`) and every suit tab that isn't popped out (`tabs.release` then `deckPanels.adopt`) down to the deck, up to 12. Then it tiles them.
+  - Send all up reverses it.
+- **Memory in the check-up:** JARVIS's processes (`app.getAppMetrics`, working set) against `os.totalmem()`, with advice when that is over 35% or the computer has 8 GB or less.
+- **Drag and drop:** no change. A suit's Files panel already copies files dropped from Explorer into the suit's folder (`folder-import`), which is now on the Mac (J:). Deskflow doesn't carry files.
+- **Tests.** `tests/frontend/deck-1.104.0.test.mjs`: which screen handles which globe command, the earth above the deck in the CSS, the gather wiring and its limit, and the memory row.
+- **Not tested on the Mac mini itself**: the globe drawing on the deck, and Arrange with real tabs.

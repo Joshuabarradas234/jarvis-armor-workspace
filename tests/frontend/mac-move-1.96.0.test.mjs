@@ -77,11 +77,11 @@ test('the Mac\'s OneDrive is found in ~/Library/CloudStorage, the personal one f
   assert.equal(findOneDrive({home: 'C:\\Users\\Sam', platform: 'win32', env: {OneDrive: 'C:\\Users\\Sam\\OneDrive'}}), 'C:\\Users\\Sam\\OneDrive');
 });
 
-test('on a Mac: menu-bar word, simple full screen, start at login, awake, download instead of install, and a start without any screen', () => {
+test('on a Mac: menu-bar word, simple full screen, start at login, awake, one-click install (or the download page), and a start without any screen', () => {
   const main = fs.readFileSync('src/main/main.js', 'utf8');
   for (const s of ["if(process.platform==='darwin'&&icon.isEmpty())tray.setTitle('JARVIS');", "powerSaveBlocker.start('prevent-app-suspension');log('mac',",
     "else if('startWithWindows'in patch&&process.platform==='darwin')app.setLoginItemSettings({openAtLogin:result.startWithWindows});",
-    "if(process.platform==='darwin'){await shell.openExternal(RELEASES);return {opened:true};}", "label:process.platform==='darwin'?`DOWNLOAD JARVIS ${pendingUpdate.latest}`",
+    "if(process.platform==='darwin')return installMacUpdate(version);", "if(!writable){await shell.openExternal(RELEASES);return {opened:true};}", "{label:`INSTALL JARVIS ${pendingUpdate.latest}`,",   // 1.103.0: one click on the Mac too
     "if(app.isPackaged&&process.platform==='win32')try{app.setUserTasks(", "if(!displays.work&&!screen.getAllDisplays().length&&!bootMarked&&(core||coreError)){bootMarked=true;globalThis.__jarvisBoot?.markGood?.();",
     "case 'move-export':{\n      if(!['settings','main'].includes(role))return false;", "case 'move-apply':{\n      if(!['settings','main'].includes(role))return false;",
     "if(!pendingMove||Date.now()-pendingMove.at>15*60000)throw Error('Choose the move file again.');"]) assert.ok(main.includes(s), s);
