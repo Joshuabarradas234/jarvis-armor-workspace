@@ -8,6 +8,12 @@
 
 **Systems** already opens on the second screen: it shows the system readings and your suits, and **Back to the deck** returns.
 
+## Also in this update, if you are coming from 1.100.0
+
+- **1.101.0:** hand control works on the Mac; the hall is lighter on the Mac mini's small graphics chip, and transition films get the chip to themselves; **Settings → System → This computer** shows what works on each computer and what to do about the rest.
+- **1.102.0:** the animated wallpaper behind your Mac's desktop icons; each hall speaks in its own voice on the Mac (Jarvis Daniel, Alfred a slower Daniel, Karen Samantha); suits open with their full pulse and sparks on the Mac mini.
+- **1.103.0:** **Install now** works on the Mac. It downloads and checks the new app and JARVIS Server, swaps them in and reopens JARVIS.
+
 ## Putting files into a suit from the ZenBook
 
 Open the suit in JARVIS on the ZenBook and drag files from your desktop into its **Files** panel. They're copied into the suit's folder, which is on the Mac mini (drive J:). Deskflow can't carry files between computers, only the mouse and keyboard.
