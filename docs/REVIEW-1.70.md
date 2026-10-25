@@ -733,3 +733,14 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
 - **Drag and drop:** no change. A suit's Files panel already copies files dropped from Explorer into the suit's folder (`folder-import`), which is now on the Mac (J:). Deskflow doesn't carry files.
 - **Tests.** `tests/frontend/deck-1.104.0.test.mjs`: which screen handles which globe command, the earth above the deck in the CSS, the gather wiring and its limit, and the memory row.
 - **Not tested on the Mac mini itself**: the globe drawing on the deck, and Arrange with real tabs.
+
+## Release 1.105.0: the weekly review on a signed-in computer
+
+- **The gap.** `weeklyReview` took the AI spend, the dates and the email count from the local JARVIS Core, and the meetings from the local history. Both of the owner's computers are now signed in to the Mac and have no Core of their own, and their meetings are kept on the Mac (1.100.0). So the film left those scenes out on both.
+- **Fix.**
+  - JARVIS Core gains `week-facts`: its spend history, the dates ahead, and the emails of the last seven days, or null when mail isn't set up.
+  - A signed-in computer asks for it through the existing `core` forwarding, so no new Link method, and refreshes `meetings.remote` first.
+  - `weekFacts` now counts the local and the Mac's meetings together.
+  - `weeklyReview` is async, and its caller catches failures.
+- **Tests.** `tests/server/server.test.mjs` asks the real server for `week-facts` (32 checks). `tests/frontend/weekly-1.105.0.test.mjs` covers the wiring, and that the Mac's meetings and spend reach the facts.
+- **JARVIS Server needs this update** (`src/brain/index.js`). Install now on the Mac (1.103.0 or later) updates it.

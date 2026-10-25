@@ -50,6 +50,7 @@ try {
   const events = [], c = new LinkClient({host, token: p.token, onEvent: (ch, d) => events.push({ch, d})}); c.listen();
   const info = await c.call('server-info'); ok(info.version && info.core === 'running', 'JARVIS Core is running on the server', JSON.stringify(info));
   const status = await c.call('core', {method: 'status'}); ok(status && typeof status === 'object' && 'enabled' in status, 'JARVIS Core answers over the link (status)');
+  const week = await c.call('core', {method: 'week-facts'}); ok(week && typeof week.spendHistory === 'object' && Array.isArray(week.dates) && 'emails' in week, 'the brain gives a signed-in computer its side of the week, for the weekly review', JSON.stringify(week).slice(0, 200));
   await sleep(500);
   const todos = await c.call('todo-add', {text: 'Ring the bank'}); ok(todos.some(t => t.text === 'Ring the bank'), 'a to-do added over the link is kept on the server');
   await sleep(300); ok(events.some(e => e.ch === 'todos'), 'and the change comes back as news');
