@@ -597,3 +597,26 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - If `server.mjs pair` gets no answer, it prints the logs.
 - **Test.** `tests/server/server.test.mjs` now starts with a leftover `server.pid` naming the test runner itself, a live process that isn't a server; the server must still start. This applies off Windows, so it runs in the macOS and Linux CI jobs. `fixes-1.98.1.test.mjs` checks the code.
 - **Immediate fix given to the owner:** delete `server.pid` in Terminal; launchd restarts the server within 10 s.
+
+## Release 1.99.0: the suits, films and sounds on the Mac
+
+- **Why.** The Mac app (1.98) runs on the owner's Mac mini, but its download has only the 19 media files tracked in the repo. The suits, transition films, voice clips and second-screen backdrops (348 MB on the ZenBook, in `resources/assets`) were missing, so the halls had no suits and the deck no backdrop.
+- **Media from the ZenBook.** `JARVIS-media.zip` (678 files, 242 MB) is the ZenBook's installed media, minus what the Mac app already ships, minus anything that is code. It was sent to the mini with Taildrop (`tailscale file cp`).
+- **`src/main/media.js`.**
+  - `unzip` uses the computer's own tool: `ditto` on the Mac, `tar.exe` on Windows, `unzip` on Linux.
+  - `adoptMedia` moves into `<user>/media` only media and data types (glb, mp4, webm, m4a, mp3, wav, ogg, png, jpg, webp, svg, json, txt, md) with plain names, at most 6 folders deep, 5000 files and 2 GB. Code, programs, links, hidden files and `__MACOSX` stay behind.
+  - `mediaFile` is the lookup: the app's own copy wins, then the added one.
+- **main.js.**
+  - Every media path goes through `assetPath` (one `path.join(assets,` is left: the app's own suits folder in `suit-models`).
+  - `jarvis://asset/` serves from both folders.
+  - The voice's own recordings use `mediaFile`.
+  - New `media-status` and `media-add` methods: `media-add` takes the newest `JARVIS-media*.zip` in Downloads, or asks for one. It unpacks into `<user>/media.incoming`, adopts the files, removes the incoming folder and restarts JARVIS.
+- **Settings → System → Suits, films and sounds** (`dist/assets/jarvis-media.js`) is placed after the JARVIS Link section, with no bundle change. On Windows, when the media is all there, it only shows the counts.
+- **Small Mac items.** Calculator, the microphone privacy page, the `.app` picker starting in `/Applications`, an Ask JARVIS Dock menu, and the tray icon resized to 18 pt.
+- **1.98.2, folded in.** The update check offers a version only once `SHA256SUMS.txt` lists this computer's file; until then it checks again every 5 minutes.
+- **Tests.** `tests/frontend/mac-media-1.99.0.test.mjs` covers:
+  - what is kept and what is left behind (including a symlink, off Windows);
+  - the lookup order and the counts;
+  - a real zip unpacked with the platform's tool (ditto in the macOS CI job, tar.exe on Windows);
+  - the main.js and Settings wiring.
+- **Not tested on the Mac mini itself**: the click in Settings, and the hall with the added media. The macOS CI job runs the ditto path.

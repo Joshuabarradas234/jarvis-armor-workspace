@@ -27,8 +27,9 @@ import {MeetingManager,clock} from '../meeting/manager.js';
 import {MeetingCopilot,clock as minSec} from '../meeting/copilot.js';
 import {cloudTranscript,transcriptText} from '../meeting/cloud-transcript.js';
 import {MicWatch} from '../meeting/mic-watch.js';
-import {prepareUpdate,newer as newerVersion,validVersion,REPO} from './one-click-update.js';
+import {prepareUpdate,newer as newerVersion,validVersion,REPO,releaseFile,zipName} from './one-click-update.js';
 import {LinkClient,FORWARD} from './link.js';
+import {mediaFile,mediaCounts,unzip as unzipMedia,adoptMedia} from './media.js';
 import {bundle as moveBundle,plan as movePlan,apply as moveApply,findOneDrive,KIND as MOVE_KIND} from './move-jarvis.js';
 import {spawn,execFile} from 'node:child_process';
 import os from 'node:os';
@@ -76,6 +77,10 @@ let workstations,tabs,layout,telemetry=null,weatherCache=null,weatherChecked=0,o
 const status={errors:[],commandHistory:[]};
 const scripts=app.isPackaged?path.join(process.resourcesPath,'windows'):path.join(baseRoot,'scripts','windows');
 const assets=app.isPackaged?path.join(process.resourcesPath,'assets'):path.join(baseRoot,'assets');
+/** The suits, films and sounds added from JARVIS-media.zip (the Mac app comes without them; src/main/media.js). */
+const mediaDir=()=>userDir?path.join(userDir,'media'):null;
+/** A media file: the app's own copy, or the added one. */
+const assetPath=(...p)=>mediaFile(assets,mediaDir(),...p);
 let userDir, hallCalibration, workSuggestions, workbench, meetingFollowups, callWatcher;
 function observeWork(kind,context){try{workSuggestions?.observe(kind,context);}catch(e){log('ideas',e.message);}}
 function log(kind,message){const row={time:new Date().toISOString(),kind,message:String(message).slice(0,800)};status.errors.push(row);status.errors=status.errors.slice(-50);try{const f=path.join(userDir,'jarvis.log');if(fs.existsSync(f)&&fs.statSync(f).size>2e6)fs.renameSync(f,f+'.previous');fs.appendFileSync(f,JSON.stringify(row)+'\n');}catch{}broadcast('status',getStatus());}
@@ -99,7 +104,7 @@ let voiceMapCache=null;
 function voiceMap(){
   if(voiceMapCache)return voiceMapCache;
   let shipped={},mine={};
-  try{shipped=JSON.parse(fs.readFileSync(path.join(assets,'voice','packs','map.json'),'utf8'));}catch{}
+  try{shipped=JSON.parse(fs.readFileSync(assetPath('voice','packs','map.json'),'utf8'));}catch{}
   try{mine=JSON.parse(fs.readFileSync(path.join(userDir,'voicemap.json'),'utf8'));}catch{}
   voiceMapCache={...shipped,...mine};           // yours wins over the one that ships
   return voiceMapCache;
@@ -110,7 +115,7 @@ function packClip(themeId,action){
   if(mode==='off')return null;
   const pack=v?.pack;
   if(!pack)return null;
-  const dir=path.join(assets,'voice','packs',pack);
+  const dir=assetPath('voice','packs',pack);
   if(!fs.existsSync(dir))return null;
   let named=voiceMap()[`${themeId}:${action}`];
   if(Array.isArray(named)&&named.length)named=named[Math.floor(Math.random()*named.length)];
@@ -129,7 +134,7 @@ function sayReady(){
   const theme=workstations.theme();const rel=theme?.voice?.readySound;
   if(rel&&introPlayed){const clip=packClip(theme.id,'ready');if(clip){voice?.speak('',settings.get(),voiceProfile(),clip);return;}say(theme.readyLine);return;}
   if(rel)introPlayed=true;
-  if(rel){const file=path.join(assets,rel);if(fs.existsSync(file)){voice?.speak(theme.readyLine||'',settings.get(),voiceProfile(),file);return;}log('voice','Missing hall sound: '+rel);}
+  if(rel){const file=assetPath(rel);if(fs.existsSync(file)){voice?.speak(theme.readyLine||'',settings.get(),voiceProfile(),file);return;}log('voice','Missing hall sound: '+rel);}
   say(theme.readyLine);
 }
 /** Speak the hall's own acknowledgement for a voice command. */
@@ -154,7 +159,7 @@ function getStatus(){return {...status,voice:voiceStatus,wallpaper:displays?.wal
 function broadcast(channel,data){for(const [id]of trusted){const contents=BrowserWindow.getAllWindows().map(w=>w.webContents).find(w=>w.id===id);if(contents&&!contents.isDestroyed())contents.send('jarvis:'+channel,data);}}
 function createWindow({role,...options}){
   if(role==='main')mainReady=false;
-  const w=new BrowserWindow({...options,title:'JARVIS // ARMOR WORKSPACE',autoHideMenuBar:true,icon:path.join(assets,'icons','app.png'),webPreferences:{preload:path.join(root,'src','main','preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,backgroundThrottling:['wallpaper','hands'].includes(role)?false:true,...(['main','console'].includes(role)?{autoplayPolicy:'no-user-gesture-required'}:{})}});
+  const w=new BrowserWindow({...options,title:'JARVIS // ARMOR WORKSPACE',autoHideMenuBar:true,icon:assetPath('icons','app.png'),webPreferences:{preload:path.join(root,'src','main','preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,backgroundThrottling:['wallpaper','hands'].includes(role)?false:true,...(['main','console'].includes(role)?{autoplayPolicy:'no-user-gesture-required'}:{})}});
   const contentsId=w.webContents.id;trusted.set(contentsId,{role});
   w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());w.webContents.on('will-attach-webview',e=>e.preventDefault());
   w.webContents.on('render-process-gone',(_e,d)=>{log('renderer',`${role}: ${d.reason}`);if(!quitting&&['main','console'].includes(role)){if(role==='main'){if(meetings?.active)endMeeting().catch(e=>log('meeting',e.message));machine?.dispatch('standdown');try{tabs?.closeAll();panels?.closeAll?.();}catch{}}else{try{deckGone();}catch{}}if(!w.isDestroyed())w.destroy();setTimeout(()=>displays.rebuild().catch(e=>log('recovery',e.message)),1000);}});
@@ -490,8 +495,13 @@ async function checkForUpdate(){
   try{
     const res=await net.fetch(feed,{headers:{'User-Agent':'JARVIS-Armor-Workspace'},signal:AbortSignal.timeout(8000)});
     if(!res.ok)return {current,error:'feed returned '+res.status};
-    const data=await res.json(),update=validVersion(data.version)&&newerVersion(data.version,current);
-    const out={current,latest:data.version,update,url:data.url||'',notes:String(data.notes||'').slice(0,300)};
+    const data=await res.json();let update=validVersion(data.version)&&newerVersion(data.version,current),publishing=false;
+    if(update){   // merged is not yet published: only offer it once this computer's download and its fingerprint are up
+      const file=process.platform==='darwin'?`JARVIS-Armor-Workspace-${data.version}-mac-${process.arch==='arm64'?'apple':'intel'}.dmg`:zipName(data.version);
+      try{const r=await net.fetch(releaseFile(data.version,'SHA256SUMS.txt'),{headers:{'User-Agent':'JARVIS-Armor-Workspace'},signal:AbortSignal.timeout(8000)});publishing=!(r.ok&&(await r.text()).includes(file));}catch{publishing=true;}
+      if(publishing){update=false;clearTimeout(checkForUpdate.again);checkForUpdate.again=setTimeout(()=>checkForUpdate().catch(()=>{}),5*60000);}   // look again in five minutes
+    }
+    const out={current,latest:data.version,update,publishing,url:data.url||'',notes:publishing?`JARVIS ${data.version} is still being published. It will be offered here in a few minutes.`:String(data.notes||'').slice(0,300)};
     pendingUpdate=update?out:null;updateTray();
     if(update)broadcast('core',{type:'update-ready',update:out});
     return out;
@@ -730,7 +740,7 @@ async function towerLobby(text,t=workstations.activeTheme,opts={}){
 function towerView(t){
   const tw=tower.tower(t);
   const hasFile=tw.model&&['glb','image'].includes(tw.model.kind)&&tw.model.file&&fs.existsSync(path.join(userDir,'assets',tw.model.file));
-  const bundled=!hasFile&&fs.existsSync(path.join(assets,'towers',`${t}.glb`));   // the towers you sent, built in
+  const bundled=!hasFile&&fs.existsSync(assetPath('towers',`${t}.glb`));   // the towers you sent, built in
   const mdl=hasFile?{kind:tw.model.kind,url:`jarvis://custom/${tw.model.file.split('/').map(encodeURIComponent).join('/')}?v=${tw.model.v}`,band:tw.model.band||[0.1,0.9],name:tw.model.name||''}
     :bundled?{kind:'glb',url:`jarvis://asset/towers/${t}.glb`,band:tw.model?.band||{ironman:[0.14,0.9],batcave:[0.12,0.86],spiderman:[0.1,0.82]}[t]||[0.12,0.88],hero:0,name:'Your tower',bundled:true}
     :tw.model?.band?{kind:'stand-in',band:tw.model.band}:null;
@@ -831,11 +841,22 @@ async function choose({type}){
   if(['jae','armor','startup-video','startup-sound','transition-video','transition-sound'].includes(type)){const from=res.filePaths[0];if(fs.statSync(from).size>(type.endsWith('-video')?400:100)*1024*1024)throw Error('Use an asset under 100 MB (video 400 MB).');const name=crypto.randomUUID()+path.extname(from).toLowerCase();const dir=path.join(userDir,'assets');fs.mkdirSync(dir,{recursive:true});fs.copyFileSync(from,path.join(dir,name));return `jarvis://custom/${name}`;}
   return res.filePaths;
 }
+/** The newest JARVIS-media*.zip in Downloads, where Tailscale puts what the ZenBook sends. */
+function findMediaZip(){try{const dl=app.getPath('downloads');return fs.readdirSync(dl).filter(f=>/^JARVIS-media.*\.zip$/i.test(f)).map(f=>path.join(dl,f)).sort((a,b)=>fs.statSync(b).mtimeMs-fs.statSync(a).mtimeMs)[0]||null;}catch{return null;}}
+/** Add the suits, films and sounds from JARVIS-media.zip, then restart so the halls and the deck pick them up. */
+async function addMediaZip(choose){
+  let zip=choose?null:findMediaZip();
+  if(!zip){const res=await dialog.showOpenDialog({title:'Choose JARVIS-media.zip',defaultPath:app.getPath('downloads'),properties:['openFile'],filters:[{name:'JARVIS media',extensions:['zip']}]});if(res.canceled)return {cancelled:true};zip=res.filePaths[0];}
+  const incoming=path.join(userDir,'media.incoming');fs.rmSync(incoming,{recursive:true,force:true});
+  try{await unzipMedia(zip,incoming);const r=adoptMedia(incoming,mediaDir());writeJson(path.join(mediaDir(),'added.json'),{at:new Date().toISOString(),from:path.basename(zip),files:r.files});log('media',`Added ${r.files} media files from ${path.basename(zip)}.`);
+    setTimeout(()=>{app.relaunch();app.exit(0);},3000);return {...r,...mediaCounts([assets,mediaDir()])};}
+  finally{fs.rmSync(incoming,{recursive:true,force:true});}
+}
 async function launch(id){
   const entry=settings.get().shortcuts.find(s=>s.id===id);if(!entry)throw Error('Unknown shortcut.');
   if(entry.type==='url'){const u=new URL(entry.target);if(!['https:','http:'].includes(u.protocol)||u.username||u.password)throw Error('Unsupported address.');await shell.openExternal(u.href);}
   else if(entry.type==='mail')await shell.openExternal('mailto:');
-  else if(entry.type==='calculator'){if(process.platform!=='win32')throw Error('Windows Calculator is unavailable on this platform.');await shell.openExternal('calculator:');}
+  else if(entry.type==='calculator'){if(process.platform==='darwin'){const error=await shell.openPath('/System/Applications/Calculator.app');if(error)throw Error(error);}else if(process.platform!=='win32')throw Error('Calculator is unavailable on this platform.');else await shell.openExternal('calculator:');}
   else {const target=entry.type==='documents'?app.getPath('documents'):entry.target;if(!path.isAbsolute(target))throw Error('Choose an absolute file path.');const error=await shell.openPath(target);if(error)throw Error(error);}
   return true;
 }
@@ -1099,7 +1120,7 @@ function deckInfo(){
 function deckBackdrop(t){
   const custom=(settings.get().deckBackdrops||{})[t];
   if(custom&&fs.existsSync(path.join(userDir,'assets',custom)))return {url:`jarvis://custom/${encodeURIComponent(custom)}`,custom:true};
-  return {url:fs.existsSync(path.join(assets,'deck',`${t}.jpg`))?`jarvis://asset/deck/${t}.jpg`:`jarvis://asset/wallpaper/${t}.jpg`,custom:false,scene:fs.existsSync(path.join(assets,'deck',`${t}.json`))};   // scene: the hall has a living deck scene (only the Batcave so far)
+  return {url:fs.existsSync(assetPath('deck',`${t}.jpg`))?`jarvis://asset/deck/${t}.jpg`:`jarvis://asset/wallpaper/${t}.jpg`,custom:false,scene:fs.existsSync(assetPath('deck',`${t}.json`))};   // scene: the hall has a living deck scene (only the Batcave so far)
 }
 function throwPanelDown(id){
   if(!deckUp())throw Error('The second screen is not on. Take the keyboard off to use it.');
@@ -1265,7 +1286,7 @@ async function api(event,method,payload){
   if(method==='action'||(method==='core'&&!['status','report','details','orders-text','notes'].includes(payload?.method)))lastUserAction=Date.now();
   if(['wallpaper','identify'].includes(role)&&method!=='bootstrap')throw Error('Read-only display.');
   switch(method){
-    case 'bootstrap':return {snapshot:machine.snapshot(),settings:settings.get(),modules,theme:themePayload(),displays:displays.describe(),single:displays.roles?.single??true,telemetry,status:getStatus(),platform:process.platform,version:BOOT?.label||app.getVersion(),preview:false,audioAssets:Object.fromEntries(['hover','wake','lock','launch','standby','ready'].filter(n=>fs.existsSync(path.join(assets,'audio',n+'.wav'))).map(n=>[n,`jarvis://asset/audio/${n}.wav`]))};
+    case 'bootstrap':return {snapshot:machine.snapshot(),settings:settings.get(),modules,theme:themePayload(),displays:displays.describe(),single:displays.roles?.single??true,telemetry,status:getStatus(),platform:process.platform,version:BOOT?.label||app.getVersion(),preview:false,audioAssets:Object.fromEntries(['hover','wake','lock','launch','standby','ready'].filter(n=>fs.existsSync(assetPath('audio',n+'.wav'))).map(n=>[n,`jarvis://asset/audio/${n}.wav`]))};
     case 'action':if(!['wake','hover','select','home','back','standdown','settings','debug-hall','debug-helmet','theme','skip'].includes(payload?.action))throw Error('Unknown command.');return dispatch(payload.action,payload.id,{fast:payload.fast===true});
     case 'renderer-ready':if(role==='main'){mainReady=true;if(pendingWake){pendingWake=false;dispatch('wake');}if(pendingDirect){pendingDirect=false;directHall();}if(!bootMarked&&(core||coreError)){bootMarked=true;globalThis.__jarvisBoot?.markGood?.();setTimeout(()=>{try{core?.booted();}catch(e){log('brain',e.message);}},5000);}}return true;
     case 'settings':return applySettings(payload);
@@ -1274,7 +1295,7 @@ async function api(event,method,payload){
     case 'audio-test':say('System starting up. Audio systems are online.');broadcast('audio-test',true);return true;
     case 'microphone-test':await applySettings({voiceEnabled:true});return true;
     case 'voice-diagnose':return voice.diagnose();
-    case 'system-microphone':if(process.platform==='win32')await shell.openExternal('ms-settings:sound');return true;
+    case 'system-microphone':if(process.platform==='win32')await shell.openExternal('ms-settings:sound');else if(process.platform==='darwin')await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone');return true;
     case 'choose':return choose(payload||{});
     case 'launch':return launch(payload);
     case 'favorite-open':{const target=Number.isInteger(payload)?settings.get().favorites[payload]:undefined;if(!target)throw Error('Unknown folder.');const error=await shell.openPath(target);if(error)throw Error(error);return true;}
@@ -1334,7 +1355,7 @@ async function api(event,method,payload){
     case 'session-info':{try{const themeId=typeof payload?.theme==='string'?payload.theme:workstations.activeTheme;const suit=workstations.suit(String(payload?.id||machine.value.selected||''),themeId);return {session:suit?.session||null};}catch{return {session:null};}}
     case 'suit-launch':return launchSuit(payload?.id||machine.value.selected,payload?.what||'all');
     case 'suit-choose-folder':{const res=await dialog.showOpenDialog({properties:['openDirectory','createDirectory']});return res.canceled?'':res.filePaths[0];}
-    case 'suit-choose-app':{const res=await dialog.showOpenDialog({properties:['openFile'],filters:process.platform==='win32'?[{name:'Applications and shortcuts',extensions:['exe','lnk','bat','cmd','url']},{name:'All files',extensions:['*']}]:undefined});return res.canceled?'':res.filePaths[0];}
+    case 'suit-choose-app':{const res=await dialog.showOpenDialog({properties:['openFile'],filters:process.platform==='win32'?[{name:'Applications and shortcuts',extensions:['exe','lnk','bat','cmd','url']},{name:'All files',extensions:['*']}]:process.platform==='darwin'?[{name:'Applications',extensions:['app']},{name:'All files',extensions:['*']}]:undefined,defaultPath:process.platform==='darwin'?'/Applications':undefined});return res.canceled?'':res.filePaths[0];}
     case 'folder-list':return listFolder(payload);
     case 'folder-open':{const {target}=resolveInFolder(payload);const error=await shell.openPath(target);if(error)throw Error(error);return true;}
     case 'folder-reveal':{const {target}=resolveInFolder(payload);if(fs.statSync(target).isDirectory()){const error=await shell.openPath(target);if(error)throw Error(error);}else shell.showItemInFolder(target);return true;}
@@ -1358,7 +1379,7 @@ async function api(event,method,payload){
     case 'tabs-scroll':{const dy=Math.max(-2000,Math.min(2000,Number(payload?.dy)||0));const at=Number.isFinite(payload?.x)&&Number.isFinite(payload?.y)?{x:payload.x,y:payload.y}:null;return tabs.scroll(dy,at);}
     case 'tabs-pointer':{if(role!=='main')return false;const type=String(payload?.type||'');if(!['move','down','up'].includes(type))throw Error('Unknown pointer event.');const x=Number(payload?.x),y=Number(payload?.y);if(!Number.isFinite(x)||!Number.isFinite(y))return false;if(tabs.win()?.webContents!==event.sender)return false;return tabs.pointer(type,x,y);}
     case 'hands-ring':return handRing(event.sender,payload);
-    case 'vista-scene':{const t=workstations.activeTheme;const own=fs.existsSync(path.join(assets,'deck',`${t}-vista.json`));const b=deckBackdrop(t);return {theme:t,name:workstations.theme().name,assistant:workstations.theme().assistant,accent:workstations.theme().accent,scene:own&&!b.custom?`jarvis://asset/deck/${t}-vista.json`:null,image:b.url};}
+    case 'vista-scene':{const t=workstations.activeTheme;const own=fs.existsSync(assetPath('deck',`${t}-vista.json`));const b=deckBackdrop(t);return {theme:t,name:workstations.theme().name,assistant:workstations.theme().assistant,accent:workstations.theme().accent,scene:own&&!b.custom?`jarvis://asset/deck/${t}-vista.json`:null,image:b.url};}
     case 'hall-calibration-get':return hallCalibration.get();
     case 'hall-calibration-save':{if(!['main','settings'].includes(role))throw Error('Open calibration on the main screen.');return hallCalibration.save(payload?.theme,payload?.patch);}
     case 'hall-calibration-reset':{if(!['main','settings'].includes(role))throw Error('Open calibration on the main screen.');return hallCalibration.reset(payload?.theme);}
@@ -1375,7 +1396,7 @@ async function api(event,method,payload){
     /* ---- the deck: the second screen that appears when the keyboard comes off ---- */
     case 'suit-models':{   // 3D suits for the chambers: built-in ones, and your own in <user>/assets/suits/<hall>/<suit id>.glb
       const t=String(payload?.theme||workstations.activeTheme).replace(/[^a-z]/g,'');const out={};
-      for(const [base,host] of [[path.join(assets,'suits',t),'asset'],[path.join(userDir,'assets','suits',t),'custom']]){try{for(const f of fs.readdirSync(base))if(/^[\w-]+\.glb$/i.test(f))out[f.replace(/\.glb$/i,'')]=`jarvis://${host}/suits/${t}/${encodeURIComponent(f)}`;}catch{}}
+      for(const [base,host] of [[path.join(mediaDir(),'suits',t),'asset'],[path.join(assets,'suits',t),'asset'],[path.join(userDir,'assets','suits',t),'custom']]){try{for(const f of fs.readdirSync(base))if(/^[\w-]+\.glb$/i.test(f))out[f.replace(/\.glb$/i,'')]=`jarvis://${host}/suits/${t}/${encodeURIComponent(f)}`;}catch{}}
       return out;
     }
     case 'deck-info':return deckInfo();
@@ -1646,6 +1667,8 @@ async function api(event,method,payload){
     case 'open-logs':{const file=path.join(userDir,'jarvis.log');if(!fs.existsSync(file))fs.writeFileSync(file,'No errors recorded in this session.\n');const error=await shell.openPath(file);if(error)throw Error(error);return true;}
     case 'clear-cache':await session.defaultSession.clearCache();return true;
     case 'reset-settings':{const response=await dialog.showMessageBox({type:'question',buttons:['Cancel','Reset settings'],defaultId:0,cancelId:0,message:'Reset JARVIS settings?',detail:'Your local calendar and imported assets are kept.'});if(response.response===1){await applySettings(structuredClone(defaults));openSettings();}return true;}
+    case 'media-status':return {platform:process.platform,...mediaCounts([assets,mediaDir()]),zip:findMediaZip()};
+    case 'media-add':{if(!['main','settings'].includes(role))throw Error('Add the media from Settings.');return addMediaZip(payload?.choose===true);}
     case 'meeting-state':return meetingInfo();
     case 'meeting-copilot':return meetings?.m&&copilot?.id===meetings.m.id?{id:meetings.m.id,lines:meetingLines(),copilot:copilot.view()}:null;
     case 'meeting-copilot-ask':{if(!meetings?.m)throw Error('No meeting is being recorded.');return {answer:await copilot.question(String(payload?.question||''),meetings.m.lines)};}
@@ -1690,7 +1713,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     protocol.handle('jarvis',request=>{
       const url=new URL(request.url);let target;
       if(url.host==='media'){target=mediaFiles.get(url.pathname.split('/')[1]);if(!target)return new Response('Missing media',{status:404});}
-      else {let bases=url.host==='app'?distRoots:url.host==='asset'?[assets]:url.host==='custom'?[path.join(userDir,'assets')]:null;if(!bases)return new Response('Forbidden',{status:403});const rel=decodeURIComponent(url.pathname).replace(/^\/+/, '');if(/[:*?"<>|\u0000]/.test(rel))return new Response('Forbidden',{status:403});if(url.host==='app'&&/^(vendor|wallpaper)\//i.test(rel))bases=[path.join(baseRoot,'dist')];   /* the big shared libraries only ever come from the installed app */for(const base of bases){const t=path.resolve(base,rel||'index.html');if(!t.startsWith(base+path.sep))return new Response('Forbidden',{status:403});target=t;if(bases.length===1||fs.existsSync(t))break;}}
+      else {let bases=url.host==='app'?distRoots:url.host==='asset'?[assets,mediaDir()]:url.host==='custom'?[path.join(userDir,'assets')]:null;if(!bases)return new Response('Forbidden',{status:403});const rel=decodeURIComponent(url.pathname).replace(/^\/+/, '');if(/[:*?"<>|\u0000]/.test(rel))return new Response('Forbidden',{status:403});if(url.host==='app'&&/^(vendor|wallpaper)\//i.test(rel))bases=[path.join(baseRoot,'dist')];   /* the big shared libraries only ever come from the installed app */for(const base of bases){const t=path.resolve(base,rel||'index.html');if(!t.startsWith(base+path.sep))return new Response('Forbidden',{status:403});target=t;if(bases.length===1||fs.existsSync(t))break;}}
       const range=request.headers.get('range');if(range&&target){const r=rangeResponse(target,range,{'Access-Control-Allow-Origin':'*'});if(r)return r;}   /* videos and sounds: a proper 206, or transitions stall */
       return net.fetch(pathToFileURL(target).toString(),{headers:request.headers}).then(res=>{const headers=new Headers(res.headers);headers.set('Access-Control-Allow-Origin','*');return new Response(res.body,{status:res.status,statusText:res.statusText,headers});}).catch(()=>new Response('Not found',{status:404}));
     });
@@ -1705,7 +1728,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     runner=new AgentRunner({missions,onUpdate:deckUpdate,onBuild:()=>broadcast('core',{type:'reaction',kind:'build-passed',at:Date.now()}),log});
     deck=new ControlServer({missions,runner,board:boardFor,run:runBay,changed:t=>{try{if(workstations.themes.some(x=>x.id===t))broadcast('board',{theme:t,bays:boardFor(t)});}catch(e){log('control',e.message);}},hallName:id=>{try{return workstations.theme(id).name;}catch{return id;}},log});
     await deck.listen();
-    voice=new WindowsVoice({scripts,assets,dir:userDir,helper:app.isPackaged?path.join(process.resourcesPath,'mac','jarvis-listen'):path.join(baseRoot,'release','mac-helper','jarvis-listen'),grammar:()=>buildGrammar(voiceContext()),names:()=>spokenNames(voiceContext()),onClap:()=>{if(machine?.value?.state==='IDLE'){log('voice','double clap: waking');dispatch('wake');}},onMeter:m=>{broadcast('voice-meter',{level:voice.level,detected:!!m.detected,recognizer:voice.recognizer,audioState:voice.audioState});},onCommand:(text,confidence,rejected,meta={})=>{const heard=text||rejected||'';let command=text?parseCommand(text,voiceContext()):null;let handled=false,why='';if(text)lastUserAction=Date.now();
+    voice=new WindowsVoice({scripts,assets,media:mediaDir(),dir:userDir,helper:app.isPackaged?path.join(process.resourcesPath,'mac','jarvis-listen'):path.join(baseRoot,'release','mac-helper','jarvis-listen'),grammar:()=>buildGrammar(voiceContext()),names:()=>spokenNames(voiceContext()),onClap:()=>{if(machine?.value?.state==='IDLE'){log('voice','double clap: waking');dispatch('wake');}},onMeter:m=>{broadcast('voice-meter',{level:voice.level,detected:!!m.detected,recognizer:voice.recognizer,audioState:voice.audioState});},onCommand:(text,confidence,rejected,meta={})=>{const heard=text||rejected||'';let command=text?parseCommand(text,voiceContext()):null;let handled=false,why='';if(text)lastUserAction=Date.now();
       // a quieter, less certain match still counts when it starts or ends with the assistant's name (or JARVIS has just answered you)
       if(command&&meta.low){const ctx=voiceContext();const nm=clean(ctx.theme?.assistant||'');const t=clean(text);const named=!!nm&&[nm,...(NAME_ALIASES[nm]||[])].some(n=>t===n||t.startsWith(n+' ')||t.endsWith(' '+n));if(!named&&!(ctx.follow&&confidence>=0.25)){command=null;why='unsure';}}
       if(text&&!command&&!why)why='no-match';if(!text)why=meta.mine?'own-voice':meta.rejected?'unclear':'quiet';
@@ -1749,6 +1772,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     deskProjects=new DeskProjects({desktop:app.getPath('desktop'),documents:app.getPath('documents'),dir:userDir,workstations,tower:()=>tower,isWorkshop:p=>IdeaAssistant.isRepo(p),log});
     room=new ThinkRoom({dir:userDir,create:createWindow,View:WebContentsView,openExternal:u=>shell.openExternal(u),log,screens:roomScreens,at:roomHere,ask:{thread:k=>askJ.thread(k),send:o=>askJ.send(o),cards:(k,b)=>askJ.cards(k,b)},project:k=>askJ.project(k),projects:askProjects,seed:roomSeed});
     askJ=new AskJarvis({dir:userDir,ask:(system,prompt,o)=>assistant.ask(system,prompt,o),projects:askProjects,status:askStatus,owner:()=>({name:core?.store?.get()?.owner?.name||'',address:addr()})});
+    if(process.platform==='darwin')try{app.dock?.setMenu(Menu.buildFromTemplate([{label:'Ask JARVIS',click:()=>openAsk()}]));}catch(e){log('ask',e.message);}   // right-click JARVIS in the Dock
     if(app.isPackaged&&process.platform==='win32')try{app.setUserTasks([{program:process.execPath,arguments:ASK_ARG,iconPath:process.execPath,iconIndex:0,title:'Ask JARVIS',description:'Ask about any project, or think something through together'}]);}catch(e){log('ask',e.message);}   // right-click JARVIS on the taskbar
     setInterval(()=>assistant.night(()=>visits.get('__','ideasNight').day,day=>visits.set('__','ideasNight',{day})).catch(e=>log('ideas',e.message)),10*60000);
     wake=new WakeTimer({dir:userDir});
@@ -1778,7 +1802,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     try{await displays.start();}catch(e){log('displays',e.message);setTimeout(()=>displays.rebuild().catch(err=>log('displays',err.message)),2000);}
     if(!displays.work&&!screen.getAllDisplays().length&&!bootMarked&&(core||coreError)){bootMarked=true;globalThis.__jarvisBoot?.markGood?.();setTimeout(()=>{try{core?.booted();}catch(e){log('brain',e.message);}},5000);log('displays','No screen: running without the hall.');}   // the hall never loads without a screen, so start-up itself is the sign that this version works
     scheduleChatter();
-    const icon=nativeImage.createFromPath(path.join(assets,'icons','tray.png'));
+    const trayImage=nativeImage.createFromPath(assetPath('icons','tray.png')),icon=process.platform==='darwin'&&!trayImage.isEmpty()?trayImage.resize({width:18,height:18}):trayImage;
     tray=new Tray(icon);tray.setToolTip('JARVIS // ARMOR WORKSPACE');if(process.platform==='darwin'&&icon.isEmpty())tray.setTitle('JARVIS');   // the Mac menu bar: a word, until there is an icon
     if(process.platform==='darwin'){try{powerSaveBlocker.start('prevent-app-suspension');log('mac','Keeping this Mac awake while JARVIS runs (the screen can still sleep).');}catch(e){log('mac',e.message);}}   // the Mac mini runs JARVIS's brain round the clock
 tray.on('double-click',()=>dispatch('wake'));updateTray();registerHotkeys(settings.get().hotkeys);

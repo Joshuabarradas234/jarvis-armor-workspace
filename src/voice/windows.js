@@ -1,13 +1,14 @@
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import {mediaFile} from '../main/media.js';
 /** Mac voices that sound like JARVIS, best first (all built into macOS). */
 export const MAC_VOICES=['Daniel','Oliver','Arthur','Serena'];
 /** SAPI's rate (-10 to 10) as words a minute for the Mac's say. */
 export const macRate=rate=>Math.round(Math.min(260,Math.max(120,180+(typeof rate==='number'&&rate>-11?rate:0)*12)));
 /** Windows: PowerShell's speech engine (scripts/windows). Mac: jarvis-listen (scripts/mac/listen.swift) and say. Both send the same lines. */
 export class WindowsVoice {
-  constructor({scripts,assets,dir,grammar,names,onCommand,onStatus,onMeter,onClap,log,helper=''}){Object.assign(this,{scripts,assets,dir,grammar,names,onCommand,onStatus,onMeter,onClap,log,helper});this.listener=null;this.speaker=null;this.suppressedUntil=0;this.enabled=false;this.threshold=0.4;this.floor=0.12;this.lastHeard=null;this.level=0;this.recognizer='';this.audioState='';this.lastDetected=0;}
+  constructor({scripts,assets,media=null,dir,grammar,names,onCommand,onStatus,onMeter,onClap,log,helper=''}){Object.assign(this,{scripts,assets,media,dir,grammar,names,onCommand,onStatus,onMeter,onClap,log,helper});this.listener=null;this.speaker=null;this.suppressedUntil=0;this.enabled=false;this.threshold=0.4;this.floor=0.12;this.lastHeard=null;this.level=0;this.recognizer='';this.audioState='';this.lastDetected=0;}
   listen(enabled){
     this.enabled=enabled;
     if(this.listener){const p=this.listener;this.listener=null;p.kill();}
@@ -35,7 +36,7 @@ export class WindowsVoice {
     if(process.platform==='darwin'&&settings.master*settings.voice>0){
       if(this.speaker)this.speaker.kill();
       this.suppressedUntil=Date.now()+(opts.listenThrough?350:Math.max(2500,text.length*85));
-      const names={'System starting up.':'startup.wav','Standing by.':'standby.wav'},wav=soundFile||(names[text]?path.join(this.assets,'voice',names[text]):null);
+      const names={'System starting up.':'startup.wav','Standing by.':'standby.wav'},wav=soundFile||(names[text]?mediaFile(this.assets,this.media,'voice',names[text]):null);
       const child=wav&&fs.existsSync(wav)?spawn('afplay',['-v',String(Math.max(0,Math.min(1,settings.master*settings.voice))),wav],{stdio:['ignore','ignore','pipe']}):this.saySpawn(text,settings,profile);
       this.speaker=child;child.on('error',e=>this.log('speech',e.message));child.stderr?.on('data',d=>this.log('speech',String(d).slice(0,400)));
       child.on('exit',()=>{if(this.speaker===child)this.speaker=null;if(!opts.listenThrough)this.suppressedUntil=Math.max(this.suppressedUntil,Date.now()+700);});
@@ -49,7 +50,7 @@ export class WindowsVoice {
     this.suppressedUntil=Date.now()+(opts.listenThrough?350:ms);   // never listen to our own voice, except a short 'Yes, sir?', which can't be mistaken for a command, so a command said over it still counts
     const child=spawn('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(this.scripts,'speak.ps1')],{windowsHide:true,stdio:['pipe','ignore','pipe']});this.speaker=child;child.on('close',()=>{if(!opts.listenThrough)this.suppressedUntil=Math.max(this.suppressedUntil,Date.now()+700);});
     child.on('error',e=>this.log('speech',e.message));child.stderr.on('data',d=>this.log('speech',String(d).slice(0,400)));
-    const names={'System starting up.':'startup.wav','Standing by.':'standby.wav'};const candidate=soundFile||(names[text]?path.join(this.assets,'voice',names[text]):null);
+    const names={'System starting up.':'startup.wav','Standing by.':'standby.wav'};const candidate=soundFile||(names[text]?mediaFile(this.assets,this.media,'voice',names[text]):null);
     child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({text,voice:settings.voiceName,prefer:profile?.prefer||[],rate:typeof profile?.rate==='number'?profile.rate:-1,volume:Math.round(100*settings.master*settings.voice),soundFile:candidate&&fs.existsSync(candidate)?candidate:null}));
     child.on('exit',()=>{if(this.speaker===child)this.speaker=null;});
   }
