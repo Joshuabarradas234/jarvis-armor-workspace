@@ -868,6 +868,7 @@ ${JSON.stringify(facts, null, 1)}`});
       case 'routines': return {...core.routines.status(), meetings:deps.meetingFollowups?.list()||[],meetingsError:deps.meetingFollowups?.loadError||''};
       case 'backup-now': return core.routines.backup();
       case 'weekly-preview': return core.routines.weekly(false);
+      case 'week-facts': { const now = Date.now(); let emails = null; try { if (mail.ready()) emails = mail.since(now - 7 * 864e5).length; } catch {} return {spendHistory: store.spendHistory || {}, dates: core.dates.list(now), emails}; }   // the weekly review on a computer signed in to this one
       case 'release-export': return core.routines.export(String(p.version||updater.state().current||''));
       case 'travel-locations': return core.travel.locations(p.name);
       case 'travel-weather': return core.travel.weather();

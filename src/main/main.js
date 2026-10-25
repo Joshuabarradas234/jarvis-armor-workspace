@@ -361,10 +361,11 @@ function playCinema(id,scenes,kind){
   send({start:true,kind,scenes,voiced,assistant:workstations.theme().assistant,sound:st.animations===false?0:st.master*st.interface});   // the bookmarks come back a moment later, so the screen hears "start" first
 }
 /** The weekly review (weekly-review.js): the last seven days and the next seven, on the same film. */
-function weeklyReview(){
-  const now=Date.now(),id=++cinemaId;let emails=null;
+async function weeklyReview(){
+  const now=Date.now(),id=++cinemaId;let emails=null,spendHistory=core?.store?.spendHistory||{},dates=core?.dates?.list(now)||[];
   try{if(core?.mail?.ready())emails=core.mail.since(now-7*864e5).length;}catch{}
-  const facts=weekFacts({now,todos:todos.list(),meetings:meetings?.history||[],runs:tower.runs,ideas:ideas.list(),spendHistory:core?.store?.spendHistory||{},events:calendar.list(),dates:core?.dates?.list(now)||[],emails});
+  if(linkClient){await remoteMeetings();try{const w=await linkClient.call('core',{method:'week-facts'});spendHistory=w?.spendHistory||{};dates=Array.isArray(w?.dates)?w.dates:[];emails=w?.emails??null;}catch(e){log('weekly',`The Mac's side of the week: ${e.message}`);}}   // signed in to the Mac: what the AI cost, the dates ahead, the emails and the meetings come from there
+  const facts=weekFacts({now,todos:todos.list(),meetings:[...(meetings?.history||[]),...(meetings?.remote||[])],runs:tower.runs,ideas:ideas.list(),spendHistory,events:calendar.list(),dates,emails});
   playCinema(id,buildWeekScenes(facts,{who:addr(),part:partOfDay()}),'week');
   visits.set('__','weekly',{day:weekDay(now)});
 }
@@ -414,7 +415,7 @@ function talk(action,cmd={}){
   if(action==='meeting-start'){try{startMeeting(cmd.id);}catch(e){say(e.message);}return true;}
   if(action.startsWith('screen-')){(action==='screen-swap'?swapScreens():action==='screen-tv'?hallTo(tvScreen()?.id,'the TV'):action==='screen-home'?hallTo(screenList().find(d=>d.internal)?.id,'your laptop'):hallTo(screenList()[(cmd.n||0)-1]?.id,`screen ${cmd.n}`))
     .then(t=>say(t)).catch(e=>say(`${e.message}`));return true;}
-  if(action==='weekly-review'){try{weeklyReview();}catch(e){log('weekly',e.message);say(`I couldn't put your week together, ${who}. ${e.message}`);}return true;}
+  if(action==='weekly-review'){weeklyReview().catch(e=>{log('weekly',e.message);say(`I couldn't put your week together, ${who}. ${e.message}`);});return true;}
   if(action==='desk-hands'){setDeskHands(cmd.on);say(cmd.on?`Hand control is on, ${who}. When I'm in the tray, make a fist over a window to pick it up, and throw it to the other screen. Pinch and hold to bring me back.`:`Hand control is off, ${who}.`);return true;}
   if(action==='meeting-recap'){if(!meetings?.active){say(`There's no meeting running, ${who}.`);return true;}copilot?.feed(meetings.m.lines,{force:true});broadcast('meeting',{type:'copilot-focus'});broadcast('caption',{text:'Meeting notes are on the lower screen.'});return true;}   // shown, not said: you are on a call
   if(action==='meeting-end'){if(!meetings?.active){say(`There's no meeting running, ${who}.`);return true;}endMeeting().catch(e=>log('meeting',e.message));return true;}
