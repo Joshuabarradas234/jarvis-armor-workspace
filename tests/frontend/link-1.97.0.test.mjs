@@ -30,9 +30,9 @@ test('pairing: each code works once and runs out; five wrong codes lock it for 1
 
 test('the link carries only the brain: JARVIS Core, to-dos and the calendar, never anything that opens a window or a folder', () => {
   assert.deepEqual([...FORWARD].sort(), ['calendar-delete', 'calendar-list', 'calendar-save', 'core', 'todo-add', 'todo-clear-done', 'todo-list', 'todo-remove', 'todo-toggle']);
-  assert.deepEqual([...LINK_METHODS].filter(m => !FORWARD.has(m)).sort(), ['server-info', 'tower-key']);
+  assert.deepEqual([...LINK_METHODS].filter(m => !FORWARD.has(m)).sort(), ['meeting-history', 'meeting-read', 'server-info', 'tower-key']);   // 1.100.0: meetings are kept on the Mac
   for (const m of ['tower-open', 'tower-link', 'folder-open', 'suit-launch', 'desk-project-file', 'move-apply', 'update-install', 'tabs-open', 'look']) assert.equal(LINK_METHODS.has(m), false, m);
-  assert.deepEqual([...LINK_CHANNELS].sort(), ['briefing', 'calendar', 'core', 'todos']);
+  assert.deepEqual([...LINK_CHANNELS].sort(), ['briefing', 'calendar', 'core', 'meeting', 'todos']);
   const rules = fs.readFileSync('AGENTS.md', 'utf8'); assert.match(rules, /listens only on the computer's \*\*Tailscale address\*\* \(`100\.64\.0\.0\/10`\)/);
 });
 

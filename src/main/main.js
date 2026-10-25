@@ -23,9 +23,9 @@ import {writeText,readJson,writeJson} from '../brain/util.js';
 import {DeskHands} from './desk-hands.js';
 import {WinControl} from './win-control.js';
 import {extractJson} from '../brain/util.js';
-import {MeetingManager,clock} from '../meeting/manager.js';
+import {MeetingManager,clock,safe as safeName} from '../meeting/manager.js';
 import {MeetingCopilot,clock as minSec} from '../meeting/copilot.js';
-import {cloudTranscript,transcriptText} from '../meeting/cloud-transcript.js';
+import {writeUp} from '../meeting/writeup.js';
 import {MicWatch} from '../meeting/mic-watch.js';
 import {prepareUpdate,newer as newerVersion,validVersion,REPO,releaseFile,zipName} from './one-click-update.js';
 import {LinkClient,FORWARD} from './link.js';
@@ -459,7 +459,7 @@ function meetingInfo(){
   const s=settings.get().meeting||{};const t=workstations.activeTheme;
   return {...meetings.state(),to:s.to||'',from:s.from||'',gmailReady:!!(s.from&&gmailPassword()),hasPassword:!!gmailPassword(),theme:t,hallName:workstations.theme().name,
     suits:modules.map(m=>({id:m.id,name:m.name})),open:machine?.value?.state==='MODULE'?machine.value.selected:null,
-    past:meetings.pastFor(t).map(h=>({id:h.id,suitName:h.suitName,startedAt:h.startedAt,endedAt:h.endedAt,emailed:h.emailed,emailError:h.emailError}))};
+    past:meetings.pastFor(t).map(h=>({id:h.id,suitName:h.suitName,startedAt:h.startedAt,endedAt:h.endedAt,emailed:h.emailed,emailError:h.emailError,onMac:!!h.onMac}))};
 }
 /** Start recording for a suit in this hall (the one named, else the suit you are in, else ask). */
 function startMeeting(id,{autoEnd=true,quiet=false}={}){
@@ -467,7 +467,7 @@ function startMeeting(id,{autoEnd=true,quiet=false}={}){
   const theme=workstations.activeTheme;const suitId=id||(machine?.value?.state==='MODULE'?machine.value.selected:null)||(machine?.value?.state==='IDLE'?meetingSuit():null);
   if(!suitId){broadcast('meeting',{type:'ask',info:meetingInfo()});say(`Which suit is the meeting for, ${addr()}?`);return false;}
   const suit=workstations.suit(String(suitId),theme);
-  const mt=meetings.start({theme,hallName:workstations.theme(theme).name,suitId:suit.id,suitName:suit.name,suitFolder:suit.folder});
+  const mt=meetings.start({theme,hallName:workstations.theme(theme).name,suitId:suit.id,suitName:suit.name,suitFolder:suit.folder,staging:linkClient?path.join(userDir,'meeting-outbox'):null});
   if(autoEnd)callWatcher?.start();
   if(autoEnd&&micWatch&&!micWatch.followed&&micWatch.live.length===1)micWatch.follow(micWatch.live[0].app);   // the one call app on the microphone: when it hangs up, the meeting ends
   broadcast('meeting',{type:'start',meeting:mt,info:meetingInfo()});
@@ -583,33 +583,16 @@ async function endMeeting(){
   meetingFlush=null;
   say(`Wrapping up the meeting, ${addr()}. I'll save the notes and prepare a follow-up for your approval.`);
   const m=await meetings.finish();if(!m)return false;
-  m.accurate=false;
-  {const akey=core?.store?.secret?.('assemblyaiKey');   // an accurate transcript with who said what (cloud-transcript.js), when you have added the key
-   if(akey&&m.recording&&fs.existsSync(m.recording)&&fs.statSync(m.recording).size>2000){
-     try{const r=await cloudTranscript({bytes:fs.readFileSync(m.recording),key:akey,onStatus:text=>broadcast('meeting',{type:'status',text})});
-       if(r.utterances.length){m.transcript=transcriptText(r.utterances);m.accurate=true;}
-       try{core?.store?.addSpend(r.cost,'meeting transcript');}catch{}}
-     catch(e){m.warnings.push('The accurate transcript did not work, so this is the offline one. '+e.message);log('meeting',e.message);}}}
-  const s=settings.get().meeting||{},when=new Date(m.startedAt);
-  const date=when.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}),time=when.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-  broadcast('meeting',{type:'status',text:'Writing the summary…'});
-  let summary='',notes=null,workPlan=[];const key=readTowerKey();
-  if(!m.transcript.trim())m.warnings.push('Nothing was transcribed. Check the microphone and that an English Windows speech recognizer is installed.');
-  else{
-    const system='You write concise British English meeting notes '+(m.accurate?'from an accurate transcript in which the speakers are labelled Speaker A, Speaker B and so on: use a person\'s name only where the transcript makes clear who they are. ':'from imperfect offline transcription. ')+MEETING_PROMPT+' '+meetingWorkPrompt(core?.meetingWork.catalog()||{suits:[],floors:[]});
-    const prompt=`Meeting for the "${m.suitName}" workstation (${m.hallName}), ${date} at ${time}, ${clock(m.duration)} long.\n\nExtract the decisions, action owners and deadlines. ${MEETING_PROMPT}\n\nTRANSCRIPT:\n${m.transcript.slice(0,150000)}`;
-    // the tower's API key when there is one, otherwise Claude Code on your own Claude plan
-    try{
-      if(key){if(core&&core.store.budgetLeft()<.10)throw Error('The daily summary budget is used up.');const result=await callApi({key,model:tower.settings().plannerModel,maxTokens:5000,system,prompt});summary=result.text;core?.store.addSpend(result.cost,'meeting notes');}
-      else if((await detectClaudeCode()).ready)summary=(await callClaudeCode({settingsDir:userDir,cwd:m.folder,model:'sonnet',maxTurns:2,extraArgs:['--tools='],fence:{allow:[],deny:['Read','Write','Edit','Bash','Glob','Grep','NotebookEdit','WebSearch','WebFetch','Agent','Task']},prompt:`${system}\n\nReply with the requested JSON only. Do not create or change any files.\n\n${prompt}`})).text;
-      else m.warnings.push('No summary: install Claude Code, or add a Claude API key in the tower (Engines).');
-      if(summary){const data=extractJson(summary);notes=meetingNotes(data,m.transcript);workPlan=data.work;summary=notes.markdown;}
-    }catch(e){summary='';m.warnings.push('No summary this time: '+e.message);}
-  }
-  const sources=m.sources.includes('system')?'your microphone and the call audio':'your microphone only';
-  let markdown=[`# Meeting notes: ${m.suitName}`,'',`**${m.hallName}** · ${date}, ${time} · ${clock(m.duration)} · recorded ${sources}`,'',
-    ...m.warnings.map(w=>'> '+w),m.warnings.length?'':null,summary||null,summary?'':null,'## Full transcript','',m.accurate?'_Transcribed by AssemblyAI, with the speakers labelled A, B and so on._':'_Transcribed offline by Windows speech recognition, so expect some mistakes._','',
-    m.transcript||'(Nothing was transcribed.)','',`Recording: ${fs.existsSync(m.recording)?m.recording:'not saved'}`,''].filter(x=>x!==null).join('\n');
+  if(linkClient)return sendMeetingToMac(m);
+  const s=settings.get().meeting||{};
+  const w=await writeUp(m,{assemblyKey:core?.store?.secret?.('assemblyaiKey'),catalog:core?.meetingWork.catalog(),status:text=>broadcast('meeting',{type:'status',text}),log:t=>log('meeting',t),spend:(c,why)=>core?.store?.addSpend(c,why),
+    noEngine:'No summary: install Claude Code, or add a Claude API key in the tower (Engines).',
+    summarise:async({system,prompt})=>{   // the tower's API key when there is one, otherwise Claude Code on your own Claude plan
+      const key=readTowerKey();
+      if(key){if(core&&core.store.budgetLeft()<.10)throw Error('The daily summary budget is used up.');const result=await callApi({key,model:tower.settings().plannerModel,maxTokens:5000,system,prompt});core?.store.addSpend(result.cost,'meeting notes');return result.text;}
+      if((await detectClaudeCode()).ready)return (await callClaudeCode({settingsDir:userDir,cwd:m.folder,model:'sonnet',maxTurns:2,extraArgs:['--tools='],fence:{allow:[],deny:['Read','Write','Edit','Bash','Glob','Grep','NotebookEdit','WebSearch','WebFetch','Agent','Task']},prompt:`${system}\n\nReply with the requested JSON only. Do not create or change any files.\n\n${prompt}`})).text;
+      return null;}});
+  const notes=w.notes,workPlan=w.workPlan;let markdown=w.markdown;
   let followup=null;
   if(notes)try{followup=meetingFollowups.capture(m,notes,s.to||'');broadcast('todos',todos.list());}catch(e){markdown+='\n> Action items or draft could not be saved: '+e.message+'\n';log('meeting',e.message);}
   const file=meetings.record(m,{markdown,emailed:false,emailError:null});
@@ -617,6 +600,40 @@ async function endMeeting(){
   broadcast('meeting',{type:'done',file,emailed:false,draft:!!followup,emailError:followup?'Follow-up saved for your review. Nothing has been sent.':'Transcript saved; no follow-up draft could be produced.',to:s.to,info:meetingInfo()});
   say(`The ${m.suitName} meeting notes are saved, ${addr()}. ${followup?'The action items are in your to-dos. Review the follow-up in Routines before sending.':'Please check the transcript.'}`);
   return true;
+}
+/** Signed in to the Mac (src/main/link.js): the recording, the transcript and the notes are made and kept there, so nothing
+ *  stays on this computer. If the Mac can't be reached, the meeting waits in <user>/meeting-outbox and goes when it answers. */
+async function sendMeetingToMac(m){
+  const s=settings.get().meeting||{};
+  const meta={id:m.id,theme:m.theme,hallName:m.hallName,suitId:m.suitId,suitName:m.suitName,startedAt:m.startedAt,endedAt:m.endedAt,duration:m.duration,transcript:m.transcript,sources:m.sources,warnings:m.warnings,to:s.to||''};
+  try{writeJson(path.join(m.folder,'meeting.json'),meta);}catch(e){log('meeting',e.message);}
+  broadcast('meeting',{type:'status',text:'Sending the meeting to the Mac…'});
+  try{await linkClient.sendMeeting(meta,fs.existsSync(m.recording)?m.recording:null);}
+  catch(e){log('meeting',`The Mac didn't take the ${m.suitName} meeting yet: ${e.message}`);meetings.forget(m);
+    broadcast('meeting',{type:'done',file:'',emailed:false,draft:false,emailError:'The Mac could not be reached, so the meeting is kept safe on this computer and goes to the Mac as soon as it answers.',to:s.to,info:meetingInfo()});
+    say(`The Mac isn't answering, ${addr()}. The ${m.suitName} meeting is safe here and goes over as soon as it's back.`);return true;}
+  try{fs.rmSync(m.folder,{recursive:true,force:true});}catch(e){log('meeting',e.message);}
+  meetings.forget(m);broadcast('meeting',{type:'status',text:'On the Mac. The notes are being written there…'});
+  say(`The ${m.suitName} meeting is on the Mac, ${addr()}. I'll tell you when the notes are ready.`);return true;
+}
+/** Meetings that waited for the Mac: sent when the link comes back, and every five minutes. */
+async function flushMeetingOutbox(){
+  if(!linkClient||linkState!=='connected'||flushMeetingOutbox.busy)return;flushMeetingOutbox.busy=true;
+  try{const dir=path.join(userDir,'meeting-outbox');for(const id of fs.existsSync(dir)?fs.readdirSync(dir):[]){
+    const f=path.join(dir,id),meta=readJson(path.join(f,'meeting.json'),null);if(!meta||meetings.m?.folder===f)continue;
+    try{await linkClient.sendMeeting(meta,fs.existsSync(path.join(f,'recording.webm'))?path.join(f,'recording.webm'):null);fs.rmSync(f,{recursive:true,force:true});log('meeting',`Sent the ${meta.suitName} meeting to the Mac.`);}
+    catch(e){log('meeting',`The ${meta.suitName} meeting is still waiting for the Mac: ${e.message}`);break;}}}
+  finally{flushMeetingOutbox.busy=false;}
+}
+/** The meetings kept on the Mac, for the hall's list of past meetings. */
+async function remoteMeetings(){if(!linkClient||!meetings)return;try{const list=await linkClient.call('meeting-history');if(Array.isArray(list)){meetings.remote=list.map(h=>({...h,onMac:true}));broadcast('meeting',{type:'state',state:meetings.state()});}}catch(e){log('meeting',e.message);}}
+/** News from the Mac about a meeting it is writing up. */
+function macMeeting(d){
+  if(d?.type==='status')broadcast('meeting',{type:'status',text:String(d.text||'').slice(0,200)});
+  if(d?.type!=='saved')return;
+  remoteMeetings().finally(()=>broadcast('meeting',{type:'done',file:'',onMac:true,emailed:false,draft:!!d.followup,emailError:d.followup?'Follow-up saved on the Mac for your review. Nothing has been sent.':'Transcript saved on the Mac; no follow-up draft could be produced.',to:settings.get().meeting?.to||'',info:meetingInfo()}));
+  if(d.followup)broadcast('todos',todos.list());
+  say(`The ${String(d.suitName||'').slice(0,60)} meeting notes are saved on the Mac, ${addr()}. ${d.followup?'The action items are in your to-dos. Review the follow-up in Routines before sending.':'Please check the transcript.'}`);
 }
 /* ---------- where was I: last visit, tabs, folder and a one-line note per suit ---------- */
 const visits={
@@ -980,9 +997,9 @@ function linkMirror(method,result){try{if(method.startsWith('todo-')&&Array.isAr
 async function linkSync(){if(!linkClient)return;try{linkMirror('todo-list',await linkClient.call('todo-list'));linkMirror('calendar-list',await linkClient.call('calendar-list'));}catch{}}
 function startLinkClient(){
   linkClient=new LinkClient({host:linkCfg.host,token:readLinkToken(),log,
-    onEvent:(channel,data)=>{if(channel==='todos')linkMirror('todo-list',data);else if(channel==='calendar')linkMirror('calendar-list',data);else broadcast(channel,data);},
-    onState:st=>{linkState=st;if(st==='connected')linkSync();updateTray();broadcast('core',{type:'link',state:st});}});
-  linkClient.listen();setInterval(linkSync,120000);
+    onEvent:(channel,data)=>{if(channel==='todos')linkMirror('todo-list',data);else if(channel==='calendar')linkMirror('calendar-list',data);else if(channel==='meeting')macMeeting(data);else broadcast(channel,data);},
+    onState:st=>{linkState=st;if(st==='connected'){linkSync();remoteMeetings();flushMeetingOutbox();}updateTray();broadcast('core',{type:'link',state:st});}});
+  linkClient.listen();setInterval(linkSync,120000);setInterval(()=>flushMeetingOutbox(),5*60000);
   const localAdd=todos.add.bind(todos);todos.add=(text,meta={})=>{const r=localAdd(text,meta);linkClient?.call('todo-add',{text,meta}).then(list=>linkMirror('todo-list',list)).catch(e=>log('link',e.message));return r;};   // to-dos JARVIS writes here (after a meeting) go to the Mac too
 }
 /** JARVIS Server running on this very Mac (src/server/server.mjs): then this app never starts a brain of its own. */
@@ -1691,7 +1708,9 @@ async function api(event,method,payload){
       await applySettings({meeting:{to,from}});return meetingInfo();
     }
     case 'meeting-test-email':{const s=settings.get().meeting||{},pass=gmailPassword();if(!s.to||!s.from||!pass)throw Error('Add the Gmail address and app password first.');await sendGmail({user:s.from,password:pass,to:s.to,subject:'JARVIS meeting notes: test',text:'This is a test from JARVIS. Meeting follow-ups are sent only after you approve them.\n\nJARVIS'});return true;}
-    case 'meeting-open':{const h=meetings.find(String(payload?.id||''));if(!h)throw Error('That meeting is no longer in the history.');const target=payload?.what==='folder'?h.folder:h.transcript;if(!fs.existsSync(target))throw Error('That file has been moved or deleted.');const err=await shell.openPath(target);if(err)throw Error(err);return true;}
+    case 'meeting-open':{const h=meetings.find(String(payload?.id||''));if(!h)throw Error('That meeting is no longer in the history.');
+      if(h.onMac){if(payload?.what==='folder')throw Error('That meeting is kept on the Mac mini, in your home folder → JARVIS → Meetings.');const r=await linkClient.call('meeting-read',{id:h.id});const dir=path.join(app.getPath('temp'),'JARVIS meeting notes');fs.mkdirSync(dir,{recursive:true});const file=path.join(dir,`${safeName(h.suitName)} ${new Date(h.startedAt).toISOString().slice(0,10)}.md`);writeText(file,r.markdown);const err=await shell.openPath(file);if(err)throw Error(err);return true;}
+const target=payload?.what==='folder'?h.folder:h.transcript;if(!fs.existsSync(target))throw Error('That file has been moved or deleted.');const err=await shell.openPath(target);if(err)throw Error(err);return true;}
     case 'quit':app.quit();return true;
     default:throw Error('Unsupported request.');
   }

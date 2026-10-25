@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
  */
 const pad = n => String(n).padStart(2, '0');
 export const clock = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600); return (h ? h + ':' : '') + pad(Math.floor(s / 60) % 60) + ':' + pad(s % 60); };
-const safe = s => String(s || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Meeting';
+export const safe = s => String(s || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Meeting';
 
 function wav(pcm) {   // 16-bit mono 16 kHz PCM -> a WAV file the speech engine can read
   const h = Buffer.alloc(44), rate = 16000;
@@ -28,6 +28,7 @@ export class MeetingManager {
     try { this.history = JSON.parse(fs.readFileSync(this.indexFile, 'utf8')); } catch { this.history = []; }
     if (!Array.isArray(this.history)) this.history = [];
     this.m = null; this.proc = null; this.waiting = []; this.engine = null;
+    this.remote = [];   // signed in to the Mac: the meetings kept there (newest last)
   }
   get active() { return !!this.m && !this.m.ending; }
   saveIndex() { try { this.history = this.history.slice(-300); fs.writeFileSync(this.indexFile + '.tmp', JSON.stringify(this.history, null, 1)); fs.renameSync(this.indexFile + '.tmp', this.indexFile); } catch (e) { this.log('meeting', e.message); } }
@@ -36,17 +37,19 @@ export class MeetingManager {
     return {active: this.active, ending: !!m?.ending, meeting: m ? {id: m.id, theme: m.theme, suitId: m.suitId, suitName: m.suitName, hallName: m.hallName, startedAt: m.startedAt,
       sources: m.sources, engine: this.engine, pending: m.pending, lines: m.lines.slice(-8).map(l => ({at: clock(l.at), text: l.text}))} : null};
   }
-  pastFor(theme, suitId) { return this.history.filter(h => h.theme === theme && (!suitId || h.suitId === suitId)).slice(-6).reverse(); }
-  find(id) { return this.history.find(h => h.id === id) || null; }
+  pastFor(theme, suitId) { return [...this.history, ...this.remote].sort((a, b) => a.startedAt - b.startedAt).filter(h => h.theme === theme && (!suitId || h.suitId === suitId)).slice(-6).reverse(); }
+  find(id) { return this.history.find(h => h.id === id) || this.remote.find(h => h.id === id) || null; }
 
-  /** Folder: the suit's own folder when it has one (Meetings/<date>), else Documents/JARVIS Meetings/<hall>/<suit>/<date>. */
-  start({theme, hallName, suitId, suitName, suitFolder}) {
+  /** Folder: the suit's own folder when it has one (Meetings/<date>), else Documents/JARVIS Meetings/<hall>/<suit>/<date>.
+   *  staging: signed in to the Mac, the meeting waits in this folder until the Mac has it, and nothing stays here after. */
+  start({theme, hallName, suitId, suitName, suitFolder, staging = null}) {
     if (this.m) throw Error(this.m.ending ? 'The last meeting is still being written up. Give it a moment.' : `Already recording the ${this.m.suitName} meeting.`);
     const now = new Date(), stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}.${pad(now.getMinutes())}`;
-    const base = suitFolder && fs.existsSync(suitFolder) ? path.join(suitFolder, 'Meetings') : path.join(this.docs, 'JARVIS Meetings', safe(hallName), safe(suitName));
-    const folder = path.join(base, stamp);
+    const id = crypto.randomUUID();
+    const base = staging ? staging : suitFolder && fs.existsSync(suitFolder) ? path.join(suitFolder, 'Meetings') : path.join(this.docs, 'JARVIS Meetings', safe(hallName), safe(suitName));
+    const folder = path.join(base, staging ? id : stamp);
     fs.mkdirSync(path.join(folder, 'chunks'), {recursive: true});
-    this.m = {id: crypto.randomUUID(), theme, hallName, suitId, suitName, startedAt: Date.now(), folder, recording: path.join(folder, 'recording.webm'),
+    this.m = {id, theme, hallName, suitId, suitName, startedAt: Date.now(), folder, recording: path.join(folder, 'recording.webm'),
       lines: [], sources: [], pending: 0, chunks: 0, ending: false, warnings: []};
     this.startEngine();
     this.onUpdate(this.state());
@@ -120,6 +123,8 @@ export class MeetingManager {
     this.onUpdate(this.state());
     return file;
   }
+  /** The meeting went somewhere else to be written up (the Mac): this computer is done with it. */
+  forget(m) { if (this.m === m) this.m = null; this.onUpdate(this.state()); }
   /** The recording never started (no microphone, window gone): forget the meeting and its empty folder. */
   discard() {
     const m = this.m; if (!m) return;

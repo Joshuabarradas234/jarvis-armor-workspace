@@ -2,13 +2,15 @@
 /**
  * JARVIS Server: JARVIS's brain on its own, for a computer that stays on (the owner's Mac mini, macOS 12, Node 22).
  * It has no windows: launchd starts it at login and restarts it if it stops (scripts/server/), and it keeps the Mac
- * awake. It runs JARVIS Core (phone, WhatsApp, email, approvals, schedules, overnight jobs, reports) and keeps the
- * to-dos and the calendar. The ZenBook signs in to it over Tailscale (src/main/link.js).
+ * awake. It runs JARVIS Core (phone, WhatsApp, email, approvals, schedules, overnight jobs, reports), keeps the
+ * to-dos and the calendar, and writes up and keeps the meetings the ZenBook records (~/JARVIS/Meetings).
+ * The ZenBook signs in to it over Tailscale (src/main/link.js).
  *
  *   node src/server/server.mjs           run (launchd does this)
  *   node src/server/server.mjs pair      ask the running server for a new pairing code, shown on this Mac's screen
  *
  * Data: ~/Library/Application Support/JARVIS Server/data (JARVIS_SERVER_DIR overrides it, for tests).
+ * Your files: ~/JARVIS, a plain folder in your home folder that you can share with the ZenBook (meetings in ~/JARVIS/Meetings).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -25,6 +27,9 @@ import {WorkstationStore} from '../workstations/store.js';
 import {SettingsStore} from '../settings/store.js';
 import {validateSettings} from '../settings/schema.js';
 import {MeetingFollowups} from '../meeting/followups.js';
+import {MeetingManager, safe} from '../meeting/manager.js';
+import {writeUp} from '../meeting/writeup.js';
+import {ask} from '../brain/llm.js';
 import {weather} from '../services/integrations.js';
 import {LinkServer, isTailnet, tailscaleAddress} from '../main/link.js';
 import {apply as moveApply, plan as movePlan, findOneDrive, KIND as MOVE_KIND} from '../main/move-jarvis.js';
@@ -34,6 +39,7 @@ const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..
 const VERSION = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8')).version;
 const BASE = process.env.JARVIS_SERVER_DIR || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support', 'JARVIS Server') : path.join(os.homedir(), '.jarvis-server'));
 const DATA = path.join(BASE, 'data'), DOCS = path.join(BASE, 'Documents');   // Documents here, not ~/Documents: no macOS privacy prompt for a background job
+const FILES = path.join(os.homedir(), 'JARVIS');   // the meetings: a plain folder in your home folder (not Documents, which macOS guards), easy to share with the ZenBook
 const TEST = process.env.JARVIS_SERVER_TEST === '1';   // tests only: listen on 127.0.0.1 and never exit by itself
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 fs.mkdirSync(DATA, {recursive: true}); fs.mkdirSync(DOCS, {recursive: true});
@@ -74,6 +80,7 @@ const towerRunner = new TowerRunner({store: tower, getKey, log, onUpdate: () => 
 let link = null, core = null, coreError = '';
 const cast = (channel, data) => { try { link?.broadcast(channel, data); } catch {} };
 const meetingFollowups = new MeetingFollowups({dir: DATA, todos, core: () => core});
+const meetingLog = new MeetingManager({dir: DATA, docs: DOCS, scripts: '', log});   // the meetings kept here: their history and transcript.md files
 const WMO = {0: 'clear skies', 1: 'mostly clear', 2: 'partly cloudy', 3: 'overcast', 45: 'fog', 61: 'light rain', 63: 'rain', 65: 'heavy rain', 71: 'light snow', 73: 'snow', 80: 'showers', 95: 'thunderstorms'};
 async function briefWeather() {
   try {
@@ -129,6 +136,8 @@ async function call(method, payload) {
       if (!k) fs.rmSync(keyFile, {force: true}); else fs.writeFileSync(keyFile, crypt.encrypt(k), {mode: 0o600});
       return true;
     }
+    case 'meeting-history': return meetingLog.history.slice(-300).map(({id, theme, hallName, suitId, suitName, startedAt, endedAt, emailed, emailError}) => ({id, theme, hallName, suitId, suitName, startedAt, endedAt, emailed, emailError}));
+    case 'meeting-read': { const h = meetingLog.find(String(payload?.id || '')); if (!h?.transcript || !fs.existsSync(h.transcript)) throw Error('That meeting is not on the Mac.'); return {markdown: fs.readFileSync(h.transcript, 'utf8').slice(0, 3e6)}; }
     case 'server-info': return {name: os.hostname(), version: VERSION, node: process.version, platform: process.platform, macos: os.release(), core: core ? 'running' : coreError || 'starting', claudeKey: !!getKey(), started: STARTED, devices: link?.list().length || 0};
     default: throw Error('That request stays on the computer you are using.');
   }
@@ -145,6 +154,49 @@ async function onMove(bundle) {
   return {...r, plan: p};
 }
 
+/* ---------- meetings the ZenBook recorded: kept here, and written up here ---------- */
+/** Only what a meeting has, at sensible sizes. */
+function meetingFrom(d) {
+  const str = (v, n) => String(v ?? '').slice(0, n), num = v => Number.isFinite(Number(v)) ? Number(v) : 0, list = (v, n, k) => Array.isArray(v) ? v.slice(0, k).map(x => str(x, n)) : [];
+  if (!d || typeof d !== 'object' || !/^[\w-]{8,64}$/.test(String(d.id || ''))) throw Error('That is not a meeting.');
+  return {id: d.id, theme: str(d.theme, 30).replace(/[^a-z]/g, '') || 'ironman', hallName: str(d.hallName, 80) || 'Hall', suitId: str(d.suitId, 60), suitName: str(d.suitName, 80) || 'Meeting',
+    startedAt: num(d.startedAt) || Date.now(), endedAt: num(d.endedAt) || Date.now(), duration: Math.max(0, num(d.duration)), transcript: str(d.transcript, 2e6),
+    sources: list(d.sources, 20, 4), warnings: list(d.warnings, 400, 20), to: str(d.to, 200), lines: []};
+}
+const writing = new Set();
+/** A meeting has arrived: its recording goes in ~/JARVIS/Meetings/<hall>/<suit>/<date>, and the write-up starts. */
+async function onMeeting(details, file) {
+  const m = meetingFrom(details), known = meetingLog.find(m.id);
+  if (known || writing.has(m.id)) { fs.rmSync(file, {force: true}); return {id: m.id, folder: known?.folder || '', already: true}; }   // sent again after a lost answer: one copy
+  const when = new Date(m.startedAt), pad = n => String(n).padStart(2, '0');
+  m.folder = path.join(FILES, 'Meetings', safe(m.hallName), safe(m.suitName), `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())} ${pad(when.getHours())}.${pad(when.getMinutes())}`);
+  if (fs.existsSync(m.folder)) m.folder += ` (${m.id.slice(0, 4)})`;
+  fs.mkdirSync(m.folder, {recursive: true}); m.recording = path.join(m.folder, 'recording.webm');
+  if (fs.statSync(file).size) fs.renameSync(file, m.recording); else fs.rmSync(file, {force: true});
+  writing.add(m.id); log('meeting', `The ${m.suitName} meeting arrived; writing it up.`);
+  writeUpMeeting(m).catch(e => log('meeting', `The ${m.suitName} write-up stopped: ${e?.stack || e?.message}`)).finally(() => writing.delete(m.id));
+  return {id: m.id, folder: m.folder};
+}
+async function writeUpMeeting(m) {
+  let markdown, notes = null, workPlan = [];
+  try {
+    ({markdown, notes, workPlan} = await writeUp(m, {assemblyKey: core?.store?.secret?.('assemblyaiKey') || '', catalog: core?.meetingWork?.catalog(), log: t => log('meeting', t),
+      status: text => cast('meeting', {type: 'status', id: m.id, text}), spend: (c, why) => core?.store?.addSpend(c, why),
+      noEngine: 'No summary: add your Claude API key (on the ZenBook, in the Tower → Engines; it is kept on the Mac).',
+      summarise: async ({system, prompt}) => {
+        const key = getKey(); if (!key) return null;
+        if (core && core.store.budgetLeft() < .10) throw Error('The daily summary budget is used up.');
+        const r = await ask({key, model: tower.settings().plannerModel, system, prompt, maxTokens: 5000}); try { core?.store.addSpend(r.cost, 'meeting notes'); } catch {} return r.text;
+      }}));
+  } catch (e) { markdown = `# Meeting notes: ${m.suitName}\n\n> The write-up stopped (${e.message}), so this is the offline transcript.\n\n${m.transcript || '(Nothing was transcribed.)'}\n`; }
+  let followup = null;
+  if (notes) try { followup = meetingFollowups.capture(m, notes, m.to); cast('todos', todos.list()); } catch (e) { markdown += '\n> Action items or draft could not be saved: ' + e.message + '\n'; log('meeting', e.message); }
+  const file = meetingLog.record(m, {markdown, emailed: false, emailError: null});
+  if (notes && core) try { const plan = core.meetingWork.capture(m, workPlan); cast('core', {type: 'meeting-work-ready', id: m.id, count: plan.tasks.length}); } catch (e) { log('meeting', 'Follow-through: ' + e.message); }
+  log('meeting', `The ${m.suitName} meeting is written up: ${file}`);
+  cast('meeting', {type: 'saved', id: m.id, suitName: m.suitName, hallName: m.hallName, followup: !!followup, accurate: !!m.accurate});
+}
+
 /* ---------- pairing codes, shown on this Mac ---------- */
 function showCode({code, minutes}) {
   const text = `To sign in from your ZenBook, open JARVIS, then Settings → System → JARVIS Link, and type this code:\n\n${code}\n\nIt works once, for ${minutes} minutes.`;
@@ -154,7 +206,7 @@ function showCode({code, minutes}) {
   log('link', `Pairing code ready, for ${minutes} minutes.`);
 }
 const STARTED = Date.now();
-link = new LinkServer({dir: DATA, call, onMove, log, name: os.hostname(),
+link = new LinkServer({dir: DATA, call, onMove, onMeeting, log, name: os.hostname(),
   address: TEST ? () => '127.0.0.1' : tailscaleAddress, allow: TEST ? ip => isTailnet(ip) || /^(::ffff:)?127\.0\.0\.1$/.test(String(ip)) : isTailnet});
 const origPair = link.pair.bind(link);
 link.pair = (code, name) => { const r = origPair(code, name); try { fs.rmSync(path.join(os.homedir(), 'Desktop', 'JARVIS pairing code.txt'), {force: true}); fs.rmSync(CODE_FILE, {force: true}); } catch {} return r; };
