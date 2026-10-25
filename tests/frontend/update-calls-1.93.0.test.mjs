@@ -52,5 +52,5 @@ test('calls and the tray: the offer card, recording kept going in the tray, and 
   assert.deepEqual(heard('jarvis end the meeting', true), {action: 'meeting-end'}); assert.deepEqual(heard('jarvis stop recording', false), {action: 'meeting-end'});
   assert.ok(fs.readFileSync('src/brain/store.js', 'utf8').includes("'githubToken', 'assemblyaiKey'];"));
   assert.ok(fs.readFileSync('dist/assets/core.js', 'utf8').includes("secret('assemblyaiKey', s.secrets.assemblyaiKey, 'AssemblyAI API key'"));
-  assert.ok(main.includes("const akey=core?.store?.secret?.('assemblyaiKey');") && main.includes("m.transcript=transcriptText(r.utterances);m.accurate=true;"));
+  assert.ok(main.includes("assemblyKey:core?.store?.secret?.('assemblyaiKey')") && fs.readFileSync('src/meeting/writeup.js', 'utf8').includes('if (r.utterances.length) { m.transcript = transcriptText(r.utterances); m.accurate = true; }'));   // 1.100.0: the write-up lives in writeup.js, shared with JARVIS Server
 });

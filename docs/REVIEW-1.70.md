@@ -620,3 +620,35 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - a real zip unpacked with the platform's tool (ditto in the macOS CI job, tar.exe on Windows);
   - the main.js and Settings wiring.
 - **Not tested on the Mac mini itself**: the click in Settings, and the hall with the added media. The macOS CI job runs the ditto path.
+
+## Release 1.100.0: calls kept on the Mac, quiet halls while recording
+
+- **The owner's request (25 October 2026).**
+  - JARVIS on the ZenBook still records Zoom and Teams calls.
+  - The transcript, the notes and the recording are kept on the Mac mini, so nothing stays on the ZenBook.
+  - Each hall's background sound must not play during a recorded call.
+- **`src/meeting/writeup.js`.** The write-up comes out of `endMeeting` in main.js unchanged: the AssemblyAI transcript, Claude's notes and the markdown document. The app and JARVIS Server share it. The server asks Claude through `ask` in `src/brain/llm.js`, so the test can use a scripted Claude (`JARVIS_ANTHROPIC_URL`).
+- **The ZenBook, signed in to the Mac.**
+  - `startMeeting` records into `<user>/meeting-outbox/<id>`, not the suit's folder.
+  - When the call ends, `sendMeetingToMac` writes `meeting.json`, streams the details and recording over the Link (`LinkClient.sendMeeting`, `/meeting`), then deletes the folder.
+  - If the Mac doesn't answer, the folder stays. `flushMeetingOutbox` sends it when the link reconnects, and every 5 minutes.
+  - The hall's past meetings include the Mac's (`meeting-history`, marked `onMac`). Opening one fetches its notes (`meeting-read`) into a temporary file; its folder stays on the Mac.
+- **The Link.**
+  - `/meeting` reads a 4-byte length, the JSON details (at most 8 MB), then the recording (at most 2 GB). The recording goes straight to `<data>/incoming/<uuid>.part`, never into memory.
+  - Nothing half-received is left behind.
+  - `LINK_METHODS` gains `meeting-history` and `meeting-read`; `LINK_CHANNELS` gains `meeting`.
+  - **AGENTS.md rule 3** now lists meetings among what the Link carries, because of the owner's request. Still Tailscale only, still paired devices only.
+- **JARVIS Server.**
+  - `meetingFrom` keeps only a meeting's fields, at bounded sizes; the id must match `[\w-]{8,64}`.
+  - The folder is `Documents/JARVIS Meetings/<safe hall>/<safe suit>/<date>`.
+  - A meeting sent twice is kept once.
+  - Writing it up runs after the answer. Then the follow-up and its to-dos (`MeetingFollowups`), the meeting work (Core), `transcript.md` and the history (`MeetingManager.record`), and the `saved` news to the ZenBook.
+  - If the write-up fails, the offline transcript is still saved.
+- **Quiet halls.**
+  - The hall's soundscape (`dist/assets/hands-ideas.js`, the per-hall ambience) ducks to 0 while a meeting is active.
+  - The deck's backdrop sound (`dist/assets/deck.js`, the Batcave "cave") stops, and comes back after the call if it was on.
+  - Both listen for the `meeting` news and ask for `meeting-state` when they load.
+- **Tests.**
+  - `tests/server/server.test.mjs` (31 checks): a meeting with a 300 KB recording goes to the real server. A scripted Claude writes the notes. The test checks the folder and the bytes, the `saved` news, `transcript.md`, the to-do, the history without paths, the notes, that a meeting sent twice is kept once, that a bad id is refused, and that `incoming` is left empty.
+  - `tests/frontend/meetings-mac-1.100.0.test.mjs`: the write-up's outcomes; the outbox and `forget`; the stream through a real LinkServer (1.5 MB), including oversized details refused by the client and by the server; and the main.js, server and quiet-hall wiring.
+- **Not tested with a real call.** That means Zoom or Teams on the ZenBook, the Windows speech engine, AssemblyAI, and the sound going quiet on real speakers.

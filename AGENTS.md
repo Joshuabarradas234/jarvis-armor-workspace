@@ -35,8 +35,11 @@ JARVIS Armor Workspace is a Windows desktop app built on Electron 44. It uses ES
    - it listens only on the computer's **Tailscale address** (`100.64.0.0/10`) and refuses any other address;
    - it answers only devices paired with a one-time code shown on that Mac, and wrong codes lock it out;
    - it keeps only a fingerprint of each device's key;
-   - it carries only `LINK_METHODS`: JARVIS Core, to-dos, the calendar, the Claude key (stored sealed on the Mac) and a status
-     check. It never carries anything that opens a window, a file picker or a folder.
+   - it carries only `LINK_METHODS`: JARVIS Core, to-dos, the calendar, the Claude key (stored sealed on the Mac), a status
+     check, and meetings. On 25 October 2026 the owner asked for recorded calls to be kept on the Mac. So `/meeting` takes a
+     finished meeting (its details and recording), and the server writes it up into its own Documents/JARVIS Meetings, in a
+     folder named only from cleaned-up hall and suit names. `meeting-history` and `meeting-read` list those meetings and
+     read their notes. It never carries anything that opens a window, a file picker or a folder.
    Do not add tunnels, public addresses, port forwarding, webhooks, or listeners on any other interface.
 4. **Minified bundles.** `dist/assets/index-*.js` and the other hashed files in `dist/assets/` are a prebuilt Vite
    build that is patched by hand:

@@ -1020,9 +1020,14 @@
 
   /* =================================================================== HALL AMBIENCE */
   // Made live in the browser, no audio files: reactor hum (Armor Hall), cave drips (Batcave),
-  // city at night (Web Lab). It dips while JARVIS talks or you speak, and goes quiet in focus mode.
-  let heardAt = 0;
+  // city at night (Web Lab). It dips while JARVIS talks or you speak, goes quiet in focus mode, and goes silent while a
+  // call is being recorded, so you hear the people on the call and the recording is clean.
+  let heardAt = 0, recording = false;
   try { J.on('voice-meter', m => { if (m?.detected) heardAt = performance.now(); }); } catch {}
+  try {
+    J.on('meeting', m => { if (m?.type === 'start') recording = true; else if (m?.type === 'state') recording = !!m.state?.active; else if (['stop', 'done', 'failed'].includes(m?.type)) recording = false; });
+    J.call('meeting-state').then(st => { recording = !!st?.active; }).catch(() => {});
+  } catch {}
   const Amb = {
     snd: null, scene: null, on: false, duck: null, timers: [], nodes: [], hallId: '',
     install() {
@@ -1108,7 +1113,7 @@
     duckCheck() {
       const ctx = this.snd?.ctx; if (!this.on || !ctx || !this.duck) return;
       const now = performance.now();
-      const target = Focus.state ? 0.25 : (speakingUntil > now || now - heardAt < 1500) ? 0.18 : 1;
+      const target = recording ? 0 : Focus.state ? 0.25 : (speakingUntil > now || now - heardAt < 1500) ? 0.18 : 1;
       if (Math.abs((this.duckTarget ?? 1) - target) > 0.01) { this.duckTarget = target; this.duck.gain.setTargetAtTime(target, ctx.currentTime, target < 1 ? 0.12 : 0.8); }
     },
   };

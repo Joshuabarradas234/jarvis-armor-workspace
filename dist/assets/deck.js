@@ -78,7 +78,7 @@ if (J && VIEW === 'console') {
     soundPref() { try { return localStorage.getItem('jv.deckSound') !== 'off'; } catch { return true; } },
     soundOn(on) {
       try { localStorage.setItem('jv.deckSound', on ? 'on' : 'off'); } catch {}
-      if (this.sound) on ? this.sound.start() : this.sound.stop();
+      if (this.sound) on && !this.recording ? this.sound.start() : this.sound.stop();
       const btn = this.el.querySelector('[data-dk=sound]'); if (btn) { btn.classList.toggle('off', !on); btn.innerHTML = `<i>${on ? '🔊' : '🔈'}</i>${on ? 'Sound' : 'Muted'}`; }
     },
     show(on) { this.shown = on; this.el.hidden = !on; this.backBtn.hidden = on; window.__jarvisHolo?.showScope?.('deck', on); },
@@ -127,6 +127,11 @@ if (J && VIEW === 'console') {
       else if (m.type === 'panels') { for (const it of m.list || []) { const p = H?.panels.get(it.id); if (!p) continue; if (it.title) p.title = it.title; if (it.url) p.url = it.url; H.label(p); } D.el.classList.toggle('dk-has', D.panels().length > 0); }
       else if (m.type === 'backdrop' && m.theme === D.theme && m.url) { D.setTheme(); }
     });
+  } catch {}
+  try {   /* a call being recorded: the backdrop's sound goes quiet until it ends, then comes back if it was on */
+    const quiet = on => { if (D.recording === on) return; D.recording = on; if (D.sound) on || !D.soundPref() ? D.sound.stop() : D.sound.start(); };
+    J.on('meeting', m => { if (m?.type === 'start') quiet(true); else if (m?.type === 'state') quiet(!!m.state?.active); else if (['stop', 'done', 'failed'].includes(m?.type)) quiet(false); });
+    J.call('meeting-state').then(st => quiet(!!st?.active)).catch(() => {});
   } catch {}
   try { J.on('telemetry', t => {
     if (!t) return; const q = s => D.el.querySelector(s);
