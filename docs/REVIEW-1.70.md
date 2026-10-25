@@ -652,3 +652,27 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - `tests/server/server.test.mjs` (31 checks): a meeting with a 300 KB recording goes to the real server. A scripted Claude writes the notes. The test checks the folder and the bytes, the `saved` news, `transcript.md`, the to-do, the history without paths, the notes, that a meeting sent twice is kept once, that a bad id is refused, and that `incoming` is left empty.
   - `tests/frontend/meetings-mac-1.100.0.test.mjs`: the write-up's outcomes; the outbox and `forget`; the stream through a real LinkServer (1.5 MB), including oversized details refused by the client and by the server; and the main.js, server and quiet-hall wiring.
 - **Not tested with a real call.** That means Zoom or Teams on the ZenBook, the Windows speech engine, AssemblyAI, and the sound going quiet on real speakers.
+
+## Release 1.101.0: hand control and a smoother hall on the Mac, a check-up of each computer
+
+- **Hand control on the Mac.** `handtrack.worker.js` loads its WebAssembly and the hand landmarker model from `jarvis://asset/handtrack`. Those three files (19.9 MB, already listed in THIRD-PARTY-NOTICES) were only on the ZenBook's install, and 1.99's media zip leaves out code on purpose.
+  - They are now in `assets/handtrack`, so the Mac app carries them (`extraResources: assets`).
+  - `build-mac.mjs` fails if the built app has no `hand_landmarker.task`.
+- **The lag on the 2014 Mac mini.** Auto meant High everywhere.
+  - `render-budget.js` now reads the WebGL renderer name once (`gpuName`). `weakGpu` matches older Intel HD and Iris (5100/5200/6100/6200), GMA and software drawing; it does not match UHD, Iris Xe or Arc.
+  - Auto then means Low: dpr 1, no particles, no extra detail, and the suit buffer at 1.2 Mpx.
+  - On that chip, `concealedHall` also pauses the 3D hall behind `.hall-transition.playing`, and `interface-quality.js` pauses the hall's overlay video, so the transition film doesn't share the GPU.
+  - Strong chips (the ZenBook's Arc 140T) behave as before.
+- **A comment bug, caught by the tests.** The first edit put a `//` comment in the middle of a single-line statement in `render-budget.js`. It hid `if(battery)quality='low'`, and the case-mist battery tests failed. It is now `/* … */`, as rule 4 says.
+- **Settings → System → This computer** (`dist/assets/jarvis-check.js`, placed after Suits, films and sounds) shows `machine-check`:
+  - the version and OS;
+  - voice status and its last error;
+  - on the Mac, the microphone, camera and screen permissions (`systemPreferences.getMediaAccessStatus`);
+  - the hand tracker and the media counts;
+  - the brain (link state and server version);
+  - the Claude key on the Mac mini and on this computer;
+  - on the Mac, the features that are still Windows-only;
+  - the graphics chip and the quality Auto picks.
+  - Each problem comes with what to do. Checked on a test page in the browser with a pretend Mac.
+- **Tests.** `tests/frontend/mac-check-1.101.0.test.mjs`: the chip names and Auto's choice, that a chosen quality is kept, battery mode, the hand tracker files and the build check, the check-up wiring, and pausing behind a film only on a small chip.
+- **Not tested on the Mac mini itself**: how smooth it is, hand tracking with its camera, and the permission readings. The owner will send a photo of the check-up.

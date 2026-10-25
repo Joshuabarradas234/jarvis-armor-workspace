@@ -1,4 +1,4 @@
-import {app,BrowserWindow,ipcMain,Tray,Menu,nativeImage,screen,globalShortcut,powerMonitor,powerSaveBlocker,protocol,net,shell,dialog,safeStorage,Notification,session,WebContentsView,desktopCapturer,clipboard} from 'electron';
+import {app,BrowserWindow,ipcMain,Tray,Menu,nativeImage,screen,globalShortcut,powerMonitor,powerSaveBlocker,protocol,net,shell,dialog,safeStorage,Notification,session,WebContentsView,desktopCapturer,clipboard,systemPreferences} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -858,6 +858,28 @@ async function choose({type}){
   if(['jae','armor','startup-video','startup-sound','transition-video','transition-sound'].includes(type)){const from=res.filePaths[0];if(fs.statSync(from).size>(type.endsWith('-video')?400:100)*1024*1024)throw Error('Use an asset under 100 MB (video 400 MB).');const name=crypto.randomUUID()+path.extname(from).toLowerCase();const dir=path.join(userDir,'assets');fs.mkdirSync(dir,{recursive:true});fs.copyFileSync(from,path.join(dir,name));return `jarvis://custom/${name}`;}
   return res.filePaths;
 }
+/** Settings → System → This computer (dist/assets/jarvis-check.js): what works here, and what to do about what doesn't. */
+async function machineCheck(){
+  const mac=process.platform==='darwin',rows=[],add=(name,ok,text,fix='')=>rows.push({name,ok,text,fix});
+  const PRIV='Apple menu → System Preferences → Security & Privacy → Privacy';
+  const access=t=>{try{return systemPreferences.getMediaAccessStatus(t);}catch{return 'unknown';}};
+  add('JARVIS',true,`${BOOT?.label||app.getVersion()} on ${mac?`macOS ${process.getSystemVersion()}`:process.platform==='win32'?'Windows':process.platform}`);
+  const lastVoice=[...status.errors].reverse().find(e=>['voice','speech'].includes(e.kind))?.message||'';
+  add('Voice',/LISTENING|READY|HEARD/i.test(voiceStatus),voiceStatus+(lastVoice&&!/LISTENING/i.test(voiceStatus)?` · ${lastVoice}`:''),mac?`Tick Microphone in the JARVIS menu (top right). If it still doesn't listen: ${PRIV}, tick JARVIS Armor Workspace under Microphone and Speech Recognition, then quit and reopen JARVIS.`:'Tick Microphone in the tray menu.');
+  if(mac){
+    for(const [t,name,why] of [['microphone','Microphone','voice and recording calls'],['camera','Camera','hand control'],['screen','Screen Recording','"look at my screen"']]){const a=access(t);add(`${name} permission`,a==='granted',a==='granted'?`Allowed, for ${why}.`:`${a==='denied'?'Not allowed':'Not asked yet'}: needed for ${why}.`,`${PRIV} → ${name}: tick JARVIS Armor Workspace, then quit and reopen JARVIS.`);}
+  }
+  const hands=['hand_landmarker.task','vision_wasm_module_internal.wasm','vision_wasm_module_internal.js'].every(n=>fs.existsSync(assetPath('handtrack',n)));
+  add('Hand control',hands,hands?'The hand tracker is in place.':'The hand tracker is missing, so the camera starts but nothing follows your hand.','Install the latest JARVIS: the hand tracker comes with it.');
+  const mc=mediaCounts([assets,mediaDir()]);
+  add('Suits, films and sounds',mc.suits>0&&mc.films>0,`${mc.suits} suits, ${mc.films} films, ${mc.backdrops} second-screen backdrops, ${mc.clips} voice clips.`,'Settings → System → Suits, films and sounds: add JARVIS-media.zip.');
+  if(linkClient){let sv=null;try{sv=await linkClient.call('server-info');}catch(e){add('JARVIS\'s brain',false,e.message,'Check the Mac mini is on, with Tailscale connected.');}
+    if(sv){add('JARVIS\'s brain',linkState==='connected'&&sv.core==='running',`On ${linkCfg.name||sv.name} (JARVIS Server ${sv.version}), ${linkState}; JARVIS Core ${sv.core}.`);add('Claude key on the Mac mini',!!sv.claudeKey,sv.claudeKey?'Added: the Mac can write up your calls.':'Missing: the Mac can\'t write call notes yet.','JARVIS Core → add your Claude API key (it is kept sealed on the Mac).');}}
+  else add('JARVIS\'s brain',!!core,core?'JARVIS Core runs on this computer.':coreError||'JARVIS Core is off.');
+  add('Claude key on this computer',!!readTowerKey(),readTowerKey()?'Added: Ask JARVIS, the think room and "look at my screen" work here.':'Missing here: Ask JARVIS, the think room and "look at my screen" need it on this computer too.','The Tower → Engines on this computer: paste your Claude API key.');
+  if(mac)add('Not on the Mac yet',null,'Moving windows with your hands, window layouts, JARVIS offering to record a call by itself, the live transcript during a call, and the wallpaper behind your icons are Windows-only for now. Recording a call here takes your microphone only.');
+  return {platform:process.platform,rows};
+}
 /** The newest JARVIS-media*.zip in Downloads, where Tailscale puts what the ZenBook sends. */
 function findMediaZip(){try{const dl=app.getPath('downloads');return fs.readdirSync(dl).filter(f=>/^JARVIS-media.*\.zip$/i.test(f)).map(f=>path.join(dl,f)).sort((a,b)=>fs.statSync(b).mtimeMs-fs.statSync(a).mtimeMs)[0]||null;}catch{return null;}}
 /** Add the suits, films and sounds from JARVIS-media.zip, then restart so the halls and the deck pick them up. */
@@ -1684,6 +1706,7 @@ async function api(event,method,payload){
     case 'open-logs':{const file=path.join(userDir,'jarvis.log');if(!fs.existsSync(file))fs.writeFileSync(file,'No errors recorded in this session.\n');const error=await shell.openPath(file);if(error)throw Error(error);return true;}
     case 'clear-cache':await session.defaultSession.clearCache();return true;
     case 'reset-settings':{const response=await dialog.showMessageBox({type:'question',buttons:['Cancel','Reset settings'],defaultId:0,cancelId:0,message:'Reset JARVIS settings?',detail:'Your local calendar and imported assets are kept.'});if(response.response===1){await applySettings(structuredClone(defaults));openSettings();}return true;}
+    case 'machine-check':return machineCheck();
     case 'media-status':return {platform:process.platform,...mediaCounts([assets,mediaDir()]),zip:findMediaZip()};
     case 'media-add':{if(!['main','settings'].includes(role))throw Error('Add the media from Settings.');return addMediaZip(payload?.choose===true);}
     case 'meeting-state':return meetingInfo();
