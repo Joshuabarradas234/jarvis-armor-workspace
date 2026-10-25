@@ -13,8 +13,8 @@ if (J && ['main', 'settings'].includes(VIEW)) {   // the hall's Settings, or Set
     box.innerHTML = '<p class="small muted">Checking…</p>';
     let r; try { r = await J.call('machine-check'); } catch (e) { box.innerHTML = `<p class="small muted">${esc(plain(e))}</p>`; return; }
     const quality = (await J.call('bootstrap').catch(() => ({})))?.settings?.quality || 'auto', gpu = gpuName(), weak = weakGpu(gpu);
-    const rows = [...r.rows, {name: 'Graphics', ok: true, text: `${gpu || 'Unknown graphics chip'} · quality ${quality === 'auto' ? `Auto (${weak ? 'Low' : 'High'} here)` : quality}.`,
-      fix: weak && !['low', 'auto'].includes(quality) ? 'This graphics chip is small: choose Settings → Graphics → Low (or Auto) if the hall stutters.' : ''}];
+    const rows = [...r.rows, {name: 'Graphics', ok: true, text: `${gpu || 'Unknown graphics chip'} · quality ${quality === 'auto' ? `Auto (${weak ? 'Medium, with the suit-opening effects' : 'High'} here)` : quality}.`,
+      fix: weak ? (['high', 'ultra'].includes(quality) ? 'This graphics chip is small: choose Settings → Graphics → Auto (or Low) if the hall stutters.' : 'If the hall still stutters, choose Settings → Graphics → Low.') : ''}];
     const bad = rows.filter(x => x.ok === false).length;
     box.innerHTML = `<p class="muted">${bad ? `${bad} thing${bad === 1 ? '' : 's'} to sort out:` : 'Everything here is working.'}</p>` +
       `<ul style="list-style:none;padding:0;margin:0">${rows.map(x => `<li style="margin:.45em 0">${mark(x.ok)} <b>${esc(x.name)}</b>: ${esc(x.text)}${x.ok === false && x.fix ? `<br><span class="small muted">${esc(x.fix)}</span>` : x.ok === true && x.fix ? `<br><span class="small muted">${esc(x.fix)}</span>` : ''}</li>`).join('')}</ul>` +

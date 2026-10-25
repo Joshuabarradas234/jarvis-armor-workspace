@@ -3,14 +3,14 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 /** The graphics chip's name, from WebGL, read once. '' where there is no page (a worker, a test). */
 let gpu=null;
 export function gpuName(){if(gpu!==null)return gpu;gpu='';try{const gl=document.createElement('canvas').getContext('webgl'),x=gl?.getExtension('WEBGL_debug_renderer_info');gpu=String((x?gl.getParameter(x.UNMASKED_RENDERER_WEBGL):gl?.getParameter(gl.RENDERER))||'');gl?.getExtension('WEBGL_lose_context')?.loseContext();}catch{}return gpu;}
-/** Too small for the full hall: older Intel HD and Iris graphics (the 2014 Mac mini's HD 5000), or no graphics chip at all. Auto picks Low there. */
+/** Too small for the full hall: older Intel HD and Iris graphics (the 2014 Mac mini's HD 5000), or no graphics chip at all. Auto picks a lighter Medium there. */
 export const weakGpu=(name=gpuName())=>/\bHD Graphics\b|\bIris(\(TM\))? (Pro )?Graphics \d|\bGMA\b|SwiftShader|llvmpipe|Software Renderer/i.test(String(name||''));
 export function renderBudget(settings={},status={},environment={}){
   const quiet=settings.animations===false||environment.reduced===true;
   const battery=!!status.onBattery&&settings.reduceOnBattery!==false;
-  let quality=['low','medium','high','ultra'].includes(settings.quality)?settings.quality:(environment.weak??weakGpu())?'low':'high';/* Auto: High, or Low on a small graphics chip */if(battery)quality='low';
+  const auto=!['low','medium','high','ultra'].includes(settings.quality),weak=auto&&!battery&&(environment.weak??weakGpu());let quality=auto?(weak?'medium':'high'):settings.quality;if(battery)quality='low';/* Auto: High, or Medium on a small graphics chip (with the suit-opening pulse and sparks kept) */
   const levels={low:{dpr:1,anisotropy:2,particles:false,detail:false},medium:{dpr:1.25,anisotropy:4,particles:false,detail:true},high:{dpr:1.75,anisotropy:8,particles:true,detail:true},ultra:{dpr:2.5,anisotropy:16,particles:true,detail:true}};
-  const spec=levels[quality],fps=battery?15:([15,30,60].includes(settings.fps)?settings.fps:30);
+  const spec=weak?{...levels.medium,particles:true}:levels[quality],fps=battery?15:([15,30,60].includes(settings.fps)?settings.fps:30);
   return {...spec,quality,fps,quiet,dpr:Math.min(spec.dpr,clamp(environment.dpr||1,1,3)),videoRate:battery||fps===15?.5:1,pose:!quiet};
 }
 export function fitSuit({height,width,modelWidth,modelDepth=0,fill=.97,widthFit=.96,yaw=0}){

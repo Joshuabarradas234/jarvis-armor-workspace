@@ -40,7 +40,14 @@ export class DisplayManager {
         try{await new Promise((resolve,reject)=>execFile('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(this.scripts,'wallpaper.ps1'),'-Handle',number],{windowsHide:true,timeout:15000},(e,out,err)=>e?reject(Error(err||e.message)):out.includes('"attached":true')?resolve():reject(Error('No desktop acknowledgement'))));successes++;}catch(e){const noRoom=/WorkerW not found/i.test(e.message);if(noRoom)this.wallpaperBlocked=true;this.log('wallpaper',noRoom?'Live wallpaper is not possible on this desktop (no WorkerW behind the icons); not retrying until the wallpaper setting is switched off and on.':e.message);w.failed=true;if(!w.isDestroyed())w.destroy();}
       }
       this.wallpaperStatus=this.wallpaperBlocked?'UNAVAILABLE · THIS DESKTOP SHOWS ITS OWN WALLPAPER':successes===allDisplays().length?'ACTIVE BEHIND DESKTOP ICONS':successes?'PARTIAL · CHECK DISPLAY SETTINGS':'UNAVAILABLE · LIVELY FALLBACK AVAILABLE';
-    }else this.wallpaperStatus=this.settings().wallpaper?'WINDOWS REQUIRED':'OFF';
+    }else if(this.settings().wallpaper&&process.platform==='darwin'){   // the Mac: a window at the desktop's own level sits behind your icons, on every Space, and lets clicks through
+      for(const d of (testing?[]:screen.getAllDisplays())){
+        const w=this.create({role:'wallpaper',...d.bounds,type:'desktop',show:false,frame:false,focusable:false,skipTaskbar:true,hasShadow:false,enableLargerThanScreen:true,backgroundColor:'#05080a'});this.wallpapers.push(w);
+        w.setIgnoreMouseEvents(true);try{w.setVisibleOnAllWorkspaces(true);}catch{}
+        await this.load(w,'wallpaper');if(generation!==this.generation)return;if(!w.isDestroyed())w.showInactive();
+      }
+      this.wallpaperStatus=this.wallpapers.length?'ACTIVE BEHIND DESKTOP ICONS':'NO SCREEN';
+    }else this.wallpaperStatus=this.settings().wallpaper?'WINDOWS OR MAC REQUIRED':'OFF';
     if(generation===this.generation){this.rebuilding=false;this.setActive(this.active);this.onChange();
       // screens changed while this build ran (the lower screen came on half-way through): build again
       const now=resolveDisplays(allDisplays(),this.settings());if(['main','control','third'].some(k=>(now[k]?.id??null)!==(roles[k]?.id??null)))this.changed?.();}

@@ -676,3 +676,22 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - Each problem comes with what to do. Checked on a test page in the browser with a pretend Mac.
 - **Tests.** `tests/frontend/mac-check-1.101.0.test.mjs`: the chip names and Auto's choice, that a chosen quality is kept, battery mode, the hand tracker files and the build check, the check-up wiring, and pausing behind a film only on a small chip.
 - **Not tested on the Mac mini itself**: how smooth it is, hand tracking with its camera, and the permission readings. The owner will send a photo of the check-up.
+
+## Release 1.102.0: the Mac wallpaper, each hall's own voice, suits with their full opening effects
+
+- **Wallpaper on the Mac.**
+  - Windows attaches its wallpaper window behind the icons with `wallpaper.ps1`. The Mac had no equivalent (`WINDOWS REQUIRED`).
+  - On the Mac, `DisplayManager.rebuild` makes one `type:'desktop'` window per screen, which Electron places at the desktop's own level, under the icons.
+  - The window can't take focus, ignores the mouse (clicks reach Finder) and is visible on all Spaces.
+  - The wallpaper page already animates only when the hall is idle, at 10 fps.
+  - The macOS CI start-up check now runs with the wallpaper on and checks its page loads.
+- **Hall voices on the Mac.** Each hall's `voice.prefer` lists Windows voice names (David, Zira), so the Mac fell back to Daniel for all three.
+  - `voice.mac` in `config/themes.json` now gives each hall a Mac voice: Jarvis `Daniel`; Alfred `Oliver`, else `Daniel`; Karen `Samantha`.
+  - `macVoiceFor` uses a voice you chose (unless it's a Windows name), then the hall's, then the defaults, and only voices this Mac has (`say -v '?'`, read once).
+  - The hall's own rate still applies: Alfred slower, Karen faster.
+  - The check-up lists each hall's voice.
+- **Suit openings on a small chip.** 1.101.0's Auto went to Low, and Low switches off the suit-entry pulse and sparks (`budget.particles`) and halves the case mist. The owner wants suits to open as they do on Windows.
+  - Auto on a small chip is now Medium with `particles:true`: dpr 1, a 2.2 Mpx idle buffer, 6 mist layers, the eye detail, the pulse and the sparks.
+  - Battery mode and a chosen quality still win.
+- **Tests.** `tests/frontend/mac-wallpaper-1.102.0.test.mjs` covers the wallpaper wiring, the voice choice against a Mac without the downloaded voices and against one with them, a chosen voice, a Windows voice name ignored, the rates, and the new Auto. `mac-check-1.101.0` now expects Medium.
+- **Not tested on the Mac mini itself**: how the wallpaper looks behind the icons, the voices, and how smooth Medium is on the HD 5000.

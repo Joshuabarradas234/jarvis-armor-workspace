@@ -3,10 +3,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
 import {renderBudget,weakGpu} from '../../dist/assets/render-budget.js';
 
-test('Auto quality: Low on older Intel HD and Iris graphics or software drawing, High elsewhere; a chosen quality is kept', () => {
+test('Auto quality: lighter on older Intel HD and Iris graphics or software drawing, High elsewhere; a chosen quality is kept', () => {
   for (const n of ['Intel(R) HD Graphics 5000', 'ANGLE (Intel Inc., Intel(R) HD Graphics 5000, OpenGL 4.1)', 'Intel Iris Pro Graphics 5200', 'Google SwiftShader']) assert.equal(weakGpu(n), true, n);
   for (const n of ['Intel(R) Arc(TM) 140T GPU (16GB)', 'Intel(R) Iris(R) Xe Graphics', 'Intel(R) UHD Graphics 620', 'Apple M1', 'NVIDIA GeForce RTX 4060', '']) assert.equal(weakGpu(n), false, n);
-  assert.equal(renderBudget({quality: 'auto'}, {}, {weak: true}).quality, 'low');
+  assert.equal(renderBudget({quality: 'auto'}, {}, {weak: true}).quality, 'medium');   // 1.102.0: Medium with the suit-opening effects, not Low
   assert.equal(renderBudget({quality: 'auto'}, {}, {weak: false}).quality, 'high');
   assert.equal(renderBudget({quality: 'high'}, {}, {weak: true}).quality, 'high');   // your own choice wins
   assert.equal(renderBudget({}, {}).quality, 'high');   // no page to ask (a test, a worker): as before

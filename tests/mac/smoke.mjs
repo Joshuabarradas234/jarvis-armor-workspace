@@ -17,7 +17,7 @@ if (!fs.existsSync(APP)) { console.log(`::error::Build the app first: ${APP} is 
 
 // a profile that has been through setup, so the hall opens rather than the first-run wizard
 fs.rmSync(PROFILE, {recursive: true, force: true}); fs.mkdirSync(PROFILE, {recursive: true});
-fs.writeFileSync(path.join(PROFILE, 'settings.json'), JSON.stringify({setupComplete: true, autoStart: true, wallpaper: false}));
+fs.writeFileSync(path.join(PROFILE, 'settings.json'), JSON.stringify({setupComplete: true, autoStart: true, wallpaper: true}));
 
 const app = spawn(APP, [`--remote-debugging-port=${PORT}`], {stdio: ['ignore', 'pipe', 'pipe']});
 let out = ''; app.stdout.on('data', d => out += d); app.stderr.on('data', d => out += d);
@@ -34,6 +34,7 @@ const log = logText().split('\n').filter(Boolean).map(l => { try { return JSON.p
 console.log('Mac start-up check:');
 ok(!exited, 'the app is still running', exited ? `it exited with ${exited.code ?? exited.sig}` : '');
 ok(log.some(l => /^deck on/.test(l.message || '')), 'the main process got through start-up (the deck server is on)');
+ok(list.some(p => /view=wallpaper/.test(p.url)), 'the wallpaper window loaded, behind the desktop icons (1.102.0)', list.map(p => p.url.replace(/^jarvis:\/\/app\//, '')).join(', ') || 'no pages');
 ok(list.some(p => /index\.html\?view=main/.test(p.url)), 'the hall window loaded', list.map(p => p.url.replace(/^jarvis:\/\/app\//, '')).join(', ') || 'no pages');
 const crashes = log.filter(l => l.kind === 'crash');
 ok(!crashes.length, 'nothing logged as a crash', crashes.map(c => String(c.message).split('\n')[0]).join(' | ').slice(0, 600));

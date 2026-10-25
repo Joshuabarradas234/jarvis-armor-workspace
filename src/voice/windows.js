@@ -1,4 +1,4 @@
-import {spawn} from 'node:child_process';
+import {spawn,execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {mediaFile} from '../main/media.js';
@@ -31,7 +31,11 @@ export class WindowsVoice {
     child.on('exit',()=>{if(this.listener===child){this.listener=null;this.onStatus(this.enabled?'VOICE CONTROL UNAVAILABLE · HOTKEY CONTROL ACTIVE':'MICROPHONE OFF');}});
   }
   /** The Mac's say: a Mac voice (yours if you chose one, else Daniel), at JARVIS's rate and volume. */
-  saySpawn(text,settings,profile){const v=settings.voiceName&&!/microsoft|desktop/i.test(settings.voiceName)?settings.voiceName:(profile?.prefer||[]).find(p=>MAC_VOICES.includes(p))||MAC_VOICES[0];const vol=Math.max(0,Math.min(1,settings.master*settings.voice));return spawn('say',['-v',v,'-r',String(macRate(profile?.rate)),'--',`[[volm ${vol.toFixed(2)}]] ${text}`],{stdio:['ignore','ignore','pipe']});}
+  /** The voices this Mac has (say -v '?'), read once. */
+  macVoices(){if(!this.macList){this.macList=new Set();try{for(const l of execFileSync('say',['-v','?'],{encoding:'utf8',timeout:5000}).split('\n')){const n=l.split(/\s{2,}/)[0].trim();if(n)this.macList.add(n);}}catch(e){this.log('speech',e.message);}}return this.macList;}
+  /** A hall's Mac voice: the one you chose, else the hall's own (voice.mac in config/themes.json: Daniel for JARVIS, Samantha for Karen), else Daniel. Only voices this Mac has. */
+  macVoiceFor(settings,profile){const have=this.macVoices(),ok=n=>!have.size||have.has(n);return [settings.voiceName&&!/microsoft|desktop/i.test(settings.voiceName)?settings.voiceName:'',...(profile?.mac||[]),...MAC_VOICES].find(n=>n&&ok(n))||'Daniel';}
+  saySpawn(text,settings,profile){const v=this.macVoiceFor(settings,profile);const vol=Math.max(0,Math.min(1,settings.master*settings.voice));return spawn('say',['-v',v,'-r',String(macRate(profile?.rate)),'--',`[[volm ${vol.toFixed(2)}]] ${text}`],{stdio:['ignore','ignore','pipe']});}
   speak(text,settings,profile,soundFile,opts={}){
     if(process.platform==='darwin'&&settings.master*settings.voice>0){
       if(this.speaker)this.speaker.kill();

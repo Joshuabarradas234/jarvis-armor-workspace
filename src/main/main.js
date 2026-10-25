@@ -877,7 +877,8 @@ async function machineCheck(){
     if(sv){add('JARVIS\'s brain',linkState==='connected'&&sv.core==='running',`On ${linkCfg.name||sv.name} (JARVIS Server ${sv.version}), ${linkState}; JARVIS Core ${sv.core}.`);add('Claude key on the Mac mini',!!sv.claudeKey,sv.claudeKey?'Added: the Mac can write up your calls.':'Missing: the Mac can\'t write call notes yet.','JARVIS Core → add your Claude API key (it is kept sealed on the Mac).');}}
   else add('JARVIS\'s brain',!!core,core?'JARVIS Core runs on this computer.':coreError||'JARVIS Core is off.');
   add('Claude key on this computer',!!readTowerKey(),readTowerKey()?'Added: Ask JARVIS, the think room and "look at my screen" work here.':'Missing here: Ask JARVIS, the think room and "look at my screen" need it on this computer too.','The Tower → Engines on this computer: paste your Claude API key.');
-  if(mac)add('Not on the Mac yet',null,'Moving windows with your hands, window layouts, JARVIS offering to record a call by itself, the live transcript during a call, and the wallpaper behind your icons are Windows-only for now. Recording a call here takes your microphone only.');
+  if(mac&&voice?.macVoiceFor)add('Hall voices',true,workstations.themes.map(t=>{const v=workstations.theme(t.id)?.voice;return `${t.assistant||t.name}: ${voice.macVoiceFor(settings.get(),v)}${v?.rate?` (${v.rate<0?'slower':'faster'})`:''}`;}).join(' · ')+'.');
+  if(mac)add('Not on the Mac yet',null,'Moving windows with your hands, window layouts, JARVIS offering to record a call by itself, and the live transcript during a call are Windows-only for now. Recording a call here takes your microphone only.');
   return {platform:process.platform,rows};
 }
 /** The newest JARVIS-media*.zip in Downloads, where Tailscale puts what the ZenBook sends. */
