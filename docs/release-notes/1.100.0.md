@@ -5,7 +5,7 @@
 - **Calls you record on the ZenBook are written up and kept on the Mac mini.** JARVIS still offers to record when a Zoom or Teams call starts. When the call ends:
   - the ZenBook sends the recording and its rough transcript to the Mac, then deletes its own copy;
   - the Mac writes the accurate transcript (with your AssemblyAI key), the notes (with your Claude key), puts the action items in your to-dos and prepares the follow-up email for your approval. Nothing is sent without you.
-  - Everything is on the Mac in **JARVIS Server → Documents → JARVIS Meetings**, by hall and suit.
+  - Everything is on the Mac in your home folder, in **JARVIS → Meetings**, by hall and suit. (In Finder: **Go → Home**.)
 - **Nothing is lost if the Mac is off.** The meeting waits safely on the ZenBook and goes to the Mac as soon as it answers.
 - **Past meetings include the Mac's.** In the hall, opening one shows its notes.
 - **Quiet halls while you record.** While a call is being recorded, the hall's background sound goes silent, so you can hear people and the recording stays clean. That covers the arc-reactor hum, the cave drips and wind, the city at night, and the Batcave's water and bats on the second screen. It all comes back when the call ends.

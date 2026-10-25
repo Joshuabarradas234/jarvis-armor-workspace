@@ -37,7 +37,7 @@ JARVIS Armor Workspace is a Windows desktop app built on Electron 44. It uses ES
    - it keeps only a fingerprint of each device's key;
    - it carries only `LINK_METHODS`: JARVIS Core, to-dos, the calendar, the Claude key (stored sealed on the Mac), a status
      check, and meetings. On 25 October 2026 the owner asked for recorded calls to be kept on the Mac. So `/meeting` takes a
-     finished meeting (its details and recording), and the server writes it up into its own Documents/JARVIS Meetings, in a
+     finished meeting (its details and recording), and the server writes it up into `~/JARVIS/Meetings` on the Mac, in a
      folder named only from cleaned-up hall and suit names. `meeting-history` and `meeting-read` list those meetings and
      read their notes. It never carries anything that opens a window, a file picker or a folder.
    Do not add tunnels, public addresses, port forwarding, webhooks, or listeners on any other interface.

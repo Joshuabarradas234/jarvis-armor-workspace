@@ -640,7 +640,7 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - **AGENTS.md rule 3** now lists meetings among what the Link carries, because of the owner's request. Still Tailscale only, still paired devices only.
 - **JARVIS Server.**
   - `meetingFrom` keeps only a meeting's fields, at bounded sizes; the id must match `[\w-]{8,64}`.
-  - The folder is `Documents/JARVIS Meetings/<safe hall>/<safe suit>/<date>`.
+  - The folder is `~/JARVIS/Meetings/<safe hall>/<safe suit>/<date>`: a plain folder in the home folder. It isn't Documents, which macOS guards from background jobs, and it isn't the hidden Library, so the owner can share it with the ZenBook.
   - A meeting sent twice is kept once.
   - Writing it up runs after the answer. Then the follow-up and its to-dos (`MeetingFollowups`), the meeting work (Core), `transcript.md` and the history (`MeetingManager.record`), and the `saved` news to the ZenBook.
   - If the write-up fails, the offline transcript is still saved.

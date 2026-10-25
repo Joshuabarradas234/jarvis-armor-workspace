@@ -67,7 +67,7 @@ test('the ZenBook hands a finished meeting to the Mac, keeps it safe if the Mac 
     "const w=await writeUp(m,{assemblyKey:core?.store?.secret?.('assemblyaiKey')"]) assert.ok(main.includes(s), s);
   assert.ok(main.indexOf('if(linkClient)return sendMeetingToMac(m);') > main.indexOf('const m=await meetings.finish();') && main.indexOf('if(linkClient)return sendMeetingToMac(m);') < main.indexOf('const w=await writeUp('));
   const server = fs.readFileSync('src/server/server.mjs', 'utf8');
-  for (const s of ["link = new LinkServer({dir: DATA, call, onMove, onMeeting, log,", "m.folder = path.join(DOCS, 'JARVIS Meetings', safe(m.hallName), safe(m.suitName),", "const r = await ask({key, model: tower.settings().plannerModel, system, prompt, maxTokens: 5000});",
+  for (const s of ["link = new LinkServer({dir: DATA, call, onMove, onMeeting, log,", "m.folder = path.join(FILES, 'Meetings', safe(m.hallName), safe(m.suitName),", "const FILES = path.join(os.homedir(), 'JARVIS');", "const r = await ask({key, model: tower.settings().plannerModel, system, prompt, maxTokens: 5000});",
     "followup = meetingFollowups.capture(m, notes, m.to);", "cast('meeting', {type: 'saved', id: m.id,", "if (known || writing.has(m.id)) { fs.rmSync(file, {force: true});"]) assert.ok(server.includes(s), s);
 });
 

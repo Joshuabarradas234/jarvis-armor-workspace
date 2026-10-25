@@ -69,7 +69,7 @@ try {
     transcript: '[00:05] We agreed Sam sends the deck by Friday.', sources: ['mic', 'system'], warnings: [], to: 'client@example.com'};
   const sent = await c.sendMeeting(meeting, rec);
   const kept = sent?.folder ? path.join(sent.folder, 'recording.webm') : '';
-  ok(sent.id === mid && kept.startsWith(path.join(BASE, 'Documents', 'JARVIS Meetings', 'Batcave', 'Hell Bat')) && fs.existsSync(kept) && fs.readFileSync(kept).equals(fs.readFileSync(rec)), 'a meeting from the ZenBook arrives whole, in the Mac\'s JARVIS Meetings', JSON.stringify(sent));
+  ok(sent.id === mid && kept.startsWith(path.join(BASE, 'JARVIS', 'Meetings', 'Batcave', 'Hell Bat')) && fs.existsSync(kept) && fs.readFileSync(kept).equals(fs.readFileSync(rec)), 'a meeting from the ZenBook arrives whole, in ~/JARVIS/Meetings on the Mac', JSON.stringify(sent));
   for (let i = 0; i < 40 && !events.some(e => e.ch === 'meeting' && e.d?.type === 'saved' && e.d.id === mid); i++) await sleep(250);
   const saved = events.find(e => e.ch === 'meeting' && e.d?.type === 'saved' && e.d.id === mid)?.d;
   ok(saved && saved.followup === true && saved.suitName === 'Hell Bat', 'the Mac writes it up and tells the ZenBook', JSON.stringify(saved));

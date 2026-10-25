@@ -3,13 +3,14 @@
  * JARVIS Server: JARVIS's brain on its own, for a computer that stays on (the owner's Mac mini, macOS 12, Node 22).
  * It has no windows: launchd starts it at login and restarts it if it stops (scripts/server/), and it keeps the Mac
  * awake. It runs JARVIS Core (phone, WhatsApp, email, approvals, schedules, overnight jobs, reports), keeps the
- * to-dos and the calendar, and writes up and keeps the meetings the ZenBook records (Documents/JARVIS Meetings).
+ * to-dos and the calendar, and writes up and keeps the meetings the ZenBook records (~/JARVIS/Meetings).
  * The ZenBook signs in to it over Tailscale (src/main/link.js).
  *
  *   node src/server/server.mjs           run (launchd does this)
  *   node src/server/server.mjs pair      ask the running server for a new pairing code, shown on this Mac's screen
  *
  * Data: ~/Library/Application Support/JARVIS Server/data (JARVIS_SERVER_DIR overrides it, for tests).
+ * Your files: ~/JARVIS, a plain folder in your home folder that you can share with the ZenBook (meetings in ~/JARVIS/Meetings).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -38,6 +39,7 @@ const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..
 const VERSION = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8')).version;
 const BASE = process.env.JARVIS_SERVER_DIR || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support', 'JARVIS Server') : path.join(os.homedir(), '.jarvis-server'));
 const DATA = path.join(BASE, 'data'), DOCS = path.join(BASE, 'Documents');   // Documents here, not ~/Documents: no macOS privacy prompt for a background job
+const FILES = path.join(os.homedir(), 'JARVIS');   // the meetings: a plain folder in your home folder (not Documents, which macOS guards), easy to share with the ZenBook
 const TEST = process.env.JARVIS_SERVER_TEST === '1';   // tests only: listen on 127.0.0.1 and never exit by itself
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 fs.mkdirSync(DATA, {recursive: true}); fs.mkdirSync(DOCS, {recursive: true});
@@ -162,12 +164,12 @@ function meetingFrom(d) {
     sources: list(d.sources, 20, 4), warnings: list(d.warnings, 400, 20), to: str(d.to, 200), lines: []};
 }
 const writing = new Set();
-/** A meeting has arrived: its recording goes in Documents/JARVIS Meetings/<hall>/<suit>/<date>, and the write-up starts. */
+/** A meeting has arrived: its recording goes in ~/JARVIS/Meetings/<hall>/<suit>/<date>, and the write-up starts. */
 async function onMeeting(details, file) {
   const m = meetingFrom(details), known = meetingLog.find(m.id);
   if (known || writing.has(m.id)) { fs.rmSync(file, {force: true}); return {id: m.id, folder: known?.folder || '', already: true}; }   // sent again after a lost answer: one copy
   const when = new Date(m.startedAt), pad = n => String(n).padStart(2, '0');
-  m.folder = path.join(DOCS, 'JARVIS Meetings', safe(m.hallName), safe(m.suitName), `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())} ${pad(when.getHours())}.${pad(when.getMinutes())}`);
+  m.folder = path.join(FILES, 'Meetings', safe(m.hallName), safe(m.suitName), `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())} ${pad(when.getHours())}.${pad(when.getMinutes())}`);
   if (fs.existsSync(m.folder)) m.folder += ` (${m.id.slice(0, 4)})`;
   fs.mkdirSync(m.folder, {recursive: true}); m.recording = path.join(m.folder, 'recording.webm');
   if (fs.statSync(file).size) fs.renameSync(file, m.recording); else fs.rmSync(file, {force: true});
