@@ -775,3 +775,15 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
 - **Found while testing.** The `claude` command line on the ZenBook has an expired sign-in ("OAuth session expired"). The release notes tell the owner to run `claude` then `/login`. Meeting notes and the Tower use it too.
 - **Tests.** `tests/frontend/claude-chats-1.106.0.test.mjs` (7 tests): reading only words, line by line; reading the card; redaction; titled chats only and own runs skipped; asking and "Later"; the card's limits, building on the last card, and timing for open and idle chats; the error shown and cleared; and the wiring.
 - **Not tested end to end with a real summary**, because Claude Code's sign-in had expired. A real chat was read: three titled chats found in about 60 ms, two of them open.
+
+## Release 1.106.1: Tower answers long enough for a fortnight of posts
+
+- **What happened.** Floor 30's first real run (Wayne Enterprises, "Client Marketing & Web") produced 13 posts with picture briefs, about 20 KB.
+  - The reviewer merges and rewrites everything, and was capped at 8,000 tokens. Both review attempts stopped at `max_tokens`. `cutOff` turned that into "CHANGES: the review was cut off", correctly, so the run ended `needs_changes` and nothing was handed on.
+  - The substance was approved apart from two small fixes, which were applied by hand to the filed calendar.
+- **The fix.**
+  - `ask()` now allows 16,000 tokens for a review and 8,000 for a step (was 8,000 and 5,000).
+  - `callApi` waits `max(300 s, 30 ms × maxTokens)`, so 8 minutes for a full review.
+  - The budget hold already scales with `maxTokens`, so the per-run cap still holds.
+- **Test.** `tests/frontend/tower-long-1.106.1.test.mjs`.
+- **Not tested with a real 16,000-token review**; the next client pack will show it.
