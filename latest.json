@@ -1,5 +1,5 @@
 {
-  "version": "1.105.0",
+  "version": "1.106.0",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "The weekly report is complete on both computers, with your meetings, AI costs, dates and emails from the Mac."
+  "notes": "JARVIS follows your Claude chats: each one gets a progress card on its suit, with what is left, questions for you and next steps."
 }

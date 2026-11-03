@@ -31,6 +31,7 @@ import {prepareUpdate,newer as newerVersion,validVersion,REPO,releaseFile,zipNam
 import {LinkClient,FORWARD} from './link.js';
 import {mediaFile,mediaCounts,unzip as unzipMedia,adoptMedia} from './media.js';
 import {prepareMacUpdate,MAC_INSTALL_SCRIPT} from './mac-update.js';
+import {ClaudeChats,chatsRoot} from './claude-chats.js';
 import {bundle as moveBundle,plan as movePlan,apply as moveApply,findOneDrive,KIND as MOVE_KIND} from './move-jarvis.js';
 import {spawn,execFile} from 'node:child_process';
 import os from 'node:os';
@@ -975,7 +976,25 @@ function openDeskHands(){
 function closeDeskHands(){desk?.cancel();const w=deskWin;deskWin=null;if(w&&!w.isDestroyed())w.destroy();winctl?.stop();}
 function setDeskHands(on){deskOn=!!on;try{writeJson(deskFile(),{on:deskOn});}catch(e){log('hands',e.message);}syncDeskHands();updateTray();}
 /** Ask JARVIS (src/main/ask-jarvis.js, dist/ask.html): its own window and its own taskbar button, so it can be pinned there and opened with one click. */
-let askWin=null,askJ=null,deskProjects=null,room=null,pendingMove=null,linkClient=null,linkCfg={},linkState='';
+let askWin=null,askJ=null,deskProjects=null,room=null,pendingMove=null,linkClient=null,linkCfg={},linkState='',claudeChats=null;
+/** Claude chats → suit progress (src/main/claude-chats.js): the Claude Code chats on this computer, each with a progress card on the suit you link it to. */
+const NO_TOOLS={allow:[],deny:['Read','Write','Edit','Bash','Glob','Grep','NotebookEdit','WebSearch','WebFetch','Agent','Task']};
+const chatSuitName=s=>{try{return s?workstations.suit(s.id,s.theme)?.name||'':'';}catch{return '';}};
+function startClaudeChats(){
+  if(claudeChats||!fs.existsSync(chatsRoot()))return;   // no Claude Code chats on this computer
+  const work=path.join(userDir,'claude-chats-work');fs.mkdirSync(work,{recursive:true});
+  claudeChats=new ClaudeChats({dir:userDir,log:m=>log('claude-chats',m),onChange:()=>broadcast('core',{type:'claude-chats'}),
+    summarise:async({prompt})=>{   // Claude Code on your own plan when it is here and signed in, otherwise your Claude key
+      let why='Claude Code is not set up on this computer';
+      if((await detectClaudeCode()).ready)try{return (await callClaudeCode({settingsDir:userDir,cwd:work,model:'sonnet',maxTurns:2,timeoutMin:5,extraArgs:['--tools='],fence:NO_TOOLS,prompt})).text;}
+        catch(e){if(!/authenticat|oauth|log ?in|credential|unauthori[sz]ed/i.test(e.message))throw e;why='Claude Code needs signing in again on this computer (open a terminal, type claude, then /login)';}
+      const key=readTowerKey();if(!key)throw Error(`${why}, and it has no Claude key.`);
+      return (await callApi({key,model:tower.settings().plannerModel,maxTokens:1500,system:'You keep short progress cards. Reply with JSON only.',prompt})).text;}});
+  const tick=()=>claudeChats.tick(chatSuitName).then(askAboutChats).catch(e=>log('claude-chats',e.message));
+  setTimeout(tick,20000);setInterval(tick,60000);
+}
+/** A new chat with no suit yet: the hall asks which suit it is for (once; "Later" asks again in six hours). */
+function askAboutChats(){if(!claudeChats?.state.enabled||!mainReady)return;const c=claudeChats.toAsk()[0];if(!c)return;claudeChats.asked(c.id);broadcast('core',{type:'claude-chat-ask',chat:claudeChats.view(c)});}
 const ASK_ARG='--ask',ASK_ID='JARVIS.AskJarvis';
 /** Ask JARVIS's key: the one you chose, else the first of these that no other app holds. Ctrl+Alt+Space (1.94's choice) is the Claude app's quick entry. */
 const ASK_KEYS=['Control+Alt+Q','Control+Alt+K','Control+Shift+Alt+J'];let askKey='';
@@ -1537,6 +1556,19 @@ async function api(event,method,payload){
     case 'focus-stop':return talk('focus-stop');
     case 'focus-add':{if(!focusActive())return false;const add=Math.max(-60,Math.min(60,Number(payload)||0))*60000;const was=focus.until;focus.until=Math.max(Date.now()+60000,focus.until+add);focus.minutes=Math.max(1,Math.round(focus.minutes+(focus.until-was)/60000));   /*keep the session's total so the ring doesn't snap back to full */clearTimeout(focus.timer);focus.timer=setTimeout(()=>endFocus(),focus.until-Date.now());broadcast('focus',focusPayload());return focusPayload();}
     case 'focus-state':return focusPayload();
+    case 'claude-chats':return claudeChats?claudeChats.list():{enabled:false,chats:[],missing:true};
+    case 'claude-chat-suits':return workstations.themes.map(t=>({theme:t.id,hall:t.name,suits:workstations.modules(t.id).filter(m=>!m.isVehicle).map(m=>({id:m.id,name:m.name}))}));
+    case 'claude-chat-assign':{
+      if(!['main','settings'].includes(role))throw Error('Link chats from the hall.');if(!claudeChats)throw Error('There are no Claude chats on this computer.');
+      const suit=payload?.suit?{theme:String(payload.suit.theme||''),id:String(payload.suit.id||'')}:null;if(suit&&!chatSuitName(suit))throw Error('That suit is no longer in the hall.');
+      const r=claudeChats.assign(String(payload?.id||''),suit);
+      if(suit)claudeChats.update(r.id,chatSuitName(suit)).catch(e=>log('claude-chats',e.message));   // its first card, straight away
+      return r;
+    }
+    case 'claude-chat-later':{if(claudeChats&&typeof payload?.id==='string')claudeChats.asked(payload.id);return true;}
+    case 'claude-chat-update':{if(!claudeChats)throw Error('There are no Claude chats on this computer.');claudeChats.scan();const c=claudeChats.state.chats[String(payload?.id||'')];if(!c)throw Error('That Claude chat is no longer on this computer.');return claudeChats.update(c.id,chatSuitName(c.suit));}
+    case 'claude-chats-enabled':{if(!['main','settings'].includes(role))return false;return claudeChats?claudeChats.setEnabled(payload?.on!==false):false;}
+    case 'suit-claude':{const t=typeof payload?.theme==='string'?payload.theme:workstations.activeTheme;return claudeChats?claudeChats.forSuit(t,String(payload?.id||machine.value.selected||'')):[];}
     case 'suit-recap':return recapFor(String(payload||machine.value.selected||''));
     case 'suit-note':{const id=String(payload?.id||'');workstations.suit(id);visits.note(workstations.activeTheme,id,String(payload?.note||''));return recapFor(id);}
     case 'health':{const t=workstations.activeTheme;return healthCache[t]||await checkHealth(t);}
@@ -1828,6 +1860,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     startMicWatch();
     setTimeout(()=>{checkForUpdate().catch(()=>{});setInterval(()=>checkForUpdate().catch(()=>{}),6*3600e3);},60000);
     meetingFollowups=new MeetingFollowups({dir:userDir,todos,core:()=>core});
+    try{startClaudeChats();}catch(e){log('claude-chats',e.message);}
     callWatcher=new CallWatcher({scripts,tabs:()=>tabs,onEnd:()=>endMeeting(),log});
     tower=new TowerStore({dir:userDir,docs:app.getPath('documents')});towerRunner=new TowerRunner({store:tower,getKey:readTowerKey,onUpdate:towerUpdate,onDone:towerDone,log});setInterval(towerNightShift,30000);setTimeout(towerNightShift,20000);
     assistant=new IdeaAssistant({ideas:()=>ideas,tower:()=>tower,runner:()=>towerRunner,workstations:()=>workstations,board:t=>boardFor(t),readKey:readTowerKey,settings:()=>settings.get(),

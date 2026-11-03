@@ -744,3 +744,34 @@ listen.ps1 called `$recognizer.Constraints.Add(...)`, which Windows PowerShell 5
   - `weeklyReview` is async, and its caller catches failures.
 - **Tests.** `tests/server/server.test.mjs` asks the real server for `week-facts` (32 checks). `tests/frontend/weekly-1.105.0.test.mjs` covers the wiring, and that the Mac's meetings and spend reach the facts.
 - **JARVIS Server needs this update** (`src/brain/index.js`). Install now on the Mac (1.103.0 or later) updates it.
+
+## Release 1.106.0: Claude chats → suit progress
+
+- **The owner's request.** JARVIS should look through the Claude chats about tasks, keep a progress report for each (what's left, how far along), know which suit an open chat belongs to, and add the progress, the remaining questions and the tasks to that suit.
+- **The owner's choices.**
+  - Always ask which suit a new chat is for.
+  - Show the progress on the suit's card only.
+  - Write it with Claude Code on the owner's plan, falling back to the Claude key.
+- **Source.** The Claude Code chats saved on this computer, `~/.claude/projects/<folder>/<session>.jsonl`.
+  - The Claude app gives each chat a title (`custom-title` lines). Chats without one are skipped, and so are JARVIS's own runs: untitled, and in folders named `jarvis-fence`, `jv-sum`, `self-staging`, `JARVIS-Tower`, `claude-chats-work` or Temp.
+  - claude.ai web chats are not on this computer and can't be read.
+- **`src/main/claude-chats.js`.**
+  - **Reading.** `readChat` reads from the last offset, at most the last 4 MB. It keeps only `user` text and `assistant` text: no tool_use, tool_result, thinking, side chains or the app's `<system-reminder>`-style notes. The offset stops after the last complete line, so a line still being written is read whole next time.
+  - **The window.** Each chat keeps a rolling window of 60 turns or 40,000 characters.
+  - **Asking.** `toAsk` returns waiting chats not asked in the last six hours; "Not for a suit" is remembered.
+  - **When cards are written.** `due()`: chats with a suit and newer words than their card. An open chat (written to in the last 3 minutes) waits 10 minutes between cards, at most 40 cards a day.
+  - **The prompt.** `redact` blanks Anthropic, GitHub, AWS and Slack keys, Twilio account ids, `password: …`-style values, and long letter-and-digit strings, but keeps web addresses. The reply must be JSON.
+  - **Reading the reply.** `cardFrom` takes the whole `{…}`. The shared `extractJson` returned the first array inside it when there were words before the JSON, which the tests caught.
+  - **The card.** The task, a summary, percent clamped 0–100, done ≤ 6, left ≤ 8, questions ≤ 5, next ≤ 3. A failure is kept as `error` and shown on the card.
+- **main.js.**
+  - **The engine.** `startClaudeChats` runs if `~/.claude/projects` exists, scanning 20 s after start and then every minute. `summarise` uses Claude Code (tools off, cwd `<user>/claude-chats-work`). If that fails with an authentication error, or Claude Code isn't installed, it uses the Claude key, and otherwise gives a plain message.
+  - **Methods.** `claude-chats`, `claude-chat-suits`, `claude-chat-assign` (writes the first card straight away), `claude-chat-later`, `claude-chat-update`, `claude-chats-enabled` and `suit-claude`.
+  - **News.** Updates go out on the existing `core` channel (`claude-chat-ask`, `claude-chats`), so `preload.cjs` is unchanged.
+- **The screen (`dist/assets/claude-chats.js`, main view).**
+  - The ask card has the suits grouped by hall.
+  - A `.ws-claude` strip per linked chat (up to 3) sits after "Where you were" on the open suit and expands into the full card, with Update now and Unlink.
+  - A `CLAUDE` badge sits on the case of a suit whose chat is open, refreshed every 30 s.
+  - Checked on a test page in the browser with a pretend JARVIS: the ask card, linking, the strip, the open card and the badge.
+- **Found while testing.** The `claude` command line on the ZenBook has an expired sign-in ("OAuth session expired"). The release notes tell the owner to run `claude` then `/login`. Meeting notes and the Tower use it too.
+- **Tests.** `tests/frontend/claude-chats-1.106.0.test.mjs` (7 tests): reading only words, line by line; reading the card; redaction; titled chats only and own runs skipped; asking and "Later"; the card's limits, building on the last card, and timing for open and idle chats; the error shown and cleared; and the wiring.
+- **Not tested end to end with a real summary**, because Claude Code's sign-in had expired. A real chat was read: three titled chats found in about 60 ms, two of them open.
