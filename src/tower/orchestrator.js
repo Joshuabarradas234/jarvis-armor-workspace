@@ -104,7 +104,7 @@ export class TowerRunner {
     if(r.cost>=r.budget.perRun)throw overCap(r);
     const note = text => { const e = {t: Date.now(), text: String(text).slice(0, 300)}; if (step) { (step.log ||= []).push(e); step.log = step.log.slice(-60); } else if (desk) { desk.push(e); } this.emit(r); };
     const s = this.store.settings(), model = kind === 'work' ? s.workerModel : s.plannerModel;
-    let maxTokens = kind === 'review' ? 8000 : 5000, hold = 0;
+    let maxTokens = kind === 'review' ? 16000 : 8000, hold = 0;   // a week of posts with picture briefs runs long: the reviewer rewrites it all
     // Calls running side by side each hold what they may cost, so together they cannot run past the cap.
     // A call waits while the others finish; one call on its own may still start whenever the run is under its cap.
     if (!r.meetingWork && engine !== 'rehearsal') {

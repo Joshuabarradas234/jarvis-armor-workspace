@@ -1,5 +1,5 @@
 {
-  "version": "1.106.0",
+  "version": "1.106.1",
   "url": "https://github.com/Joshuabarradas234/jarvis-armor-workspace/releases/latest",
-  "notes": "JARVIS follows your Claude chats: each one gets a progress card on its suit, with what is left, questions for you and next steps."
+  "notes": "Long pieces of work from the Tower, like a fortnight of posts, are no longer cut off."
 }

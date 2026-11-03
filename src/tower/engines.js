@@ -27,7 +27,7 @@ export async function callApi({key, model, system, prompt, web = false, maxToken
     for (;;) {
       // stoppable by the user AND still timed out: a hung request used to hold the floor forever
       try {
-        res = await fetch(API_URL, {method: 'POST', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300000)]) : AbortSignal.timeout(300000),
+        res = await fetch(API_URL, {method: 'POST', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(Math.max(300000, maxTokens * 30))]) : AbortSignal.timeout(Math.max(300000, maxTokens * 30)),   /* a long answer needs longer: 30 ms a token, at least five minutes */
           headers: {'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01'}, body: JSON.stringify(body)});
       } catch (e) { if (signal?.aborted || tries++ >= retries) throw e; await new Promise(r => setTimeout(r, 4000 * tries)); continue; }   // a dropped connection is tried again too
       if ((res.status === 429 || res.status === 529 || res.status >= 500) && tries++ < retries) { await new Promise(r => setTimeout(r, 4000 * tries)); continue; }
