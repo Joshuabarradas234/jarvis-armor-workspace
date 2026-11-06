@@ -431,6 +431,98 @@ console.log('\n15. Second brain: email');
 { const found = await core.mail.recall(['invoice', 'overdue']); ok(found.some(m => m.kind === 'email' && /Invoice 2231/.test(m.title) && /overdue/.test(m.text)), `the second brain finds the overdue invoice email (${found.length} found)`);
   ok((await core.mail.recall(['zzqxj'])).length === 0, 'and nothing for a word no email has'); }
 
+console.log('\n16. The control deck for other apps (Floorboard)');
+{ const {WorkstationStore} = await import(pathToFileURL(B + '/workstations/store.js').href);
+  const {MissionStore} = await import(pathToFileURL(B + '/control/missions.js').href);
+  const {ControlServer} = await import(pathToFileURL(B + '/control/server.js').href);
+  const {DeckApi, artworkFolder} = await import(pathToFileURL(B + '/control/deck-api.js').href);
+  const {attentionItems} = await import(pathToFileURL(B + '/control/workbench.js').href);
+  const ws = new WorkstationStore({configFile: path.join(BUILD, 'config', 'themes.json'), dir: userDir});
+  const hall = ws.themes.find(t => tower.data.towers[t.id] && ws.modules(t.id).some(s => !s.isVehicle)).id, suit = ws.modules(hall).find(s => !s.isVehicle);
+  // a suit folder with one folder per client, like the agency's: numbered folders in one, none in the other
+  const agency = path.join(T, 'Agency'), art = path.join(T, 'drop');
+  for (const d of ['01 Brief and brand', '03 Social posts', '05 Campaigns', '07 From the Tower']) fs.mkdirSync(path.join(agency, 'Client A', d), {recursive: true});
+  fs.mkdirSync(path.join(agency, 'Client B'), {recursive: true}); fs.writeFileSync(path.join(agency, 'README.md'), '# Clients\n'); fs.mkdirSync(art, {recursive: true});
+  fs.writeFileSync(path.join(art, 'poster.png'), Buffer.from('89504e470d0a1a0a', 'hex')); fs.writeFileSync(path.join(art, 'notes.txt'), 'Use the red logo.\n');
+  fs.closeSync(fs.openSync(path.join(art, 'huge.png'), 'w')); fs.truncateSync(path.join(art, 'huge.png'), 21 * 1024 * 1024);
+  ws.saveSuit(suit.id, {folder: agency}, hall);
+  const fl = tower.addFloor(hall); tower.saveFloor(hall, {id: fl.id, name: 'Deck test', engine: 'rehearsal', budget: {perRun: 1, perDay: 5}});   // a rehearsal floor: no AI is called
+  const missions = new MissionStore({dir: userDir}), board = t => missions.board(t || hall, ws.modules(t || hall).map(m => ({id: m.id, index: m.index, name: m.name, isVehicle: m.isVehicle})));
+  const api = new DeckApi({tower: () => tower, runner: () => towerRunner, workstations: () => ws, attention: () => ({items: attentionItems({runs: tower.runs}), error: ''})});
+  api.seed();
+  const deck = new ControlServer({missions, runner: {stop() {}}, board, run: () => true, api, onClient: () => { const ev = api.attentionEvent(true); if (ev) deck.push(ev); }});
+  await deck.listen();
+  towerRunner.onUpdate = run => { const ev = api.towerEvent(run); if (ev) deck.push(ev); };   // what main.js's towerUpdate does
+  const file = path.join(userDir, 'deck.json'); deck.publish(file, '1.107.0');
+  const found = JSON.parse(fs.readFileSync(file, 'utf8')), K = found.token;
+  ok(found.port === deck.port && found.pid === process.pid && found.version === '1.107.0' && K === deck.appToken && K !== deck.token, 'deck.json: port, pid, version and a key of its own (not the deck page key)');
+  const call = (p, {key = K, body, method} = {}) => fetch(`http://127.0.0.1:${deck.port}${p}`, {method: method || (body ? 'POST' : 'GET'), headers: {'x-deck-key': key, 'content-type': 'application/json'}, body: body ? JSON.stringify(body) : undefined})
+    .then(async r => { const t = await r.text(); let json = null; try { json = JSON.parse(t); } catch {} return {status: r.status, json, text: t}; });
+  const evs = [], ac = new AbortController();
+  fetch(`http://127.0.0.1:${deck.port}/api/events`, {headers: {'x-deck-key': K}, signal: ac.signal}).then(async r => { const rd = r.body.getReader(); let buf = '';
+    for (;;) { const {value, done} = await rd.read(); if (done) break; buf += Buffer.from(value).toString(); let i; while ((i = buf.indexOf('\n\n')) >= 0) { const line = buf.slice(0, i).split('\n').find(l => l.startsWith('data: ')); buf = buf.slice(i + 2); if (line) evs.push(JSON.parse(line.slice(6))); } } }).catch(() => {});
+
+  ok((await call('/api/tower', {key: 'nope'})).status === 403 && (await fetch(`http://127.0.0.1:${deck.port}/api/tower?k=${K}`)).status === 403, 'no key, a wrong key, or the app key in the address: refused');
+  ok((await call(`/api/board?hall=${hall}`)).status === 403 && (await call('/api/bay', {body: {id: suit.id, patch: {agent: 'calc.exe'}}})).status === 403 && (await call('/', {})).status === 403, "the app key cannot open the bays, set an agent command or load the deck page");
+  const page = await call(`/api/board?hall=${hall}`, {key: deck.token});
+  ok(page.status === 200 && page.json.bays.some(b => b.id === suit.id) && (await fetch(`http://127.0.0.1:${deck.port}/?k=${deck.token}&hall=${hall}`)).status === 200, 'the deck page key still opens the deck and its bays, as before');
+  ok((await call('/api/tower/run')).status === 405, 'GET on a POST route: 405');
+
+  const suits = (await call('/api/suits')).json.suits, mine = suits.find(s => s.id === suit.id && s.hall === hall);
+  ok(mine && mine.folder === agency && JSON.stringify(mine.clients) === '["Client A","Client B"]' && suits.every(s => Array.isArray(s.clients)), `suits: ${suits.length}, with clients from the folder (${mine?.clients.join(', ')}); files are not clients`);
+
+  const now = Date.now(), fake = (id, status, at, extra = {}) => ({id, theme: hall, floorId: fl.id, floorName: 'Deck test', title: id, status, progress: 50, startedAt: at, endedAt: status === 'working' ? null : at + 60000, steps: [], ...extra});
+  const fakes = [fake('old-run', 'done', now - 72 * 3600e3), fake('swapped', 'restarted', now - 3600e3), fake('broke', 'failed', now - 7200e3, {error: 'The API said no.'}),
+    ...Array.from({length: 33}, (_, i) => fake(`recent-${i}`, 'done', now - 3 * 3600e3 - i * 60000))];
+  tower.runs.push(...fakes);
+  const tw = (await call('/api/tower')).json, broke = tw.runs.find(r => r.id === 'broke');
+  ok(tw.runs.length === 30 && !tw.runs.some(r => ['old-run', 'swapped'].includes(r.id)) && tw.runs.every((r, i) => !i || tw.runs[i - 1].startedAt >= r.startedAt), `tower: ${tw.runs.length} runs, newest first, nothing older than 48 h or replaced`);
+  ok(broke && broke.tower === hall && broke.floor === fl.id && broke.error === 'The API said no.' && /^Hit a problem/.test(broke.step) && broke.finishedAt && ['floorName', 'title', 'status', 'progress', 'updatedAt', 'startedAt'].every(k => k in broke), `a run's fields (step: "${broke?.step}")`);
+  ok(tw.floors.some(f => f.tower === hall && f.floor === fl.id && f.name === 'Deck test' && f.images === false), `floors: ${tw.floors.length}, and the rehearsal floor cannot open images`);
+  tower.runs = tower.runs.filter(r => !fakes.includes(r));
+  const att = (await call('/api/attention')).json;
+  ok(Array.isArray(att.items) && att.items.every(i => ['approval', 'blocked', 'finished', 'draft'].includes(i.kind) && 'title' in i && 'detail' in i && 'at' in i), `attention: ${att.items.length} items`);
+
+  const job = {suit: suit.id, client: 'Client A', floor: fl.id, task: 'Make three Instagram posts from this poster for the Christmas market', files: [path.join(art, 'poster.png'), path.join(art, 'notes.txt')]};
+  const bad = async (b, re, name) => { const r = await call('/api/tower/run', {body: b}); ok(r.status === 400 && re.test(r.json?.error), `${name} → ${r.json?.error}`); };
+  await bad({...job, files: []}, /at least one file/, 'no files');
+  await bad({...job, files: ['poster.png']}, /full paths/, 'a relative path');
+  await bad({...job, files: ['\\\\server\\share\\poster.png']}, /full paths/, 'a network path');
+  await bad({...job, files: [path.join(art, 'huge.png')]}, /over 20 MB/, 'a file over 20 MB');
+  await bad({...job, client: '..\\..\\Windows'}, /Choose one of/, 'a client that is not one of the folders');
+  await bad({...job, suit: 'no-such-suit'}, /Choose a suit/, 'an unknown suit');
+  await bad({...job, floor: 'nope'}, /Choose a floor/, 'an unknown floor');
+  const runsBefore = tower.runs.length;
+  const ask = (await call('/api/tower/run', {body: job})).json;
+  ok(ask.needsConfirm && !ask.canStart && ask.missing.includes('who this is for') && /Client A/.test(ask.summary) && /03 Social posts › Artwork \d{4}-\d\d-\d\d/.test(ask.summary) && /cannot open images/.test(ask.summary), `no confirm: a summary only — "${ask.summary.slice(0, 150)}…"`);
+  ok(tower.runs.length === runsBefore && !fs.existsSync(ask.folder) && ask.estimate.upToUsd === 0, 'and nothing started or copied');
+  await bad({...job, confirm: true}, /Add who this is for/, 'confirm with the brief incomplete');
+  const brief = {audience: 'Shoppers at the centre', constraints: 'none', finished: 'Three posts ready to approve'};
+  const yes = await call('/api/tower/run', {body: {...job, brief, confirm: true}});
+  const filed = yes.json?.filedIn || '', kdir = path.join(tower.folder(hall, tower.floor(hall, fl.id)), 'knowledge');
+  ok(yes.status === 200 && yes.json.ok && yes.json.runId && path.dirname(filed) === path.join(agency, 'Client A', '03 Social posts') && fs.existsSync(path.join(filed, 'poster.png')) && fs.existsSync(path.join(filed, 'notes.txt')), `confirm: started ${yes.json?.runId?.slice(0, 8)}, files filed in ${path.relative(agency, filed)}`);
+  const started = tower.runs.find(r => r.id === yes.json.runId);
+  ok(fs.existsSync(path.join(kdir, 'poster.png')) && started && /Shoppers/.test(started.brief.audience) && /poster\.png/.test(started.brief.files) && /\.\/knowledge\/poster\.png/.test(started.task) && /^Client A · Make three/.test(started.title),'and in the floor\'s knowledge, with a brief made from the job and the file list');
+  const busy = (await call('/api/tower/run', {body: {...job, brief}})).json;
+  ok(busy.needsConfirm && !busy.canStart && /already working/.test(busy.summary), 'a second job for the same floor while it works: cannot start yet');
+  const again = await tower.importKnowledge(hall, fl.id, [path.join(art, 'poster.png')]);
+  ok(again[0] === 'poster (1).png' && fs.existsSync(path.join(kdir, 'poster.png')), 'a second poster.png is kept beside the first, never over it');
+  const done = await until(() => evs.find(e => e.type === 'tower' && e.run.id === yes.json.runId && e.run.status === 'done'), 40000);
+  const seen = evs.filter(e => e.type === 'tower' && e.run.id === yes.json.runId).map(e => e.run.status);
+  ok(done && seen[0] === 'planning' && new Set(seen).size === seen.length && done.run.progress === 100, `events: the run's status changes, once each (${seen.join(' → ')})`);
+  ok(evs.some(e => e.type === 'attention' && Number.isInteger(e.count)), 'a new listener hears the attention count');
+  deck.push({hall}); await until(() => evs.some(e => e.hall === hall), 3000);
+  ok(evs.some(e => e.hall === hall && !e.type), 'the deck page\'s {hall} events still come through');
+  const cont = await call('/api/tower/continue', {body: {runId: yes.json.runId}});
+  ok(cont.status === 400 && /Only a run that stopped/.test(cont.json?.error), `continue a finished run → ${cont.json?.error}`);
+  towerRunner.onUpdate = () => {};
+  ac.abort(); deck.close();
+  ok(!fs.existsSync(file), 'deck.json is removed when the deck closes');
+  const day = new Date(2026, 10, 6), A = path.join(agency, 'Client A');
+  ok(path.relative(A, (await artworkFolder(A, 'A Christmas campaign flyer', day)).dir) === path.join('05 Campaigns', 'Artwork 2026-11-06') && path.relative(A, (await artworkFolder(A, 'Have a look at this', day)).dir) === path.join('01 Brief and brand', 'Artwork 2026-11-06')
+    && (await artworkFolder(path.join(agency, 'Client B'), 'posts', day)).dir === path.join(agency, 'Client B', 'Artwork 2026-11-06'), 'artwork goes to the numbered folder for the job, else brief and brand, else the client folder');
+}
+
 core.dispose();
 console.log(`\n${pass} passed, ${fail} failed. Claude calls: ${claude.log.length}. Twilio: ${tw.state.messages.length} messages, ${tw.state.calls.length} calls.`);
 process.exit(fail ? 1 : 0);

@@ -45,6 +45,7 @@ import {MissionStore} from '../control/missions.js';
 import {Workbench} from '../control/workbench.js';
 import {AgentRunner} from '../control/runner.js';
 import {ControlServer} from '../control/server.js';
+import {DeckApi} from '../control/deck-api.js';
 import {CalendarStore} from '../services/calendar.js';
 import {TodoStore} from '../services/todos.js';
 import {IdeaStore} from '../services/ideas.js';
@@ -207,7 +208,21 @@ function updateTray(){if(!tray)return;tray.setContextMenu(Menu.buildFromTemplate
   {type:'separator'},{label:'QUIT',click:()=>app.quit()}
 ]));}
 /** The control deck: every bay's objective, progress and agent, for the hall you are in. */
-let missions=null,runner=null,deck=null;
+let missions=null,runner=null,deck=null,deckApi=null;
+/** The work shelf: the attention list and saved page briefs. One copy, shared by the hall and the deck. */
+function bench(){if(!towerRunner||!tabs||!missions)throw Error('The workspace is still starting.');return workbench ||= new Workbench({dir:userDir,workstations,tower,runner:towerRunner,tabs,missions,core:()=>core});}
+/** Floorboard and other apps on this PC find the deck in deck.json: its port and their own key, which opens only the Tower, attention and suit routes. */
+function publishDeck(){
+  try{const f=deck.publish(path.join(userDir,'deck.json'),app.getVersion());
+    if(process.platform==='win32'){const who=process.env.USERDOMAIN&&process.env.USERNAME?`${process.env.USERDOMAIN}\\${process.env.USERNAME}`:os.userInfo().username;execFile('icacls',[f,'/inheritance:r','/grant:r',`${who}:F`],{windowsHide:true},e=>{if(e)log('control',`deck.json keeps its folder's permissions: ${e.message.split('\n')[0]}`);});}   // only you, not every admin and service
+  }catch(e){log('control',`Could not write deck.json: ${e.message}`);}
+}
+/** News for other apps on the event stream: a Tower run changed status, the attention list changed size, the day's brief is ready. */
+function deckTower(run){try{const ev=deckApi?.towerEvent(run);if(ev)deck?.push(ev);}catch(e){log('control',e.message);}deckAttention();}
+let deckAttnTimer=null,deckAttnAll=false;
+function deckAttention(all=false){deckAttnAll||=all;clearTimeout(deckAttnTimer);deckAttnTimer=setTimeout(()=>{const each=deckAttnAll;deckAttnAll=false;if(!deck?.clients.size)return;try{const ev=deckApi.attentionEvent(each);if(ev)deck.push(ev);}catch{}},deckAttnAll?50:800);}   // all: a new listener hears the count straight away
+function withWeather(spoken,w){return w?spoken.replace(/^(Good \w+, [^.]+\.)/,`$1 It's ${w.temp} degrees${w.words?' and '+w.words:''}${w.place?' in '+w.place:''}.`):spoken;}
+function deckBrief(title='Morning brief'){if(!deck)return;(async()=>{const text=title==='Morning brief'?withWeather(briefingData('briefing').spoken,await briefWeather().catch(()=>null)):'Your weekly review is ready in JARVIS: the last seven days and the next seven.';deck.push({type:'brief',title,text,at:Date.now()});})().catch(e=>log('control',e.message));}
 function boardFor(themeId){
   const id=themeId||workstations.activeTheme;
   return missions.board(id,workstations.modules(id).map(m=>({id:m.id,index:m.index,name:m.name,isVehicle:m.isVehicle})));
@@ -228,7 +243,7 @@ function runBay(themeId,suitId){
 const lastSpoken=new Map();      // so one finish is announced once, not on every update
 function deckUpdate(themeId,suitId){
   broadcast('board',{theme:themeId,id:suitId,bays:boardFor(themeId)});
-  deck?.push({hall:themeId});
+  deck?.push({hall:themeId});deckAttention();
   announceBay(themeId,suitId);
 }
 /** Say when an agent finishes or fails. Short, and only for the hall you are standing in. */
@@ -379,7 +394,7 @@ function talk(action,cmd={}){
   if(action==='briefing'&&!cmd.plain){cinemaBrief().catch(e=>{log('briefing',e.message);talk('briefing',{plain:true});});return true;}   // the plain card if the cinematic one fails
   if(action==='briefing'||action==='status'){
     (async()=>{const b=briefingData(action);
-      if(action==='briefing'){const w=await briefWeather();if(w){b.weather=w;const line=`It's ${w.temp} degrees${w.words?' and '+w.words:''}${w.place?' in '+w.place:''}.`;b.spoken=b.spoken.replace(/^(Good \w+, [^.]+\.)/,`$1 ${line}`);}}
+      if(action==='briefing'){const w=await briefWeather();if(w){b.weather=w;b.spoken=withWeather(b.spoken,w);}}
       broadcast('briefing',b);say(b.spoken);})().catch(e=>log('briefing',e.message));
     return true;
   }
@@ -711,9 +726,9 @@ function scheduleHealth(){clearTimeout(healthTimer);healthTimer=setTimeout(()=>{
 /** First time JARVIS wakes each day: the full briefing, once the welcome line has finished. */
 function morningBrief(){
   const day=new Date().toDateString(),wait=Math.max(1500,(voice?.suppressedUntil||0)-Date.now()+700);
-  if(reviewDue(new Date(),visits.get('__','weekly').day)){visits.set('__','briefed',{day});visits.set('__','weekly',{day:weekDay(Date.now())});setTimeout(()=>{if(['ARMOR_HALL','SUIT_HOVER','MODULE'].includes(machine.value.state))talk('weekly-review');},wait);return;}   // Sunday evening: the week instead of the day
+  if(reviewDue(new Date(),visits.get('__','weekly').day)){visits.set('__','briefed',{day});visits.set('__','weekly',{day:weekDay(Date.now())});deckBrief('Weekly review');setTimeout(()=>{if(['ARMOR_HALL','SUIT_HOVER','MODULE'].includes(machine.value.state))talk('weekly-review');},wait);return;}   // Sunday evening: the week instead of the day
   if(visits.get('__','briefed').day===day)return;
-  visits.set('__','briefed',{day});
+  visits.set('__','briefed',{day});deckBrief();
   setTimeout(()=>{if(['ARMOR_HALL','SUIT_HOVER','MODULE'].includes(machine.value.state))talk('briefing');},Math.max(1500,(voice?.suppressedUntil||0)-Date.now()+700));
 }
 /* ---------- the tower: agent floors in each hall's building ---------- */
@@ -750,6 +765,7 @@ async function towerNightShift(){
 }
 const towerAnnounced=new Set();
 function towerUpdate(run){
+  deckTower(run);
   const final=['done','failed','stopped','budget','needs_changes','needs_brief'].includes(run.status);
   if(!final)towerAnnounced.delete(run.id);   // a continued run is announced again when it ends
   towerLatest.set(run.id,run);
@@ -1414,8 +1430,7 @@ async function api(event,method,payload){
     case 'desk-photo': {if(role!=='main'||!core)throw Error('Open Work desk on the main screen.');const r=await dialog.showOpenDialog({title:'File a receipt, whiteboard or business card',properties:['openFile'],filters:[{name:'Photos',extensions:['png','jpg','jpeg']}]});if(r.canceled)return null;const f=r.filePaths[0];if(fs.statSync(f).size>4*1024*1024)throw Error('Photo must be below 4 MB.');return core.photos.import(fs.readFileSync(f),/\.png$/i.test(f)?'image/png':'image/jpeg');}
     case 'workbench':{
       if(role!=='main')throw Error('Open the work shelf on the main screen.');
-      if(!towerRunner||!tabs||!missions)throw Error('The workspace is still starting.');
-      workbench ||= new Workbench({dir:userDir,workstations,tower,runner:towerRunner,tabs,missions,core:()=>core});
+      bench();
       const p=payload||{};
       if(p.action==='attention')return workbench.attention();
       if(p.action==='options')return workbench.options();
@@ -1831,8 +1846,9 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     modules=workstations.modules();
     missions=new MissionStore({dir:userDir});
     runner=new AgentRunner({missions,onUpdate:deckUpdate,onBuild:()=>broadcast('core',{type:'reaction',kind:'build-passed',at:Date.now()}),log});
-    deck=new ControlServer({missions,runner,board:boardFor,run:runBay,changed:t=>{try{if(workstations.themes.some(x=>x.id===t))broadcast('board',{theme:t,bays:boardFor(t)});}catch(e){log('control',e.message);}},hallName:id=>{try{return workstations.theme(id).name;}catch{return id;}},log});
-    await deck.listen();
+    deckApi=new DeckApi({tower:()=>tower,runner:()=>towerRunner,workstations:()=>workstations,attention:()=>bench().attention(),log});
+    deck=new ControlServer({missions,runner,board:boardFor,run:runBay,changed:t=>{try{if(workstations.themes.some(x=>x.id===t))broadcast('board',{theme:t,bays:boardFor(t)});}catch(e){log('control',e.message);}},hallName:id=>{try{return workstations.theme(id).name;}catch{return id;}},api:deckApi,onClient:()=>deckAttention(true),log});
+    await deck.listen();publishDeck();setInterval(()=>deckAttention(),15000);   // approvals and meeting cards change the attention list too
     voice=new WindowsVoice({scripts,assets,media:mediaDir(),dir:userDir,helper:app.isPackaged?path.join(process.resourcesPath,'mac','jarvis-listen'):path.join(baseRoot,'release','mac-helper','jarvis-listen'),grammar:()=>buildGrammar(voiceContext()),names:()=>spokenNames(voiceContext()),onClap:()=>{if(machine?.value?.state==='IDLE'){log('voice','double clap: waking');dispatch('wake');}},onMeter:m=>{broadcast('voice-meter',{level:voice.level,detected:!!m.detected,recognizer:voice.recognizer,audioState:voice.audioState});},onCommand:(text,confidence,rejected,meta={})=>{const heard=text||rejected||'';let command=text?parseCommand(text,voiceContext()):null;let handled=false,why='';if(text)lastUserAction=Date.now();
       // a quieter, less certain match still counts when it starts or ends with the assistant's name (or JARVIS has just answered you)
       if(command&&meta.low){const ctx=voiceContext();const nm=clean(ctx.theme?.assistant||'');const t=clean(text);const named=!!nm&&[nm,...(NAME_ALIASES[nm]||[])].some(n=>t===n||t.startsWith(n+' ')||t.endsWith(' '+n));if(!named&&!(ctx.follow&&confidence>=0.25)){command=null;why='unsure';}}
@@ -1862,7 +1878,7 @@ if(!smoke&&!app.requestSingleInstanceLock()){app.quit();}else{
     meetingFollowups=new MeetingFollowups({dir:userDir,todos,core:()=>core});
     try{startClaudeChats();}catch(e){log('claude-chats',e.message);}
     callWatcher=new CallWatcher({scripts,tabs:()=>tabs,onEnd:()=>endMeeting(),log});
-    tower=new TowerStore({dir:userDir,docs:app.getPath('documents')});towerRunner=new TowerRunner({store:tower,getKey:readTowerKey,onUpdate:towerUpdate,onDone:towerDone,log});setInterval(towerNightShift,30000);setTimeout(towerNightShift,20000);
+    tower=new TowerStore({dir:userDir,docs:app.getPath('documents')});towerRunner=new TowerRunner({store:tower,getKey:readTowerKey,onUpdate:towerUpdate,onDone:towerDone,log});deckApi.seed();setInterval(towerNightShift,30000);setTimeout(towerNightShift,20000);
     assistant=new IdeaAssistant({ideas:()=>ideas,tower:()=>tower,runner:()=>towerRunner,workstations:()=>workstations,board:t=>boardFor(t),readKey:readTowerKey,settings:()=>settings.get(),
       dir:userDir,appRoot:root,desktop:app.getPath('desktop'),log,broadcast,say:t=>say(t),addr:()=>addr(),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},notify:(title,body)=>{try{if(Notification.isSupported()&&!focusActive()&&!meetings?.active)new Notification({title,body}).show();}catch{}}});
     look=new ScreenLook({capture:captureScreen,log:m=>log('look',m),say:t=>say(t),spent:(usd,kind)=>{try{core?.store?.addSpend(usd,kind);}catch{}},

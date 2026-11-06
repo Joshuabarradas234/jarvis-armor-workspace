@@ -1,10 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {writeJson} from '../brain/util.js';
+import {writeJson, replaceFile} from '../brain/util.js';
 import {SEED} from './seed.js';
 import {briefOf, usefulness} from './productivity.js';
 import {captureSkill,matchSkills,skillPage,setSkillEnabled,recordStats} from './skills.js';
+
+export const KNOWLEDGE_MAX = 20 * 1024 * 1024;
+/** Copy a file into a folder without replacing anything there ("poster (1).png" when "poster.png" exists). Resolves to the name used. */
+export async function copyUnique(from, dir) {
+  const ext = path.extname(from), stem = path.basename(from, ext);
+  let name = stem + ext;
+  for (let n = 1; await fs.promises.access(path.join(dir, name)).then(() => true, () => false); n++) { if (n > 500) throw Error(`Too many files called ${stem + ext}.`); name = `${stem} (${n})${ext}`; }
+  const to = path.join(dir, name), tmp = `${to}.${process.pid}.part`;
+  try { await fs.promises.copyFile(from, tmp); } catch (e) { await fs.promises.rm(tmp, {force: true}).catch(() => {}); throw e; }
+  replaceFile(tmp, to); return name;
+}
 
 const ROLES = ['lead', 'specialist', 'reviewer'];
 const ENGINES = ['auto', 'api', 'claude-code', 'rehearsal'];
@@ -86,10 +97,17 @@ export class TowerStore {
   addKnowledge(theme, floorId, files) {
     const floor = this.floor(theme, floorId); const dir = path.join(this.folder(theme, floor), 'knowledge');
     for (const f of files) {
-      const st = fs.statSync(f); if (!st.isFile()) continue; if (st.size > 20 * 1024 * 1024) throw Error(`${path.basename(f)} is over 20 MB.`);
+      const st = fs.statSync(f); if (!st.isFile()) continue; if (st.size > KNOWLEDGE_MAX) throw Error(`${path.basename(f)} is over 20 MB.`);
       fs.copyFileSync(f, path.join(dir, path.basename(f)));
     }
     return this.knowledge(theme, floor);
+  }
+  /** The same rules as addKnowledge, for files another app sends: nothing already there is replaced. Resolves to the names used. */
+  async importKnowledge(theme, floorId, files) {
+    const floor = this.floor(theme, floorId); const dir = path.join(this.folder(theme, floor), 'knowledge');
+    for (const f of files) { const st = await fs.promises.stat(f); if (!st.isFile()) throw Error(`${path.basename(f)} is not a file.`); if (st.size > KNOWLEDGE_MAX) throw Error(`${path.basename(f)} is over 20 MB.`); }
+    const names = []; for (const f of files) names.push(await copyUnique(f, dir));
+    return names;
   }
   removeKnowledge(theme, floorId, name) {
     const floor = this.floor(theme, floorId); const dir = path.join(this.folder(theme, floor), 'knowledge');
