@@ -62,7 +62,9 @@ export class ControlServer {
     // the browser asks for this on its own and carries no key; answering it keeps the console clean
     if (u.pathname === '/favicon.ico') { res.writeHead(204).end(); return; }
     const full = same(u.searchParams.get('k'), this.token) || same(req.headers['x-deck-key'], this.token);
-    if (!full && !(OUTSIDE.has(u.pathname) && same(req.headers['x-deck-key'], this.appToken))) {
+    // another app must also name this computer, which a web page reaching here through DNS rebinding cannot
+    const here = [`127.0.0.1:${this.port}`, `localhost:${this.port}`].includes(String(req.headers.host || '').toLowerCase());
+    if (!full && !(OUTSIDE.has(u.pathname) && here && same(req.headers['x-deck-key'], this.appToken))) {
       res.writeHead(403).end('forbidden'); return;
     }
     const hall = u.searchParams.get('hall') || '';

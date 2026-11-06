@@ -11,6 +11,10 @@ import {copyUnique} from '../tower/store.js';
 const LIVE = ['queued', 'planning', 'working', 'reviewing'];
 const RECENT = 48 * 3600e3, MAX_FILE = 20 * 1024 * 1024;
 const IMAGE = /\.(png|jpe?g|gif|webp)$/i;   // what Claude Code's Read tool can look at
+// what the Tower inlines from knowledge (orchestrator.js TEXT_EXT): dropped text goes to the run as input instead, so it never
+// pushes a floor's standing knowledge (Clients.md, House rules.md…) out of the 14,000-character budget
+const TEXT = /\.(md|txt|csv|json|html?|js|ts|py|ya?ml|xml|log|ini|toml|sql|css)$/i;
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const FILLER = new Set(['from', 'this', 'that', 'these', 'those', 'with', 'into', 'make', 'have', 'will', 'them', 'they', 'some', 'what', 'when', 'please', 'their', 'your', 'about', 'using']);
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const usd = n => '$' + Math.max(0, n).toFixed(2);
@@ -43,13 +47,14 @@ export function runRow(r) {
     updatedAt: Math.max(0, ...times), startedAt: r.startedAt || null, finishedAt: LIVE.includes(r.status) ? null : r.endedAt || null, error: r.error || null};
 }
 
-/** The immediate subfolders of a folder, by name. A slow or missing drive gives an empty list rather than a hang. */
-export async function subfolders(folder, ms = 4000) {
-  if (typeof folder !== 'string' || !path.isAbsolute(folder)) return [];
-  const read = fs.promises.readdir(folder, {withFileTypes: true}).then(d => d.filter(e => e.isDirectory() && !e.name.startsWith('.')).map(e => e.name).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base', numeric: true}))).catch(() => []);
-  let timer; const late = new Promise(r => { timer = setTimeout(() => r([]), ms); });
+/** The immediate subfolders of a folder, by name; null when it cannot be read in time (a Mac share that has dropped), rather than a hang. */
+export async function listDirs(folder, ms = 4000) {
+  if (typeof folder !== 'string' || !path.isAbsolute(folder)) return null;
+  const read = fs.promises.readdir(folder, {withFileTypes: true}).then(d => d.filter(e => e.isDirectory() && !e.name.startsWith('.')).map(e => e.name).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base', numeric: true}))).catch(() => null);
+  let timer; const late = new Promise(r => { timer = setTimeout(() => r(null), ms); });
   try { return await Promise.race([read, late]); } finally { clearTimeout(timer); }
 }
+export const subfolders = async (folder, ms) => (await listDirs(folder, ms)) || [];
 
 /** Words that say what a client's numbered folder holds, so dropped artwork lands next to the work it is for. */
 const GROUPS = {social: ['social', 'post', 'instagram', 'insta', 'facebook', 'tiktok', 'linkedin', 'caption', 'story', 'stories', 'reel', 'feed', 'carousel'],
@@ -64,12 +69,27 @@ const groupsOf = s => new Set(String(s).toLowerCase().split(/[^a-z]+/).map(w => 
  * fits the job (social posts, campaigns, website…), else inside the brand or artwork folder, else in the client folder itself.
  */
 export async function artworkFolder(clientDir, task, day = new Date()) {
-  const stamp = `Artwork ${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+  const stamp = `Artwork ${ymd(day)}`;
   const want = groupsOf(task);
   const score = name => { const g = groupsOf(name.replace(/^\d+[\s._-]+/, '')); return [...g].filter(x => want.has(x)).length * 4 + (g.has('art') ? 2 : 0) + (g.has('brand') ? 1 : 0); };
   const best = (await subfolders(clientDir)).filter(n => /^\d{1,3}[\s._-]+\S/.test(n)).map(n => [n, score(n)]).sort((a, b) => b[1] - a[1])[0];
   const into = best?.[1] > 0 ? best[0] : '';
   return {dir: path.join(clientDir, into, stamp), parts: [into, stamp].filter(Boolean)};
+}
+
+const add = (...parts) => parts.filter(Boolean).join('\n');
+const fileLine = (names, texts, where) => [names.length ? `For this job, in the floor's knowledge folder: ${names.map(n => path.basename(n)).join(', ')}.` : '',
+  texts.length ? `The text of ${texts.map(f => path.basename(f)).join(', ')} is in the input.` : '', `Also filed in ${where}.`].filter(Boolean).join(' ');
+/** The start of each dropped text file (12,000 characters each, 30,000 in all), for the run's input. */
+async function readTexts(files) {
+  let out = '';
+  for (const f of files) {
+    const room = Math.min(12000, 30000 - out.length); if (room < 200) break;
+    const fh = await fs.promises.open(f, 'r');
+    try { const buf = Buffer.alloc(room * 4), {bytesRead} = await fh.read(buf, 0, buf.length, 0); out += `### ${path.basename(f)}\n${buf.toString('utf8', 0, bytesRead).slice(0, room).trim()}\n\n`; }
+    finally { await fh.close(); }
+  }
+  return out.trim();
 }
 
 /** Can this floor's team open images? Only agents working in Claude Code can. */
@@ -107,7 +127,7 @@ export class DeckApi {
   async suits() {
     const ws = this.need('workstations');
     const list = ws.themes.flatMap(t => ws.modules(t.id).filter(s => !s.isVehicle).map(s => ({id: s.id, name: s.name, hall: t.id, hallName: t.name, folder: s.folder || ''})));
-    return {suits: await Promise.all(list.map(async s => ({...s, clients: await subfolders(s.folder)})))};
+    return {suits: await Promise.all(list.map(async s => { const dirs = await listDirs(s.folder); return {...s, clients: dirs || [], reachable: dirs !== null}; }))};
   }
 
   /** Check a job and work out what it would do. Throws on anything malformed; `blocked` says why a good job cannot start yet. */
@@ -121,8 +141,10 @@ export class DeckApi {
     const suit = halls.flatMap(t => ws.modules(t.id)).find(s => !s.isVehicle && (s.id === b.suit || (typeof b.suit === 'string' && same(s.name, b.suit))));
     if (!suit) throw Error('Choose a suit from the list.');
     if (!suit.folder) throw Error(`${suit.name} has no folder yet. Give it one in JARVIS settings.`);
-    const clients = await subfolders(suit.folder);
-    if (!clients.length) throw Error(`${suit.name}'s folder has no client folders, or JARVIS cannot open it.`);
+    const clients = await listDirs(suit.folder);
+    if (!clients) { const drive = path.parse(suit.folder).root.replace(/\\$/, ''), local = same(drive, process.env.SystemDrive || 'C:');
+      throw Error(`${suit.name}'s folder (${suit.folder}) can't be reached. ${local ? 'Check it is still there, or choose its folder again in JARVIS settings.' : `Is the Mac on, with ${drive} connected?`} Nothing was copied or started.`); }
+    if (!clients.length) throw Error(`${suit.name}'s folder has no client folders yet.`);
     const client = clients.find(c => c === b.client) || clients.find(c => same(c, b.client));
     if (!client) throw Error(`Choose one of ${suit.name}'s clients.`);
 
@@ -151,11 +173,15 @@ export class DeckApi {
       if (!floor) throw Error(`${tw.name} has no floors yet.`);
     }
 
+    // a blank field would blank the floor's standing brief (floors 30 and 31 carry one), so only filled ones go in;
+    // files and constraints add to the standing text (Clients.md, House rules.md; drafts only, [TO CONFIRM]…) rather than replace it
     const given = b.brief && typeof b.brief === 'object' && !Array.isArray(b.brief) ? b.brief : {};
-    const pick = Object.fromEntries(['outcome', 'audience', 'constraints', 'finished'].filter(k => typeof given[k] === 'string' && given[k].trim()).map(k => [k, given[k]]));
-    const target = await artworkFolder(path.join(suit.folder, client), task);
-    const where = [client, ...target.parts].join(' › ');
-    const brief = briefOf({...floor.taskBrief, ...pick, outcome: pick.outcome || task, files: `${files.map(f => path.basename(f)).join(', ')}, in the floor's knowledge folder (also filed in ${where}).`});
+    const pick = Object.fromEntries(['outcome', 'audience', 'constraints', 'finished'].filter(k => typeof given[k] === 'string' && given[k].trim()).map(k => [k, given[k].trim()]));
+    const day = new Date(), target = await artworkFolder(path.join(suit.folder, client), task, day);
+    const where = [client, ...target.parts].join(' › '), prefix = `${ymd(day)} ${clip(client, 40)} - `;
+    const texts = files.filter(f => TEXT.test(f)), shown = files.filter(f => !TEXT.test(f));
+    const brief = briefOf({...floor.taskBrief, ...pick, outcome: pick.outcome || task, files: add(floor.taskBrief?.files, fileLine(shown.map(f => prefix + path.basename(f)), texts, where)),
+      constraints: add(floor.taskBrief?.constraints, pick.constraints && `For this job: ${pick.constraints}`)});
     const missing = briefGaps(brief);
 
     const sees = seesImages(runner, floor, eng), busy = runner.active(theme).some(r => r.floorId === floor.id);
@@ -169,14 +195,16 @@ export class DeckApi {
     const n = files.length, names = files.map(f => path.basename(f));
     const summary = [
       `${tw.name}, floor ${floor.number} ${floor.name}, will work on “${clip(task, 120)}” for ${client} (${suit.name}).`,
-      `${n === 1 ? 'The file' : `The ${n} files`} (${clip(names.join(', '), 200)}) ${n === 1 ? 'goes' : 'go'} into ${where} and the floor's knowledge.`,
+      `${n === 1 ? 'The file' : `The ${n} files`} (${clip(names.join(', '), 200)}) ${n === 1 ? 'goes' : 'go'} into ${where}.`,
+      shown.length ? `The floor's knowledge gets ${shown.length === 1 ? 'a copy' : 'copies'} named like “${prefix}${path.basename(shown[0])}”.` : '',
+      texts.length ? `The text of ${and(texts.map(f => path.basename(f)))} goes to the team with the brief.` : '',
       !images.length ? '' : sees ? 'Its agents can open the images.'
         : `${rehearsal ? 'Its agents only rehearse, so they' : eng.claudeCode.ready ? 'Its agents work through the Claude API, so they' : 'Claude Code is not set up on this computer, so its agents'} cannot open images: they will go on the file names and your brief.${other ? ` ${other.name} can open them.` : ''}`,
       rehearsal ? 'This floor only rehearses: placeholder work, no AI and no cost.' : `Up to about ${usd(upTo)} for this run, with ${usd(left)} of today's ${usd(floor.budget.perDay)} left on this floor.`,
       next ? `When it is done, ${next.name} takes it on, within its own caps.` : '',
       blocked ? `Before it can start: ${blocked}` : 'Nothing is sent or posted: anything to send waits for your OK in JARVIS.',
     ].filter(Boolean).join(' ');
-    return {store, runner, theme, tw, suit, client, floor, files, images, sees, brief, missing, blocked, target, where, summary, estimate: {upToUsd: rehearsal ? 0 : cents(upTo), leftTodayUsd: cents(left)}};
+    return {store, runner, theme, tw, suit, client, floor, files, shown, texts, prefix, images, sees, brief, missing, blocked, target, where, summary, estimate: {upToUsd: rehearsal ? 0 : cents(upTo), leftTodayUsd: cents(left)}};
   }
 
   /** Floorboard's "start this": first a summary to confirm, then (confirm:true) the files are filed and the run starts. */
@@ -184,13 +212,15 @@ export class DeckApi {
     const p = await this.plan(b);
     if (b.confirm !== true) return {needsConfirm: true, summary: p.summary, estimate: p.estimate, canStart: !p.blocked, missing: p.missing, floor: {tower: p.theme, floor: p.floor.id, name: p.floor.name}, folder: p.target.dir};
     if (p.blocked) throw Error(p.blocked);
-    await fs.promises.mkdir(p.target.dir, {recursive: true});
-    for (const f of p.files) await copyUnique(f, p.target.dir);
-    const names = await p.store.importKnowledge(p.theme, p.floor.id, p.files);
-    const brief = {...p.brief, files: `${names.join(', ')}, in the floor's knowledge folder (also filed in ${p.where}).`};
+    try { await fs.promises.mkdir(p.target.dir, {recursive: true}); for (const f of p.files) await copyUnique(f, p.target.dir); }
+    catch (e) { throw Error(`Could not copy the files into ${p.where} (${e.message}). Nothing was started.`); }
+    const names = await p.store.importKnowledge(p.theme, p.floor.id, p.shown, {prefix: p.prefix}), input = await readTexts(p.texts);
+    const brief = {...p.brief, files: add(p.floor.taskBrief?.files, fileLine(names, p.texts, p.where))};
     const look = p.sees ? ' Agents working in Claude Code: open each one with the Read tool before you start.' : p.images.length ? ' These agents cannot open images: work from the file names and the brief, and say what you could not check.' : '';
-    const task = `${b.task.trim()}\n\nClient: ${p.client} (${p.suit.name}).\nArtwork from the owner, in the floor's knowledge folder: ${names.map(n => './knowledge/' + n).join(', ')}.${look}`;
-    const run = await p.runner.start(p.theme, p.floor.id, task, {brief, title: `${p.client} · ${b.task.trim().split(/\r?\n/)[0]}`});   // a run title loses any colon (it names the run's folder)
+    const task = [`${b.task.trim()}\n`, `Client: ${p.client} (${p.suit.name}).`, names.length ? `Files from the owner, in the floor's knowledge folder: ${names.map(n => './knowledge/' + n).join(', ')}.${look}` : '',
+      input ? 'The text of the owner\'s text files is in the input below.' : ''].filter(Boolean).join('\n');
+    const run = await p.runner.start(p.theme, p.floor.id, task, {brief, title: `${p.client} · ${b.task.trim().split(/\r?\n/)[0]}`,   // a run title loses any colon (it names the run's folder)
+      ...(input ? {input, from: {floorName: 'owner-dropped files'}} : {})});
     this.log('control', `Another app started "${run.title}" on ${p.floor.name}.`);
     return {ok: true, runId: run.id, status: run.status, filedIn: p.target.dir};
   }
