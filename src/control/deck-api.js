@@ -137,7 +137,8 @@ export class DeckApi {
       if (st.size > MAX_FILE) throw Error(`${path.basename(f)} is over 20 MB.`);
     }
 
-    const theme = typeof b.tower === 'string' && b.tower ? (Object.keys(store.data.towers).find(id => id === b.tower || same(store.data.towers[id].name, b.tower)) || b.tower) : suit.theme;
+    const theme = b.tower ? Object.keys(store.data.towers).find(id => id === b.tower || same(store.data.towers[id].name, b.tower)) : suit.theme;
+    if (!theme) throw Error('Choose a tower from the list.');
     const tw = store.tower(theme), eng = await runner.engines(), images = files.filter(f => IMAGE.test(f));
     let floor;
     if (b.floor !== undefined && b.floor !== '') {

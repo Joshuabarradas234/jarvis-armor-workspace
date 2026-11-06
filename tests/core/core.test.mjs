@@ -492,6 +492,7 @@ console.log('\n16. The control deck for other apps (Floorboard)');
   await bad({...job, client: '..\\..\\Windows'}, /Choose one of/, 'a client that is not one of the folders');
   await bad({...job, suit: 'no-such-suit'}, /Choose a suit/, 'an unknown suit');
   await bad({...job, floor: 'nope'}, /Choose a floor/, 'an unknown floor');
+  await bad({...job, tower: '__proto__'}, /Choose a tower/, 'an unknown tower');
   const runsBefore = tower.runs.length;
   const ask = (await call('/api/tower/run', {body: job})).json;
   ok(ask.needsConfirm && !ask.canStart && ask.missing.includes('who this is for') && /Client A/.test(ask.summary) && /03 Social posts › Artwork \d{4}-\d\d-\d\d/.test(ask.summary) && /cannot open images/.test(ask.summary), `no confirm: a summary only — "${ask.summary.slice(0, 150)}…"`);
