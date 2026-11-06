@@ -1,18 +1,27 @@
+import fs from 'node:fs';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import {replaceFile} from '../brain/util.js';
+
+/** What another app's key opens (deck.json): the Tower, the attention list, suits and the event stream. Never the bays. */
+const OUTSIDE = new Set(['/api/events', '/api/tower', '/api/attention', '/api/suits', '/api/tower/run', '/api/tower/continue']);
+const same = (a, b) => { const x = Buffer.from(typeof a === 'string' ? a : ''), y = Buffer.from(b); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 /**
  * A small server on the loopback interface only. The control deck is a normal
  * web page so it can live in a bay's tab, and a bay tab has no IPC bridge.
  * Every request must carry the token, so nothing else on the machine can read
- * or drive it.
+ * or drive it. Other apps on this computer (Floorboard) get a second key in
+ * deck.json that opens only the routes in OUTSIDE.
  */
 export class ControlServer {
-  constructor({ missions, runner, board, run, hallName, changed, log }) {
+  constructor({ missions, runner, board, run, hallName, changed, api, onClient, log }) {
     Object.assign(this, { missions, runner, board, run, log: log || (() => {}) });
     this.changed = changed || (() => {});   // tells the JARVIS screens that a bay was edited here
     this.hallName = hallName || (id => id);
+    this.api = api || null; this.onClient = onClient || (() => {});
     this.token = crypto.randomBytes(24).toString('hex');
+    this.appToken = crypto.randomBytes(24).toString('hex');
     this.clients = new Set();
     this.port = null;
   }
@@ -23,11 +32,24 @@ export class ControlServer {
     this.server = http.createServer((req, res) => this.route(req, res));
     await new Promise(resolve => this.server.listen(0, '127.0.0.1', resolve));
     this.port = this.server.address().port;
+    // a comment line now and then keeps a quiet event stream open and drops listeners that have gone
+    this.beat = setInterval(() => { for (const c of this.clients) { try { c.write(': ping\n\n'); } catch { this.clients.delete(c); } } }, 25000); this.beat.unref?.();
     this.log('control', `deck on 127.0.0.1:${this.port}`);
     return this.port;
   }
 
-  close() { for (const c of this.clients) { try { c.end(); } catch { /* going down */ } } this.server?.close(); }
+  /** Tell other apps where the deck is: deck.json, written only for this user, gone when JARVIS quits. */
+  publish(file, version) {
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({port: this.port, token: this.appToken, pid: process.pid, version}), {mode: 0o600}); replaceFile(tmp, file);
+    this.published = file; return file;
+  }
+  unpublish() {
+    const f = this.published; this.published = null; if (!f) return;
+    try { if (JSON.parse(fs.readFileSync(f, 'utf8')).pid === process.pid) fs.rmSync(f, {force: true}); } catch { /* already gone */ }
+  }
+
+  close() { this.unpublish(); clearInterval(this.beat); for (const c of this.clients) { try { c.end(); } catch { /* going down */ } } this.server?.close(); }
 
   /** Tell every open deck that something moved. */
   push(payload) {
@@ -39,11 +61,15 @@ export class ControlServer {
     const u = new URL(req.url, `http://127.0.0.1:${this.port}`);
     // the browser asks for this on its own and carries no key; answering it keeps the console clean
     if (u.pathname === '/favicon.ico') { res.writeHead(204).end(); return; }
-    if (u.searchParams.get('k') !== this.token && req.headers['x-deck-key'] !== this.token) {
+    const full = same(u.searchParams.get('k'), this.token) || same(req.headers['x-deck-key'], this.token);
+    // another app must also name this computer, which a web page reaching here through DNS rebinding cannot
+    const here = [`127.0.0.1:${this.port}`, `localhost:${this.port}`].includes(String(req.headers.host || '').toLowerCase());
+    if (!full && !(OUTSIDE.has(u.pathname) && here && same(req.headers['x-deck-key'], this.appToken))) {
       res.writeHead(403).end('forbidden'); return;
     }
     const hall = u.searchParams.get('hall') || '';
     try {
+      if (this.api && OUTSIDE.has(u.pathname) && u.pathname !== '/api/events') { await this.outside(req, res, u.pathname); return; }
       if (u.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         res.end(PAGE); return;
@@ -58,6 +84,7 @@ export class ControlServer {
         res.write('retry: 2000\n\n');
         this.clients.add(res);
         req.on('close', () => this.clients.delete(res));
+        this.onClient(res);
         return;
       }
       if (u.pathname === '/api/report') {
@@ -97,6 +124,20 @@ export class ControlServer {
       res.writeHead(400, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
     }
+  }
+
+  /** The routes other apps use (deck-api.js does the work). */
+  async outside(req, res, p) {
+    const get = req.method === 'GET', post = req.method === 'POST';
+    let out;
+    if (get && p === '/api/tower') out = await this.api.tower();
+    else if (get && p === '/api/attention') out = this.api.attention();
+    else if (get && p === '/api/suits') out = await this.api.suits();
+    else if (post && p === '/api/tower/run') out = await this.api.run(await this.body(req));
+    else if (post && p === '/api/tower/continue') out = await this.api.continue(await this.body(req));
+    else { res.writeHead(405, { allow: p.startsWith('/api/tower/') ? 'POST' : 'GET' }).end('method not allowed'); return; }
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(out));
   }
 
   body(req) {
@@ -224,6 +265,6 @@ document.addEventListener('click',async e=>{
   if(g){const r=await api('/api/run',{id:g.dataset.run});if(r.error)alert(r.error);else{bays=r.bays||bays;draw()}}
   if(s){const r=await api('/api/stop',{id:s.dataset.stop});bays=r.bays||bays;draw()}
 });
-new EventSource('/api/events?k='+K+'&hall='+encodeURIComponent(HALL)).onmessage=load;
+new EventSource('/api/events?k='+K+'&hall='+encodeURIComponent(HALL)).onmessage=e=>{try{if(JSON.parse(e.data).type)return;}catch{}load();};   /* tower, brief and attention news is for other apps */
 load();setInterval(load,5000);
 </script></body></html>`;

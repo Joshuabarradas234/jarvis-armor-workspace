@@ -39,7 +39,7 @@ an optional third screen shows "the vista"). Three halls, each with its own assi
 - `src/workstations/store.js` — suits (bays) per hall: name, links, apps, folder, layout, session.
 - `src/settings/` — `schema.js` validates `settings.json` (strict: unknown keys are refused); `store.js` saves it.
 - `src/services/` — calendar, to-dos, ideas (local JSON), weather and the optional OpenAI-style chat.
-- `src/control/` — the control deck web server and per-bay agents (missions).
+- `src/control/` — the control deck web server (127.0.0.1, random port) and per-bay agents (missions). `deck-api.js` is what other apps on this PC (Floorboard) may use: Tower runs, the attention list, suits with their client folders, starting a job from dropped artwork (summary first, then `confirm:true`), and status/brief/attention events. They find the deck in `<userData>/deck.json` (port and a second key that opens only those routes, readable only by the owner, removed on quit).
 - `src/tower/` — the agent tower: floors of AI agents (`store.js`, `orchestrator.js`, `engines.js`: Claude API and
   Claude Code). A run that stopped, failed or hit its budget can be continued in its own folder,
   keeping finished steps. Claude Code agents may write only in their run folder; knowledge files are read-only.

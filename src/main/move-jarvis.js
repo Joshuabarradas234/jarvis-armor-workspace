@@ -12,7 +12,7 @@ import {writeText} from '../brain/util.js';
 
 export const KIND = 'jarvis-move';
 /** Rebuilt by JARVIS, this computer's own, or stale approval requests: never moved. */
-const SKIP = /^(voice-grammar\.json|approvals\.json|desk-hands\.json|.*\.bak|.*\.before-.*)$/i;
+const SKIP = /^(voice-grammar\.json|approvals\.json|desk-hands\.json|deck\.json|.*\.bak|.*\.before-.*)$/i;
 const NAME = /^[\w .()-]+\.(json|jsonl)$/i, TEXT = /\.(md|txt|json|csv)$/i, MAX_FILE = 20e6, MAX_TOTAL = 150e6;
 
 /** Everything to move, as one object (saved as JSON). */
